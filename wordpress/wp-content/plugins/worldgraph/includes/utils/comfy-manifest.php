@@ -500,13 +500,19 @@ class Comfy_Manifest {
 
 		$urls = self::extract_model_urls( $template );
 		if ( empty( $urls ) ) {
+			$has_requirements = is_array( $template['requirements']['models'] ?? null ) && ! empty( $template['requirements']['models'] );
 			$missing = array_values( array_filter( array_map( 'strval', (array) ( $template['requirements']['missing_models'] ?? [] ) ) ) );
-			if ( empty( $missing ) ) {
+			if ( empty( $missing ) && $has_requirements ) {
 				foreach ( (array) ( $template['requirements']['models'] ?? [] ) as $model ) {
 					if ( is_array( $model ) && ! empty( $model['filename'] ) && empty( $model['installed'] ) ) {
 						$missing[] = (string) $model['filename'];
 					}
 				}
+			}
+
+			// A provider that reports every known requirement as installed has nothing left to fetch.
+			if ( empty( $missing ) && $has_requirements ) {
+				return [ 'requested' => [], 'message' => __( 'Every model this Template needs is already installed.', 'worldgraph' ) ];
 			}
 
 			$message = __( 'The provider Template did not advertise downloadable requirements.', 'worldgraph' );
