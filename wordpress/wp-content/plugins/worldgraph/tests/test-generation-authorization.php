@@ -268,12 +268,17 @@ class Test_Generation_Authorization extends TestCase {
 	/** Generic generation keeps legacy params while validating the v1 map. */
 	public function test_generic_generation_separates_legacy_params_and_run_values(): void {
 		$source = (string) file_get_contents( dirname( __DIR__ ) . '/includes/rest-api/generation-controller.php' );
+		$local  = (string) file_get_contents( dirname( __DIR__ ) . '/includes/utils/local-comfyui.php' );
 
 		$this->assertStringContainsString( "'run_values' => [", $source );
 		$this->assertStringContainsString( 'Template_Run_Controls::validate( (int) $template->ID, $run_values )', $source );
 		$this->assertStringContainsString( '$params = array_merge( $params, $run_values );', $source );
 		$this->assertStringContainsString( "update_post_meta( \$post_id, '_worldgraph_gen_params', \$params );", $source );
 		$this->assertStringContainsString( "update_post_meta( \$post_id, '_worldgraph_gen_run_values', \$run_values );", $source );
+		$this->assertStringContainsString( "[ 'seed' => \$params[ \$legacy_seed_key ] ]", $source );
+		$this->assertStringContainsString( "update_post_meta( \$post_id, '_worldgraph_gen_explicit_seed', \$legacy_seed );", $source );
+		$this->assertStringContainsString( "const EXPLICIT_SEED_META = '_worldgraph_gen_explicit_seed';", $local );
+		$this->assertStringContainsString( "\$parameters['seed'] = (int) get_post_meta( \$job_id, self::EXPLICIT_SEED_META, true );", $local );
 		$this->assertStringNotContainsString( 'Template_Run_Controls::validate( (int) $template->ID, $params )', $source );
 	}
 

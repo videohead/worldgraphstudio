@@ -312,6 +312,10 @@ class Test_Template_Run_Controls extends TestCase {
 
 		$this->assertArrayNotHasKey( 'default', $seed );
 		$this->assertSame( 9007199254740991, $seed['max'] );
+		$this->assertSame( [ 'seed' => 123 ], Template_Run_Controls::validate_description( $description, [ 'seed' => ' 123 ' ] ) );
+		$too_large = Template_Run_Controls::validate_description( $description, [ 'seed' => '9007199254740992' ] );
+		$this->assertInstanceOf( WP_Error::class, $too_large );
+		$this->assertSame( 'worldgraph_run_control_range', $too_large->get_error_code() );
 		$this->assertSame( '', $text_g['default'] );
 		$this->assertSame( '', $text_l['default'] );
 		$this->assertSame( 'negative demo', $negative['default'] );

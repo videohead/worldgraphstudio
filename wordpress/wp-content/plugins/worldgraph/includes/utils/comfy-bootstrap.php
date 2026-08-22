@@ -141,16 +141,16 @@ class Comfy_Bootstrap {
 		$existing = self::template_id();
 		if ( $existing ) {
 			update_post_meta( $existing, 'worldgraph_wizard_slot', self::TEMPLATE_SLOT );
-			update_post_meta( $existing, 'modality', Generation_Modality::TEXT_TO_IMAGE );
-			update_post_meta( $existing, 'generation_structure', Generation_Modality::output_type( Generation_Modality::TEXT_TO_IMAGE ) );
-			update_post_meta( $existing, 'provider_type', 'comfyui' );
-			update_post_meta( $existing, 'status', 'active' );
+			worldgraph_update_field_value( $existing, 'modality', Generation_Modality::TEXT_TO_IMAGE );
+			worldgraph_update_field_value( $existing, 'generation_structure', Generation_Modality::output_type( Generation_Modality::TEXT_TO_IMAGE ) );
+			worldgraph_update_field_value( $existing, 'provider_type', 'comfyui' );
+			worldgraph_update_field_value( $existing, 'status', 'active' );
 			self::remove_legacy_parameter_defaults( $existing );
 			$checkpoint = self::detect_checkpoint();
-			update_post_meta( $existing, 'checkpoint', $checkpoint );
-			update_post_meta( $existing, 'model_requirements', (string) wp_json_encode( [ self::download_entry( $checkpoint ) ] ) );
+			worldgraph_update_field_value( $existing, 'checkpoint', $checkpoint );
+			worldgraph_update_field_value( $existing, 'model_requirements', (string) wp_json_encode( [ self::download_entry( $checkpoint ) ] ) );
 			if ( $connection_id ) {
-				update_post_meta( $existing, 'connection_id', (string) $connection_id );
+				worldgraph_update_field_value( $existing, 'connection_id', (string) $connection_id );
 			}
 
 			self::retire_legacy_templates( $existing, $connection_id );
@@ -223,10 +223,10 @@ class Comfy_Bootstrap {
 				continue;
 			}
 
-			update_post_meta( $template_id, 'workflow_json', wp_slash( (string) wp_json_encode( $workflow ) ) );
-			update_post_meta( $template_id, 'provider_template_id', (string) $entry['id'] );
-			update_post_meta( $template_id, 'template_name', (string) $entry['name'] );
-			update_post_meta( $template_id, 'model_requirements', (string) wp_json_encode( self::registry_requirements( $entry ) ) );
+			worldgraph_update_field_value( $template_id, 'workflow_json', (string) wp_json_encode( $workflow ) );
+			worldgraph_update_field_value( $template_id, 'provider_template_id', (string) $entry['id'] );
+			worldgraph_update_field_value( $template_id, 'template_name', (string) $entry['name'] );
+			worldgraph_update_field_value( $template_id, 'model_requirements', (string) wp_json_encode( self::registry_requirements( $entry ) ) );
 			Generation_Log::add( 'info', 'comfy_bootstrap', sprintf( 'Provisioned the published workflow "%s".', (string) $entry['name'] ), [ 'template' => $entry['id'] ] );
 
 			return (string) $entry['id'];
@@ -234,8 +234,8 @@ class Comfy_Bootstrap {
 
 		// Nothing better was runnable, so fall back to the built-in graph rather
 		// than leaving a stale published workflow in place.
-		delete_post_meta( $template_id, 'workflow_json' );
-		delete_post_meta( $template_id, 'provider_template_id' );
+		worldgraph_delete_field_value( $template_id, 'workflow_json' );
+		worldgraph_delete_field_value( $template_id, 'provider_template_id' );
 
 		return '';
 	}
@@ -271,7 +271,7 @@ class Comfy_Bootstrap {
 	 * @return void
 	 */
 	private static function remove_legacy_parameter_defaults( int $template_id ): void {
-		$decoded = json_decode( (string) get_post_meta( $template_id, 'configuration_json', true ), true );
+		$decoded = json_decode( (string) worldgraph_get_field_value( $template_id, 'configuration_json' ), true );
 		if ( ! is_array( $decoded ) || ! isset( $decoded['parameters'] ) || ! is_array( $decoded['parameters'] ) ) {
 			return;
 		}
@@ -287,7 +287,7 @@ class Comfy_Bootstrap {
 		}
 
 		if ( count( array_intersect( array_keys( $parameters ), $keys ) ) === count( $parameters ) ) {
-			delete_post_meta( $template_id, 'configuration_json' );
+			worldgraph_delete_field_value( $template_id, 'configuration_json' );
 		}
 	}
 
@@ -327,8 +327,8 @@ class Comfy_Bootstrap {
 			}
 
 			$slot          = (string) get_post_meta( $template_id, 'worldgraph_wizard_slot', true );
-			$modality      = (string) get_post_meta( $template_id, 'modality', true );
-			$template_conn = (int) get_post_meta( $template_id, 'connection_id', true );
+			$modality      = (string) worldgraph_get_field_value( $template_id, 'modality' );
+			$template_conn = (int) worldgraph_get_field_value( $template_id, 'connection_id' );
 
 			$is_legacy_managed = 'local_comfyui_default' === $slot;
 			$is_video_template = in_array( $modality, $legacy_modalities, true );

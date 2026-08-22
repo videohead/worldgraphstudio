@@ -17,6 +17,10 @@ if ( ! defined( 'ABSPATH' ) ) {
 class Local_ComfyUI {
 	/** Maximum media input buffered for ComfyUI's multipart upload (50MB). */
 	private const MAX_INPUT_BYTES = 52428800;
+
+	/** Normalized legacy generic-request seed explicitly supplied by the caller. */
+	const EXPLICIT_SEED_META = '_worldgraph_gen_explicit_seed';
+
 	/**
 	 * Wizard slot marker for the single default local ComfyUI Template. One
 	 * Connection can back many checkpoints/Templates; only one is auto-managed
@@ -67,7 +71,14 @@ class Local_ComfyUI {
 		if ( $job_id && metadata_exists( 'post', $job_id, '_worldgraph_gen_run_values' ) ) {
 			$submitted = get_post_meta( $job_id, '_worldgraph_gen_run_values', true );
 			$submitted = is_array( $submitted ) ? $submitted : [];
-			if ( ! array_key_exists( 'seed', $submitted ) && ! array_key_exists( 'noise_seed', $submitted ) ) {
+			$has_explicit_seed = array_key_exists( 'seed', $submitted )
+				|| array_key_exists( 'noise_seed', $submitted );
+			if ( metadata_exists( 'post', $job_id, self::EXPLICIT_SEED_META ) ) {
+				$parameters['seed'] = (int) get_post_meta( $job_id, self::EXPLICIT_SEED_META, true );
+				unset( $parameters['noise_seed'] );
+				$has_explicit_seed = true;
+			}
+			if ( ! $has_explicit_seed ) {
 				unset( $parameters['seed'], $parameters['noise_seed'] );
 			}
 		}

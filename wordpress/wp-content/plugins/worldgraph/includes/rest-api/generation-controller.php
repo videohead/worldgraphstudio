@@ -378,6 +378,27 @@ class Generation_Controller extends Base_Controller {
 		if ( is_wp_error( $run_values ) ) {
 			return $run_values;
 		}
+		// Legacy params remain permissive, but a local fixed seed is trusted only
+		// after the selected Template accepts and normalizes it.
+		$legacy_seed = null;
+		if ( $use_local_comfyui && ! array_key_exists( 'seed', $run_values ) ) {
+			$legacy_seed_key = array_key_exists( 'seed', $params )
+				? 'seed'
+				: ( array_key_exists( 'noise_seed', $params ) ? 'noise_seed' : '' );
+			if ( '' !== $legacy_seed_key ) {
+				$validated_seed = \WorldGraph\Utils\Template_Run_Controls::validate(
+					(int) $template->ID,
+					[ 'seed' => $params[ $legacy_seed_key ] ]
+				);
+				if ( ! is_wp_error( $validated_seed ) && array_key_exists( 'seed', $validated_seed ) ) {
+					$legacy_seed = $validated_seed['seed'];
+					unset( $params['seed'], $params['noise_seed'] );
+					$params['seed'] = $legacy_seed;
+				}
+			}
+		} elseif ( $use_local_comfyui ) {
+			unset( $params['noise_seed'] );
+		}
 		// Provider/Template defaults are applied by the worker. Preserve the
 		// original generic `params` contract, then let validated v1 run controls
 		// override colliding legacy keys.
@@ -400,6 +421,9 @@ class Generation_Controller extends Base_Controller {
 		update_post_meta( $post_id, '_worldgraph_gen_prompt', $prompt );
 		update_post_meta( $post_id, '_worldgraph_gen_params', $params );
 		update_post_meta( $post_id, '_worldgraph_gen_run_values', $run_values );
+		if ( null !== $legacy_seed ) {
+			update_post_meta( $post_id, '_worldgraph_gen_explicit_seed', $legacy_seed );
+		}
 		update_post_meta( $post_id, '_worldgraph_gen_inputs', $inputs );
 		update_post_meta( $post_id, Generation_Authorization::REQUESTER_META, $requester_id );
 		update_post_meta( $post_id, '_worldgraph_gen_workflow', $workflow );

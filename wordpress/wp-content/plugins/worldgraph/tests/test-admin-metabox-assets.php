@@ -103,4 +103,15 @@ class Test_Admin_Metabox_Assets extends TestCase {
 		$this->assertStringContainsString( "'profile_values' => (array) ( \$task['profile_values'] ?? [] )", $workflows );
 		$this->assertStringContainsString( "'profile_values'     => (array) ( \$task['profile_values'] ?? [] )", $workflows );
 	}
+
+	/** Untouched Template selectors follow refreshed server defaults. */
+	public function test_only_explicit_template_selection_changes_are_remembered(): void {
+		$script = (string) file_get_contents( dirname( __DIR__ ) . '/assets/js/asset-generator.js' );
+
+		$this->assertStringContainsString( 'function rememberTemplateSelection( panel, type )', $script );
+		$this->assertStringContainsString( "rememberTemplateSelection( panel, 'image' );", $script );
+		$this->assertStringContainsString( "rememberTemplateSelection( panel, 'video' );", $script );
+		$this->assertSame( 3, substr_count( $script, 'rememberTemplateSelection(' ) );
+		$this->assertStringNotContainsString( 'rememberTemplateSelections', $script );
+	}
 }
