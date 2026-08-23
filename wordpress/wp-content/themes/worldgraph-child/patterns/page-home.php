@@ -578,7 +578,7 @@
 					<h3 class="wp-block-heading wg-card__title has-headline-font-family"><?php echo esc_html__( 'Choose the connections', 'worldgraph-child' ); ?></h3>
 					<!-- /wp:heading -->
 					<!-- wp:paragraph -->
-					<p><?php echo esc_html__( 'Use supported local or hosted services, add provider types through Connection adapter hooks, and change providers without rebuilding the Story Graph.', 'worldgraph-child' ); ?></p>
+					<p><?php echo esc_html__( 'Use supported local or hosted services, add provider types through Connection adapter hooks, and change providers without rebuilding the story graph.', 'worldgraph-child' ); ?></p>
 					<!-- /wp:paragraph -->
 				</div>
 				<!-- /wp:group -->
