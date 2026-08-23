@@ -1,4 +1,5 @@
 {
+  "license": "GPL-2.0-or-later",
   "devDependencies": {
     "@playwright/test": "^1.62.1",
     "@wordpress/e2e-test-utils-playwright": "^1.53.0",

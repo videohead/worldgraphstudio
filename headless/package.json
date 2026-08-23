@@ -2,6 +2,7 @@
   "name": "worldgraph-headless",
   "version": "0.1.0",
   "private": true,
+  "license": "GPL-2.0-or-later",
   "description": "Optional headless Next.js frontend for World Graph Studio, based on 9d8dev/next-wp.",
   "engines": {
     "node": ">=20"

@@ -90,3 +90,9 @@ service URL (`http://headless:3000`) or proxy URL can be configured locally.
 For a different private development hostname, define
 `WORLDGRAPH_HEADLESS_LOCAL_HOSTS` in `wp-config.php` as an exact hostname or
 comma-delimited list; production hosts need no exception.
+
+## License
+
+This package is distributed as part of World Graph Studio under
+`GPL-2.0-or-later`. Portions adapted from `9d8dev/next-wp` retain the upstream
+copyright and license notice in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

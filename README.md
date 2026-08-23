@@ -224,9 +224,12 @@ Contributions are welcome; see the
 
 ## License
 
-The repository is licensed under the [MIT License](LICENSE). WordPress plugin
-headers in this repository declare GPL v2-or-later for the distributed plugin
-components. No change to either license statement is implied by the rebrand.
+Copyright (c) 2026 Matthew Galvin.
+
+World Graph Studio is licensed under the [GNU General Public License, version
+2 or (at your option) any later version](LICENSE) (`GPL-2.0-or-later`).
+Third-party components and dependencies remain under their respective licenses,
+including the [notice for the optional headless frontend](headless/THIRD_PARTY_NOTICES.md).
 
 ---
 
