@@ -24,13 +24,6 @@ class AI_LLM_Client {
 	private $response_cache = [];
 
 	/**
-	 * Request timestamp tracking for rate limiting.
-	 *
-	 * @var array
-	 */
-	private $request_log = [];
-
-	/**
 	 * Send a chat request to the configured LLM backend.
 	 *
 	 * @param string $prompt The user prompt.
@@ -247,8 +240,6 @@ class AI_LLM_Client {
 			];
 		}
 
-		$this->log_request( $backend );
-
 		return [
 			'content' => $data['choices'][0]['message']['content'],
 			'backend' => $backend,
@@ -331,8 +322,6 @@ class AI_LLM_Client {
 			];
 		}
 
-		$this->log_request( 'openai' );
-
 		return [
 			'content' => $data['choices'][0]['message']['content'],
 			'backend' => 'openai',
@@ -411,8 +400,6 @@ class AI_LLM_Client {
 				'error'   => 'invalid_response',
 			];
 		}
-
-		$this->log_request( 'anthropic' );
 
 		return [
 			'content' => $data['content'][0]['text'],
@@ -509,30 +496,26 @@ class AI_LLM_Client {
 	 * @return bool True if within limit.
 	 */
 	private function check_rate_limit(): bool {
-		$limit = get_option( 'worldgraph_ai_rate_limit', 10 );
-		$now = time();
+		$limit  = max( 1, absint( get_option( 'worldgraph_ai_rate_limit', 10 ) ) );
+		$now    = time();
 		$window = 60; // 1 minute window.
+		$user_id = get_current_user_id();
+		$key     = 'worldgraph_ai_rate_' . absint( $user_id );
+		$request_log = get_transient( $key );
+		$request_log = is_array( $request_log ) ? $request_log : [];
 
-		// Clean old entries.
-		$this->request_log = array_filter( $this->request_log, function( $timestamp ) use ( $now, $window ) {
+		$request_log = array_values( array_filter( $request_log, static function ( $timestamp ) use ( $now, $window ) {
 			return $now - $timestamp < $window;
-		} );
+		} ) );
 
-		if ( count( $this->request_log ) >= $limit ) {
+		if ( count( $request_log ) >= $limit ) {
+			set_transient( $key, $request_log, $window );
 			return false;
 		}
 
+		$request_log[] = $now;
+		set_transient( $key, $request_log, $window );
 		return true;
-	}
-
-	/**
-	 * Log a request for rate limiting.
-	 *
-	 * @param string $backend Backend used.
-	 * @return void
-	 */
-	private function log_request( string $backend ): void {
-		$this->request_log[] = time();
 	}
 
 	/**

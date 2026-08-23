@@ -113,7 +113,7 @@ class Navigation {
 	public static function render_group(): void {
 		$title = get_admin_page_title();
 		$title = $title ?: __( 'World Graph Studio', 'worldgraph' );
-		$page   = isset( $_GET['page'] ) ? sanitize_key( $_GET['page'] ) : '';
+		$page   = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only menu selection.
 		$cards  = self::get_group_cards( $page );
 		?>
 		<div class="wrap worldgraph-group-page">

@@ -5,6 +5,8 @@
  * @package WorldGraph
  */
 
+defined( 'ABSPATH' ) || exit;
+
 use PHPUnit\Framework\TestCase;
 use WorldGraph\Utils\VideoDraft_API;
 use WorldGraph\Utils\VideoDraft_Catalog;
@@ -17,17 +19,20 @@ if ( ! function_exists( 'sanitize_key' ) ) {
 }
 if ( ! function_exists( 'sanitize_title' ) ) {
 	function sanitize_title( $value ): string {
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.strip_tags_strip_tags -- WordPress-free test shim.
 		$value = strtolower( trim( strip_tags( (string) $value ) ) );
 		return trim( preg_replace( '/[^a-z0-9]+/', '-', $value ), '-' );
 	}
 }
 if ( ! function_exists( 'sanitize_text_field' ) ) {
 	function sanitize_text_field( $value ): string {
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.strip_tags_strip_tags -- WordPress-free test shim.
 		return trim( strip_tags( (string) $value ) );
 	}
 }
 if ( ! function_exists( 'wp_strip_all_tags' ) ) {
 	function wp_strip_all_tags( $value ): string {
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.strip_tags_strip_tags -- WordPress-free test shim.
 		return strip_tags( (string) $value );
 	}
 }

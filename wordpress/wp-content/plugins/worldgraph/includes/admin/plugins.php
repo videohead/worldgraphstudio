@@ -458,8 +458,9 @@ class Plugins {
 	 * Render the plugins management page.
 	 */
 	public static function render_plugins_page(): void {
-		$message = isset( $_GET['message'] ) ? sanitize_text_field( $_GET['message'] ) : '';
-		$message_type = isset( $_GET['type'] ) ? sanitize_text_field( $_GET['type'] ) : 'success';
+		$message = isset( $_GET['message'] ) ? sanitize_text_field( wp_unslash( $_GET['message'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only redirect notice.
+		$message_type = isset( $_GET['type'] ) ? sanitize_key( wp_unslash( $_GET['type'] ) ) : 'success'; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only redirect notice.
+		$message_type = in_array( $message_type, [ 'success', 'error', 'warning', 'info' ], true ) ? $message_type : 'success';
 		?>
 		<div class="wrap worldgraph-plugins">
 			<h1>World Graph Studio Plugins</h1>
@@ -577,7 +578,7 @@ class Plugins {
 
 		check_ajax_referer( 'worldgraph_admin', 'nonce' );
 
-		$slug = isset( $_POST['slug'] ) ? sanitize_text_field( $_POST['slug'] ) : '';
+		$slug = isset( $_POST['slug'] ) ? sanitize_key( wp_unslash( $_POST['slug'] ) ) : '';
 		$plugin = self::get_plugin( $slug );
 
 		if ( ! $plugin ) {
@@ -615,7 +616,7 @@ class Plugins {
 		}
 		check_ajax_referer( 'worldgraph_admin', 'nonce' );
 
-		$slug = isset( $_POST['slug'] ) ? sanitize_text_field( $_POST['slug'] ) : '';
+		$slug = isset( $_POST['slug'] ) ? sanitize_key( wp_unslash( $_POST['slug'] ) ) : '';
 
 		if ( $slug === 'celtx' ) {
 			// Use the Celtx API client to test connection.

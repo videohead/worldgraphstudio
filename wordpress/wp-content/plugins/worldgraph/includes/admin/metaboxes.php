@@ -194,7 +194,13 @@ class MetaBoxes {
 									<option value=""><?php esc_html_e( 'None', 'worldgraph' ); ?></option>
 									<?php foreach ( $related_posts as $related_post ) : ?>
 										<option value="<?php echo esc_attr( $related_post->ID ); ?>" <?php selected( $selected_id, $related_post->ID ); ?>>
-											<?php echo esc_html( $related_post->post_title ?: sprintf( __( 'Untitled #%d', 'worldgraph' ), $related_post->ID ) ); ?>
+											<?php
+											echo esc_html( $related_post->post_title ?: sprintf(
+												/* translators: %d: related post ID. */
+												__( 'Untitled #%d', 'worldgraph' ),
+												$related_post->ID
+											) );
+											?>
 										</option>
 									<?php endforeach; ?>
 								</select>
@@ -242,7 +248,7 @@ class MetaBoxes {
 					$target = get_post( $rel['to_id'] );
 					if ( $target ) :
 						?>
-						<a href="<?php echo get_edit_post_link( $rel['to_id'] ); ?>">
+						<a href="<?php echo esc_url( get_edit_post_link( $rel['to_id'] ) ); ?>">
 							<?php echo esc_html( $target->post_title ); ?>
 						</a>
 						<span class="dashicons dashicons-arrow-right-alt"></span>

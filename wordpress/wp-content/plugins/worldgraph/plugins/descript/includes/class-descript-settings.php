@@ -136,8 +136,9 @@ class Settings {
 		$message_type = 'success';
 		$result = null;
 		$remote_projects = [];
+		$request_method = isset( $_SERVER['REQUEST_METHOD'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REQUEST_METHOD'] ) ) : '';
 
-		if ( 'POST' === ( $_SERVER['REQUEST_METHOD'] ?? '' ) && isset( $_POST['worldgraph_descript_nonce'] ) ) {
+		if ( 'POST' === $request_method && isset( $_POST['worldgraph_descript_nonce'] ) ) {
 			check_admin_referer( 'worldgraph_descript_settings', 'worldgraph_descript_nonce' );
 			$action = sanitize_key( wp_unslash( $_POST['descript_action'] ?? 'save' ) );
 			$connection_id = absint( $_POST['connection_id'] ?? 0 );
@@ -168,7 +169,11 @@ class Settings {
 						$message_type = 'error';
 					} else {
 						$remote_projects = (array) ( $result['projects'] ?? [] );
-						$message = sprintf( _n( '%d Descript project found.', '%d Descript projects found.', count( $remote_projects ), 'worldgraph' ), count( $remote_projects ) );
+						$message = sprintf(
+							/* translators: %d: number of Descript projects found. */
+							_n( '%d Descript project found.', '%d Descript projects found.', count( $remote_projects ), 'worldgraph' ),
+							count( $remote_projects )
+						);
 					}
 					break;
 				case 'pull':
@@ -181,7 +186,11 @@ class Settings {
 					break;
 				case 'push':
 					$result = Sync::push_media( $project_id, $connection_id, $remote_project_id, sanitize_text_field( wp_unslash( $_POST['folder_name'] ?? '' ) ) );
-					$message = is_wp_error( $result ) ? $result->get_error_message() : sprintf( __( 'Submitted a Descript import job (%s).', 'worldgraph' ), $result['job_id'] );
+					$message = is_wp_error( $result ) ? $result->get_error_message() : sprintf(
+						/* translators: %s: Descript import job ID. */
+						__( 'Submitted a Descript import job (%s).', 'worldgraph' ),
+						$result['job_id']
+					);
 					$message_type = is_wp_error( $result ) ? 'error' : 'success';
 					if ( ! is_wp_error( $result ) ) {
 						$job_id = (string) $result['job_id'];
@@ -189,7 +198,11 @@ class Settings {
 					break;
 				case 'poll':
 					$result = Sync::poll_job( $job_id, $connection_id, $project_id );
-					$message = is_wp_error( $result ) ? $result->get_error_message() : sprintf( __( 'Job status: %s.', 'worldgraph' ), (string) ( $result['status'] ?? 'unknown' ) );
+					$message = is_wp_error( $result ) ? $result->get_error_message() : sprintf(
+						/* translators: %s: Descript import job status. */
+						__( 'Job status: %s.', 'worldgraph' ),
+						(string) ( $result['status'] ?? 'unknown' )
+					);
 					$message_type = is_wp_error( $result ) ? 'error' : 'success';
 					break;
 				case 'unsync':
@@ -209,7 +222,11 @@ class Settings {
 				<div class="notice notice-<?php echo esc_attr( $message_type ); ?> is-dismissible"><p><?php echo esc_html( $message ); ?></p></div>
 			<?php endif; ?>
 			<?php if ( empty( $connections ) ) : ?>
-				<div class="notice notice-warning inline"><p><?php echo wp_kses_post( sprintf( __( 'Create a <strong>Descript</strong> Connection with an API token before enabling sync. <a href="%s">Open Connections</a>.', 'worldgraph' ), esc_url( admin_url( 'edit.php?post_type=worldgraph_conn' ) ) ) ); ?></p></div>
+				<div class="notice notice-warning inline"><p><?php echo wp_kses_post( sprintf(
+					/* translators: %s: URL to the Connections admin screen. */
+					__( 'Create a <strong>Descript</strong> Connection with an API token before enabling sync. <a href="%s">Open Connections</a>.', 'worldgraph' ),
+					esc_url( admin_url( 'edit.php?post_type=worldgraph_conn' ) )
+				) ); ?></p></div>
 			<?php endif; ?>
 
 			<form method="post">

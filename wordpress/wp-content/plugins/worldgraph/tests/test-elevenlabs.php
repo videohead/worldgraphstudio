@@ -5,11 +5,14 @@
  * @package WorldGraph
  */
 
+defined( 'ABSPATH' ) || exit;
+
 use PHPUnit\Framework\TestCase;
 use WorldGraph\Utils\ElevenLabs_Catalog;
 
 if ( ! function_exists( 'sanitize_text_field' ) ) {
 	function sanitize_text_field( $value ): string {
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.strip_tags_strip_tags -- WordPress-free test shim.
 		return trim( strip_tags( (string) $value ) );
 	}
 }

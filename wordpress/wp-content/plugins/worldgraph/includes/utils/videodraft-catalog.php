@@ -38,7 +38,7 @@ class VideoDraft_Catalog {
 	/** Discover supported tools and materialize one Template per modality. */
 	public static function provision( int $connection_id ) {
 		$connection = Connection_Repository::get( $connection_id );
-		if ( ! is_array( $connection ) || 'videodraft' !== ( $connection['provider_type'] ?? '' ) ) {
+		if ( ! is_array( $connection ) || 'videodraft' !== ( $connection['provider_type'] ?? '' ) || 'publish' !== ( $connection['status_wp'] ?? '' ) || 'disabled' === ( $connection['status'] ?? '' ) ) {
 			return new WP_Error( 'videodraft_connection_invalid', __( 'Template provisioning requires a VideoDraft Connection.', 'worldgraph' ) );
 		}
 

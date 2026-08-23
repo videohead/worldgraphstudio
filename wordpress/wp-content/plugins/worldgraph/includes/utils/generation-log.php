@@ -1,8 +1,7 @@
 <?php
 /**
- * Ring-buffer log for ComfyUI MCP / local ComfyUI generation requests, so
- * failures can be diagnosed before the WP-cron generation batch returns a
- * result.
+ * Private ring-buffer log for provider generation requests, so failures can
+ * be diagnosed before the WP-cron generation batch returns a result.
  *
  * @package WorldGraph
  */
@@ -138,14 +137,6 @@ class Generation_Log {
 	public static function all( int $connection_id = 0 ): array {
 		$entries = self::read_entries();
 
-		if ( empty( $entries ) ) {
-			$legacy = get_option( self::OPTION, [] );
-			if ( is_array( $legacy ) && ! empty( $legacy ) ) {
-				$entries = $legacy;
-				self::write_entries( $entries );
-			}
-		}
-
 		if ( $connection_id > 0 ) {
 			$entries = array_values( array_filter( $entries, static function ( $entry ) use ( $connection_id ) {
 				return (int) ( $entry['connection_id'] ?? 0 ) === $connection_id;
@@ -159,7 +150,7 @@ class Generation_Log {
 	 * Clear the log.
 	 */
 	public static function clear(): void {
-		$file = self::log_file_path();
+		$file = self::legacy_log_file_path();
 		if ( '' !== $file && file_exists( $file ) ) {
 			wp_delete_file( $file );
 		}
@@ -167,35 +158,60 @@ class Generation_Log {
 	}
 
 	/**
-	 * Resolve the filesystem path for the generation log file.
+	 * Resolve the former public filesystem path without creating it.
+	 *
+	 * This path is retained only so installations upgraded from a file-backed
+	 * log can migrate and remove that file. New log data is never written here.
 	 *
 	 * @return string
 	 */
-	private static function log_file_path(): string {
+	private static function legacy_log_file_path(): string {
 		$uploads = wp_upload_dir();
 		$basedir = is_array( $uploads ) ? (string) ( $uploads['basedir'] ?? '' ) : '';
 		if ( '' === $basedir ) {
 			return '';
 		}
 
-		$dir = trailingslashit( $basedir ) . self::LOG_SUBDIR;
-		wp_mkdir_p( $dir );
-
-		return trailingslashit( $dir ) . self::LOG_FILENAME;
+		return trailingslashit( $basedir ) . self::LOG_SUBDIR . '/' . self::LOG_FILENAME;
 	}
 
 	/**
-	 * Read log entries from the JSONL generation log file.
+	 * Read entries from the non-autoloaded database option and, once, migrate
+	 * entries from the former public JSONL file.
+	 *
+	 * The old file is removed only after the merged ring buffer can be read back
+	 * from the database. If persistence fails, the file remains available for a
+	 * later migration attempt.
 	 *
 	 * @return array<int, array<string, mixed>>
 	 */
 	private static function read_entries(): array {
-		$file = self::log_file_path();
-		if ( '' === $file || ! is_readable( $file ) ) {
-			return [];
+		$stored  = get_option( self::OPTION, [] );
+		$entries = self::normalize_entries( is_array( $stored ) ? $stored : [] );
+		$file    = self::legacy_log_file_path();
+
+		if ( '' === $file || ! is_file( $file ) || ! is_readable( $file ) ) {
+			return $entries;
 		}
 
-		$lines = is_readable( $file ) ? file( $file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES ) : false;
+		$legacy  = self::read_legacy_file_entries( $file );
+		$entries = self::merge_entries( $entries, $legacy );
+
+		if ( self::write_entries( $entries ) ) {
+			wp_delete_file( $file );
+		}
+
+		return $entries;
+	}
+
+	/**
+	 * Read valid entries from the former JSONL file.
+	 *
+	 * @param string $file Absolute legacy file path.
+	 * @return array<int, array<string, mixed>>
+	 */
+	private static function read_legacy_file_entries( string $file ): array {
+		$lines = file( $file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES );
 		if ( ! is_array( $lines ) ) {
 			return [];
 		}
@@ -208,34 +224,70 @@ class Generation_Log {
 			}
 		}
 
-		return $entries;
+		return self::normalize_entries( $entries );
 	}
 
 	/**
-	 * Persist log entries to disk as JSON Lines.
+	 * Merge two ordered entry sets without duplicating identical records.
 	 *
-	 * @param array<int, array<string, mixed>> $entries Entries ordered oldest-first.
+	 * Existing database records are ordered first, followed by records from the
+	 * former file. The final result retains only the newest ring-buffer window.
+	 *
+	 * @param array<int, array<string, mixed>> $stored Database entries.
+	 * @param array<int, array<string, mixed>> $legacy Legacy file entries.
+	 * @return array<int, array<string, mixed>>
 	 */
-	private static function write_entries( array $entries ): void {
-		$file = self::log_file_path();
-		if ( '' === $file ) {
-			return;
+	private static function merge_entries( array $stored, array $legacy ): array {
+		$merged = [];
+
+		foreach ( array_merge( $stored, $legacy ) as $entry ) {
+			if ( in_array( $entry, $merged, true ) ) {
+				continue;
+			}
+
+			$merged[] = $entry;
 		}
+
+		return self::normalize_entries( $merged );
+	}
+
+	/**
+	 * Keep only array records within the bounded ring-buffer window.
+	 *
+	 * @param array<int, mixed> $entries Candidate entries.
+	 * @return array<int, array<string, mixed>>
+	 */
+	private static function normalize_entries( array $entries ): array {
+		$entries = array_values( array_filter( $entries, 'is_array' ) );
 
 		if ( count( $entries ) > self::MAX_ENTRIES ) {
 			$entries = array_slice( $entries, -self::MAX_ENTRIES );
 		}
 
-		$lines = [];
-		foreach ( $entries as $entry ) {
-			$lines[] = wp_json_encode( $entry );
+		return $entries;
+	}
+
+	/**
+	 * Persist log entries in a bounded, non-autoloaded database option.
+	 *
+	 * @param array<int, array<string, mixed>> $entries Entries ordered oldest-first.
+	 * @return bool Whether the intended value is durably available.
+	 */
+	private static function write_entries( array $entries ): bool {
+		$entries = self::normalize_entries( $entries );
+		$missing = new \stdClass();
+		$stored  = get_option( self::OPTION, $missing );
+
+		if ( $missing === $stored ) {
+			$written = add_option( self::OPTION, $entries, '', false );
+		} else {
+			$written = update_option( self::OPTION, $entries, false );
 		}
 
-		$payload = implode( "\n", array_filter( $lines, 'is_string' ) );
-		if ( '' !== $payload ) {
-			$payload .= "\n";
+		if ( $written ) {
+			return true;
 		}
 
-		file_put_contents( $file, $payload, LOCK_EX );
+		return $entries === get_option( self::OPTION, $missing );
 	}
 }

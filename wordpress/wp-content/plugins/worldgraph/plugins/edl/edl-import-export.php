@@ -1,13 +1,13 @@
 <?php
 /**
  * Plugin Name: World Graph Studio - EDL Format Tools
- * Plugin URI: https://github.com/videohead/worldgraph
+ * Plugin URI: https://github.com/videohead/storyos
  * Description: Parse, preview, and generate CMX-style text and XML edit decision list data for custom editorial adapters.
  * Version: 1.0.0
  * Author: World Graph Studio Contributors
  * License: GPL v2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
- * Text Domain: worldgraph-edl
+ * Text Domain: worldgraph
  * Requires Plugins: worldgraph
  * Requires at least: 6.0
  * Requires PHP: 8.1
@@ -338,24 +338,24 @@ function ajax_handler(): void {
 	}
 
 	// `action` is reserved by wp_ajax_* routing, so the sub-operation travels in its own field.
-	$sub_action = isset( $_POST['edl_action'] ) ? sanitize_text_field( $_POST['edl_action'] ) : '';
-	$format     = isset( $_POST['format'] ) ? sanitize_text_field( $_POST['format'] ) : 'cmx3600';
-	$fps        = normalize_fps( isset( $_POST['fps'] ) ? intval( $_POST['fps'] ) : 24 );
+	$sub_action = isset( $_POST['edl_action'] ) ? sanitize_text_field( wp_unslash( $_POST['edl_action'] ) ) : '';
+	$format     = isset( $_POST['format'] ) ? sanitize_text_field( wp_unslash( $_POST['format'] ) ) : 'cmx3600';
+	$fps        = normalize_fps( isset( $_POST['fps'] ) ? absint( wp_unslash( $_POST['fps'] ) ) : 24 );
 
 	if ( 'import' === $sub_action ) {
-		$target_type = isset( $_POST['target'] ) ? sanitize_text_field( $_POST['target'] ) : '';
-		$target_id   = isset( $_POST['target_id'] ) ? intval( $_POST['target_id'] ) : 0;
+		$target_type = isset( $_POST['target'] ) ? sanitize_text_field( wp_unslash( $_POST['target'] ) ) : '';
+		$target_id   = isset( $_POST['target_id'] ) ? absint( wp_unslash( $_POST['target_id'] ) ) : 0;
 		handle_import( $format, $fps, $target_type, $target_id );
 	} elseif ( 'export' === $sub_action ) {
 		$options = [
-			'title'       => isset( $_POST['title'] ) ? sanitize_text_field( $_POST['title'] ) : 'World Graph Studio EDL',
-			'reel'        => isset( $_POST['reel'] ) ? sanitize_text_field( $_POST['reel'] ) : 'REEL 001',
-			'pre_roll'    => isset( $_POST['pre_roll'] ) ? intval( $_POST['pre_roll'] ) : 0,
-			'post_roll'   => isset( $_POST['post_roll'] ) ? intval( $_POST['post_roll'] ) : 0,
-			'use_32char'  => isset( $_POST['use_32char'] ) ? (bool) $_POST['use_32char'] : false,
-			'drop_frame'  => isset( $_POST['drop_frame'] ) ? (bool) $_POST['drop_frame'] : false,
-			'video_track' => isset( $_POST['video_track'] ) ? sanitize_text_field( $_POST['video_track'] ) : 'V  C',
-			'audio_track' => isset( $_POST['audio_track'] ) ? sanitize_text_field( $_POST['audio_track'] ) : 'A  C',
+			'title'       => isset( $_POST['title'] ) ? sanitize_text_field( wp_unslash( $_POST['title'] ) ) : 'World Graph Studio EDL',
+			'reel'        => isset( $_POST['reel'] ) ? sanitize_text_field( wp_unslash( $_POST['reel'] ) ) : 'REEL 001',
+			'pre_roll'    => isset( $_POST['pre_roll'] ) ? absint( wp_unslash( $_POST['pre_roll'] ) ) : 0,
+			'post_roll'   => isset( $_POST['post_roll'] ) ? absint( wp_unslash( $_POST['post_roll'] ) ) : 0,
+			'use_32char'  => isset( $_POST['use_32char'] ) ? (bool) absint( wp_unslash( $_POST['use_32char'] ) ) : false,
+			'drop_frame'  => isset( $_POST['drop_frame'] ) ? (bool) absint( wp_unslash( $_POST['drop_frame'] ) ) : false,
+			'video_track' => isset( $_POST['video_track'] ) ? sanitize_text_field( wp_unslash( $_POST['video_track'] ) ) : 'V  C',
+			'audio_track' => isset( $_POST['audio_track'] ) ? sanitize_text_field( wp_unslash( $_POST['audio_track'] ) ) : 'A  C',
 		];
 		handle_export( $format, $fps, $options );
 	} elseif ( 'confirm_import' === $sub_action ) {
@@ -374,12 +374,15 @@ function ajax_handler(): void {
  * @param int    $target_id   Optional target post ID to attach the import to.
  */
 function handle_import( string $format, float $fps, string $target_type = '', int $target_id = 0 ): void {
-	if ( empty( $_FILES['edl_file'] ) || UPLOAD_ERR_OK !== ( $_FILES['edl_file']['error'] ?? UPLOAD_ERR_NO_FILE ) ) {
+	// phpcs:disable WordPress.Security.NonceVerification.Missing -- ajax_handler() verifies the request before dispatching here.
+	$upload_error = isset( $_FILES['edl_file']['error'] ) ? absint( wp_unslash( $_FILES['edl_file']['error'] ) ) : UPLOAD_ERR_NO_FILE;
+	$tmp_name     = isset( $_FILES['edl_file']['tmp_name'] ) ? sanitize_text_field( wp_unslash( $_FILES['edl_file']['tmp_name'] ) ) : '';
+	if ( UPLOAD_ERR_OK !== $upload_error || '' === $tmp_name || ! is_uploaded_file( $tmp_name ) ) {
 		wp_send_json_error( 'No file uploaded.' );
 	}
 
-	$file    = $_FILES['edl_file'];
-	$content = file_get_contents( $file['tmp_name'] );
+	// phpcs:enable WordPress.Security.NonceVerification.Missing
+	$content = file_get_contents( $tmp_name );
 	$edl_data = parse_edl( $content, $format, $fps );
 
 	if ( is_wp_error( $edl_data ) ) {
@@ -409,8 +412,8 @@ function handle_import( string $format, float $fps, string $target_type = '', in
  * @param array  $options Export options (reel, pre_roll, post_roll, etc.).
  */
 function handle_export( string $format, float $fps, array $options = [] ): void {
-	$target_type = isset( $_POST['target'] ) ? sanitize_text_field( $_POST['target'] ) : 'project';
-	$target_id   = isset( $_POST['target_id'] ) ? intval( $_POST['target_id'] ) : 0;
+	$target_type = isset( $_POST['target'] ) ? sanitize_text_field( wp_unslash( $_POST['target'] ) ) : 'project'; // phpcs:ignore WordPress.Security.NonceVerification.Missing -- ajax_handler() verifies the request before dispatching here.
+	$target_id   = isset( $_POST['target_id'] ) ? absint( wp_unslash( $_POST['target_id'] ) ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Missing -- ajax_handler() verifies the request before dispatching here.
 
 	$timeline_data = get_timeline_data( $target_type, $target_id );
 
@@ -430,6 +433,7 @@ function handle_export( string $format, float $fps, array $options = [] ): void 
 
 	header( 'Content-Type: application/octet-stream' );
 	header( 'Content-Disposition: attachment; filename="worldgraph_edl.' . ( 'xml' === $format ? 'xml' : 'txt' ) . '"' );
+	// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- This is a generated download payload, not HTML output.
 	echo $output;
 	exit;
 }
@@ -455,7 +459,7 @@ function handle_confirm_import(): void {
 			'post_type'   => 'worldgraph_editorial',
 			'post_status' => 'publish',
 			/* translators: %s: current date/time. */
-			'post_title'  => sprintf( __( 'EDL Import - %s', 'worldgraph-edl' ), current_time( 'mysql' ) ),
+			'post_title'  => sprintf( __( 'EDL Import - %s', 'worldgraph' ), current_time( 'mysql' ) ),
 		],
 		true
 	);
@@ -479,7 +483,7 @@ function handle_confirm_import(): void {
 	wp_send_json_success(
 		[
 			/* translators: 1: clip count, 2: post ID. */
-			'message' => sprintf( __( 'EDL successfully imported: %1$d clip(s) saved as Editorial Artifact #%2$d.', 'worldgraph-edl' ), count( $preview['clips'] ), $post_id ),
+			'message' => sprintf( __( 'EDL successfully imported: %1$d clip(s) saved as Editorial Artifact #%2$d.', 'worldgraph' ), count( $preview['clips'] ), $post_id ),
 			'post_id' => $post_id,
 		]
 	);
@@ -700,7 +704,7 @@ function generate_edl_ascii( array $clips, float $fps, array $options = [] ): st
 
 	$output = "TITLE:  " . str_pad( substr( $title, 0, 32 ), 32, ' ', STR_PAD_RIGHT ) . "\n";
 	$output .= "FM:     CMX-3600\n";
-	$output .= "DATE:   " . date( 'M d Y' ) . "\n";
+	$output .= "DATE:   " . gmdate( 'M d Y' ) . "\n";
 	$output .= "PM:     WorldGraph\n\n";
 
 	$index    = 1;

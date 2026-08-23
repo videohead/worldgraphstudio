@@ -5,6 +5,8 @@
  * This intentionally exercises the helper layer without requiring a full WordPress bootstrap.
  */
 
+defined( 'ABSPATH' ) || exit;
+
 if ( ! defined( 'WORLDGRAPH_CPT_PREFIX' ) ) {
 	define( 'WORLDGRAPH_CPT_PREFIX', 'worldgraph_' );
 }
@@ -31,6 +33,7 @@ require_once __DIR__ . '/../includes/utils/helpers.php';
 
 $expected_project_fields = \WorldGraph\Utils\worldgraph_expected_fields_for_cpt( 'worldgraph_project' );
 if ( ! in_array( 'project_name', $expected_project_fields, true ) ) {
+	// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fwrite -- CLI-only test output.
 	fwrite( STDERR, "Expected project_name in schema manifest.\n" );
 	exit( 1 );
 }
@@ -42,8 +45,10 @@ if ( ! in_array( 'project_name', $expected_project_fields, true ) ) {
 
 $report = \WorldGraph\Utils\worldgraph_validate_schema_alignment();
 if ( empty( $report['worldgraph_project']['missing'] ) ) {
+	// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fwrite -- CLI-only test output.
 	fwrite( STDERR, "Expected missing fields report for worldgraph_project.\n" );
 	exit( 1 );
 }
 
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fwrite -- CLI-only test output.
 fwrite( STDOUT, "Schema contract smoke test passed.\n" );

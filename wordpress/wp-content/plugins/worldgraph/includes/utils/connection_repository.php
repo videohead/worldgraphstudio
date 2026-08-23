@@ -14,6 +14,10 @@
 
 namespace WorldGraph\Utils;
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 /**
  * Connection repository.
  */
@@ -51,6 +55,12 @@ class Connection_Repository {
 		'enabled_templates',
 		'rate_limits',
 		'cost_controls',
+	];
+
+	/** Fields that must never be serialized to a browser or remote client. */
+	const SENSITIVE_FIELDS = [
+		'credential_reference',
+		'mcp_credential_reference',
 	];
 
 	/**
@@ -165,6 +175,30 @@ class Connection_Repository {
 	}
 
 	/**
+	 * Whether the current user may perform administrative provider operations
+	 * through a specific Connection.
+	 *
+	 * Template editing is intentionally broader than Connection administration.
+	 * Callers that test, discover, materialize, or download through a Template
+	 * must cross this boundary before loading an adapter or contacting a provider.
+	 *
+	 * @param int $id Connection post ID.
+	 * @return bool
+	 */
+	public static function current_user_can_manage( int $id ): bool {
+		if ( ! $id || ! current_user_can( 'manage_options' ) ) {
+			return false;
+		}
+
+		$post = get_post( $id );
+		if ( ! $post instanceof \WP_Post || self::CPT !== $post->post_type ) {
+			return false;
+		}
+
+		return current_user_can( 'edit_post', $id );
+	}
+
+	/**
 	 * Find the default connection for a provider type.
 	 *
 	 * The default is the Connection an operator explicitly marked active for
@@ -227,6 +261,21 @@ class Connection_Repository {
 		}
 
 		$record['last_validated_at'] = get_post_meta( $post->ID, 'last_validated_at', true );
+
+		return $record;
+	}
+
+	/**
+	 * Redact credentials from a record intended for an HTTP response.
+	 *
+	 * Server-side adapters continue to use get() and resolve() directly.
+	 */
+	public static function redact_credentials( array $record ): array {
+		foreach ( self::SENSITIVE_FIELDS as $field_name ) {
+			if ( array_key_exists( $field_name, $record ) ) {
+				$record[ $field_name ] = Credential_Store::masked_value( $record[ $field_name ] );
+			}
+		}
 
 		return $record;
 	}

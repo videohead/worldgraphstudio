@@ -16,6 +16,10 @@
 
 namespace WorldGraph\CPT;
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 /**
  * Provider Connection Custom Post Type handler.
  */
@@ -136,9 +140,11 @@ class Connection {
 					? \WorldGraph\Utils\worldgraph_get_field_value( (int) $post_id, (string) $field['name'] )
 					: $normalized;
 
-			case 'connection_name':
 			case 'credential_reference':
 			case 'mcp_credential_reference':
+				return \WorldGraph\Utils\Credential_Store::prepare_connection_value( (string) $value, (int) $post_id, (string) $field['name'] );
+
+			case 'connection_name':
 			case 'model':
 				return sanitize_text_field( (string) $value );
 		}
@@ -179,6 +185,9 @@ class Connection {
 		if ( in_array( $name, [ 'model_access', 'enabled_structures', 'enabled_templates', 'capabilities', 'mcp_configuration', 'rate_limits', 'cost_controls' ], true ) && null === self::sanitize_json_field( (string) $value ) ) {
 			return __( 'Enter a valid JSON array or object.', 'worldgraph' );
 		}
+		if ( in_array( $name, \WorldGraph\Utils\Credential_Store::CONNECTION_FIELDS, true ) && ! in_array( (string) $value, [ '', \WorldGraph\Utils\Credential_Store::MASK ], true ) && ! \WorldGraph\Utils\Credential_Store::is_available() ) {
+			return __( 'Provider credentials cannot be saved because authenticated encryption is unavailable on this server.', 'worldgraph' );
+		}
 
 		return $valid;
 	}
@@ -190,7 +199,7 @@ class Connection {
 	 * @param int|string $post_id SCF object ID.
 	 */
 	public static function after_scf_save( $post_id ): void {
-		if ( ! is_numeric( $post_id ) || self::CPT !== get_post_type( (int) $post_id ) ) {
+		if ( ! is_numeric( $post_id ) || self::CPT !== get_post_type( (int) $post_id ) || ! current_user_can( 'manage_options' ) || 'publish' !== get_post_status( (int) $post_id ) ) {
 			return;
 		}
 
@@ -421,6 +430,22 @@ class Connection {
 				'public'             => false,
 				'publicly_queryable' => false,
 				'show_in_rest'       => false,
+				'capabilities'       => [
+					'edit_post'              => 'manage_options',
+					'read_post'              => 'manage_options',
+					'delete_post'            => 'manage_options',
+					'edit_posts'             => 'manage_options',
+					'edit_others_posts'      => 'manage_options',
+					'publish_posts'          => 'manage_options',
+					'read_private_posts'     => 'manage_options',
+					'delete_posts'           => 'manage_options',
+					'delete_private_posts'   => 'manage_options',
+					'delete_published_posts' => 'manage_options',
+					'delete_others_posts'    => 'manage_options',
+					'edit_private_posts'     => 'manage_options',
+					'edit_published_posts'   => 'manage_options',
+					'create_posts'           => 'manage_options',
+				],
 				// The native post list is intentionally not registered in the admin menu;
 				// WorldGraph\Admin\Connections::render_page() is the single Connections view.
 				'show_in_menu'       => false,
@@ -537,9 +562,13 @@ class Connection {
 						__( 'GB', 'worldgraph' ),
 						__( 'TB', 'worldgraph' ),
 					],
-					'summary'                  => __( '%1$d available workflows · %2$d ready now · %3$d added to Studio · %4$d need attention', 'worldgraph' ),
+					'summary'                  =>
+						/* translators: 1: available workflows, 2: ready workflows, 3: workflows added to Studio, 4: workflows needing attention. */
+						__( '%1$d available workflows · %2$d ready now · %3$d added to Studio · %4$d need attention', 'worldgraph' ),
 					'noTemplates'              => __( 'No workflows have been checked yet. Refresh the available workflows to see what this provider can run.', 'worldgraph' ),
-					'lastChecked'              => __( 'Last checked: %s', 'worldgraph' ),
+					'lastChecked'              =>
+						/* translators: %s: formatted date and time of the last provider check. */
+						__( 'Last checked: %s', 'worldgraph' ),
 					'notCheckedYet'            => __( 'Not checked yet', 'worldgraph' ),
 					'download'                 => __( 'Download', 'worldgraph' ),
 					'providerBilling'          => __( 'Billed per generation by the provider', 'worldgraph' ),
@@ -564,8 +593,12 @@ class Connection {
 					'workflowsRefreshed'       => __( 'Available workflows refreshed.', 'worldgraph' ),
 					'addingReadyWorkflows'     => __( 'Refreshing the list before adding ready workflows…', 'worldgraph' ),
 					'noReadyWorkflows'         => __( 'There are no new ready workflows to add.', 'worldgraph' ),
-					'addAllProgress'           => __( 'Adding workflow %1$d of %2$d: %3$s', 'worldgraph' ),
-					'addAllFinished'           => __( 'Finished adding workflows: %1$d added, %2$d could not be added.', 'worldgraph' ),
+					'addAllProgress'           =>
+						/* translators: 1: current workflow number, 2: total workflows, 3: workflow label. */
+						__( 'Adding workflow %1$d of %2$d: %3$s', 'worldgraph' ),
+					'addAllFinished'           =>
+						/* translators: 1: workflows added, 2: workflows that could not be added. */
+						__( 'Finished adding workflows: %1$d added, %2$d could not be added.', 'worldgraph' ),
 					'addAllIncomplete'         => __( 'The ready workflows could not all be added.', 'worldgraph' ),
 					'interfaceReady'           => __( 'Workflow setup is ready.', 'worldgraph' ),
 					'networkError'             => __( 'The provider setup request did not return a usable response.', 'worldgraph' ),
@@ -801,7 +834,7 @@ class Connection {
 	/** Enable one provider catalog entry. */
 	public static function ajax_enable_catalog_entry(): void {
 		$connection_id = self::authorize_configurator_request();
-		$entry_id = sanitize_text_field( (string) ( $_POST['entry_id'] ?? '' ) );
+		$entry_id = isset( $_POST['entry_id'] ) ? sanitize_text_field( wp_unslash( $_POST['entry_id'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Missing -- authorize_configurator_request() verifies this request's nonce.
 		if ( '' === $entry_id ) {
 			wp_send_json_error( [ 'message' => __( 'Select a provider workflow first.', 'worldgraph' ) ] );
 		}
@@ -817,7 +850,7 @@ class Connection {
 	/** Disable one provider catalog entry. */
 	public static function ajax_disable_catalog_entry(): void {
 		$connection_id = self::authorize_configurator_request();
-		$entry_id = sanitize_text_field( (string) ( $_POST['entry_id'] ?? '' ) );
+		$entry_id = isset( $_POST['entry_id'] ) ? sanitize_text_field( wp_unslash( $_POST['entry_id'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Missing -- authorize_configurator_request() verifies this request's nonce.
 		if ( '' === $entry_id ) {
 			wp_send_json_error( [ 'message' => __( 'Select a provider workflow first.', 'worldgraph' ) ] );
 		}
@@ -833,7 +866,7 @@ class Connection {
 	/** Materialize one provider catalog entry into a World Graph Studio Template post. */
 	public static function ajax_materialize_catalog_entry(): void {
 		$connection_id = self::authorize_configurator_request();
-		$entry_id = sanitize_text_field( (string) ( $_POST['entry_id'] ?? '' ) );
+		$entry_id = isset( $_POST['entry_id'] ) ? sanitize_text_field( wp_unslash( $_POST['entry_id'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Missing -- authorize_configurator_request() verifies this request's nonce.
 		if ( '' === $entry_id ) {
 			wp_send_json_error( [ 'message' => __( 'Select a provider workflow first.', 'worldgraph' ) ] );
 		}
@@ -849,7 +882,7 @@ class Connection {
 	/** Request provider-side downloads for one catalog entry. */
 	public static function ajax_download_catalog_entry(): void {
 		$connection_id = self::authorize_configurator_request();
-		$entry_id = sanitize_text_field( (string) ( $_POST['entry_id'] ?? '' ) );
+		$entry_id = isset( $_POST['entry_id'] ) ? sanitize_text_field( wp_unslash( $_POST['entry_id'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Missing -- authorize_configurator_request() verifies this request's nonce.
 		if ( '' === $entry_id ) {
 			wp_send_json_error( [ 'message' => __( 'Select a provider workflow first.', 'worldgraph' ) ] );
 		}
@@ -875,7 +908,11 @@ class Connection {
 		}
 
 		return [
-			'message'  => sprintf( __( 'Found %d available provider workflow(s). Readiness is shown below.', 'worldgraph' ), count( (array) ( $result['entries'] ?? [] ) ) ),
+			'message'  => sprintf(
+				/* translators: %d: number of provider workflows found. */
+				__( 'Found %d available provider workflow(s). Readiness is shown below.', 'worldgraph' ),
+				count( (array) ( $result['entries'] ?? [] ) )
+			),
 			'snapshot' => \WorldGraph\Utils\Comfy_Catalog::get( $connection_id ),
 		];
 	}
@@ -894,7 +931,11 @@ class Connection {
 		}
 
 		return [
-			'message'  => sprintf( __( 'Selected provider workflow %s.', 'worldgraph' ), $entry_id ),
+			'message'  => sprintf(
+				/* translators: %s: provider workflow ID. */
+				__( 'Selected provider workflow %s.', 'worldgraph' ),
+				$entry_id
+			),
 			'snapshot' => \WorldGraph\Utils\Comfy_Catalog::get( $connection_id ),
 		];
 	}
@@ -910,7 +951,11 @@ class Connection {
 		\WorldGraph\Utils\Comfy_Catalog::disable( $connection_id, $entry_id );
 
 		return [
-			'message'  => sprintf( __( 'Removed provider workflow %s from this Connection.', 'worldgraph' ), $entry_id ),
+			'message'  => sprintf(
+				/* translators: %s: provider workflow ID. */
+				__( 'Removed provider workflow %s from this Connection.', 'worldgraph' ),
+				$entry_id
+			),
 			'snapshot' => \WorldGraph\Utils\Comfy_Catalog::get( $connection_id ),
 		];
 	}
@@ -938,7 +983,12 @@ class Connection {
 			return $template_id;
 		}
 
-		$message = sprintf( __( 'Added provider workflow %1$s to Studio as Generation Template #%2$d.', 'worldgraph' ), $entry_id, $template_id );
+		$message = sprintf(
+			/* translators: 1: provider workflow ID, 2: Generation Template post ID. */
+			__( 'Added provider workflow %1$s to Studio as Generation Template #%2$d.', 'worldgraph' ),
+			$entry_id,
+			$template_id
+		);
 		\WorldGraph\Utils\Generation_Log::add(
 			'info',
 			'connection_setup',
@@ -973,7 +1023,11 @@ class Connection {
 			$result = is_wp_error( $provider_result )
 				? $provider_result
 				: [
-					'message' => sprintf( __( 'Requested installation of %d provider requirement(s).', 'worldgraph' ), count( (array) ( $provider_result['requested'] ?? [] ) ) ),
+					'message' => sprintf(
+						/* translators: %d: number of provider requirements requested for installation. */
+						__( 'Requested installation of %d provider requirement(s).', 'worldgraph' ),
+						count( (array) ( $provider_result['requested'] ?? [] ) )
+					),
 					'result'  => $provider_result,
 				];
 		}
@@ -1024,7 +1078,11 @@ class Connection {
 			$result = \WorldGraph\Utils\Comfy_Cloud_MCP::download_models( $urls, $connection_id );
 			if ( ! is_wp_error( $result ) ) {
 				return [
-					'message' => sprintf( __( 'Requested %d model download(s).', 'worldgraph' ), count( $urls ) ),
+					'message' => sprintf(
+						/* translators: %d: number of model downloads requested. */
+						__( 'Requested %d model download(s).', 'worldgraph' ),
+						count( $urls )
+					),
 					'result'  => $result,
 				];
 			}
@@ -1099,7 +1157,12 @@ class Connection {
 
 		$snapshot = \WorldGraph\Utils\Comfy_Catalog::get( $connection_id );
 		return [
-			'message'  => sprintf( __( 'Added %1$d ready workflow(s) to Studio; %2$d could not be added.', 'worldgraph' ), count( $prepared ), count( $failed ) ),
+			'message'  => sprintf(
+				/* translators: 1: workflows added to Studio, 2: workflows that could not be added. */
+				__( 'Added %1$d ready workflow(s) to Studio; %2$d could not be added.', 'worldgraph' ),
+				count( $prepared ),
+				count( $failed )
+			),
 			'prepared' => $prepared,
 			'failed'   => $failed,
 			'snapshot' => $snapshot,
@@ -1113,8 +1176,8 @@ class Connection {
 	 */
 	private static function authorize_configurator_request(): int {
 		check_ajax_referer( 'worldgraph_conn_configurator', 'nonce' );
-		$connection_id = absint( $_POST['connection_id'] ?? 0 );
-		if ( ! $connection_id || ! current_user_can( 'edit_post', $connection_id ) ) {
+		$connection_id = isset( $_POST['connection_id'] ) ? absint( wp_unslash( $_POST['connection_id'] ) ) : 0;
+		if ( ! $connection_id || ! current_user_can( 'manage_options' ) || ! current_user_can( 'edit_post', $connection_id ) ) {
 			wp_send_json_error( [ 'message' => __( 'You do not have permission to configure this Connection.', 'worldgraph' ) ], 403 );
 		}
 
@@ -1332,6 +1395,10 @@ class Connection {
 	 * @return int Connection post ID.
 	 */
 	public static function upsert_managed( string $slot, string $title, array $meta ): int {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			return 0;
+		}
+
 		$existing = get_posts( [
 			'post_type'      => self::CPT,
 			'post_status'    => 'any',

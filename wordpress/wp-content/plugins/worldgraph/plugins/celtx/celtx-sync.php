@@ -1,13 +1,13 @@
 <?php
 /**
  * Plugin Name: World Graph Studio - Celtx Connector
- * Plugin URI: https://github.com/videohead/worldgraph
+ * Plugin URI: https://github.com/videohead/storyos
  * Description: Send supported World Graph Studio elements to Celtx and retain their remote element mappings.
  * Version: 1.0.0
  * Author: World Graph Studio Contributors
  * License: GPL v2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
- * Text Domain: worldgraph-celtx
+ * Text Domain: worldgraph
  * Requires Plugins: worldgraph
  * Requires at least: 6.0
  * Requires PHP: 8.1

@@ -415,7 +415,7 @@ class Mapper {
 		if ( ! is_array( $value ) ) {
 			return [];
 		}
-		if ( array_is_list( $value ) ) {
+		if ( self::is_list( $value ) ) {
 			return $value;
 		}
 		$items = [];
@@ -768,6 +768,11 @@ class Mapper {
 		return trim( wp_strip_all_tags( (string) $value ) );
 	}
 
+	/** Whether an array uses zero-based consecutive integer keys. */
+	private static function is_list( array $value ): bool {
+		return $value === array_values( $value );
+	}
+
 	/** Sort associative keys recursively without reordering lists. */
 	private static function sort_recursive( array $value ): array {
 		foreach ( $value as $key => $item ) {
@@ -775,7 +780,7 @@ class Mapper {
 				$value[ $key ] = self::sort_recursive( $item );
 			}
 		}
-		if ( ! array_is_list( $value ) ) {
+		if ( ! self::is_list( $value ) ) {
 			ksort( $value );
 		}
 		return $value;

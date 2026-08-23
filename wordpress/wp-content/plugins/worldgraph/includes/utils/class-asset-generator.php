@@ -1369,7 +1369,14 @@ class Asset_Generator {
 		$size = file_exists( $temporary ) ? filesize( $temporary ) : false;
 		if ( $code < 200 || $code >= 300 ) {
 			wp_delete_file( $temporary );
-			return new WP_Error( 'worldgraph_gen_download_failed', sprintf( __( 'The generation provider returned HTTP %d while downloading completed media.', 'worldgraph' ), $code ) );
+			return new WP_Error(
+				'worldgraph_gen_download_failed',
+				sprintf(
+					/* translators: %d: HTTP response status code. */
+					__( 'The generation provider returned HTTP %d while downloading completed media.', 'worldgraph' ),
+					$code
+				)
+			);
 		}
 		if ( false === $size || $size <= 0 || $size > $maximum_bytes ) {
 			wp_delete_file( $temporary );

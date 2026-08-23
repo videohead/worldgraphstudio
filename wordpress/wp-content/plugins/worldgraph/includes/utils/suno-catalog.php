@@ -56,7 +56,7 @@ class Suno_Catalog {
 	 */
 	public static function provision( int $connection_id ) {
 		$connection = Connection_Repository::get( $connection_id );
-		if ( ! is_array( $connection ) || 'suno' !== ( $connection['provider_type'] ?? '' ) ) {
+		if ( ! is_array( $connection ) || 'suno' !== ( $connection['provider_type'] ?? '' ) || 'publish' !== ( $connection['status_wp'] ?? '' ) || 'disabled' === ( $connection['status'] ?? '' ) ) {
 			return new WP_Error( 'suno_connection_invalid', __( 'Template provisioning requires a Suno Connection.', 'worldgraph' ) );
 		}
 

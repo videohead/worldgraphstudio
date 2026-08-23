@@ -120,7 +120,7 @@ class Analytics_Panel {
 			'orderby'        => 'title',
 			'order'          => 'ASC',
 		] );
-		$selected_project_id = isset( $_GET['project_id'] ) ? absint( $_GET['project_id'] ) : 0;
+		$selected_project_id = isset( $_GET['project_id'] ) ? absint( wp_unslash( $_GET['project_id'] ) ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only project selection.
 		?>
 		<div class="wrap worldgraph-analytics-wrap">
 			<h1>Story Graph Analytics</h1>
@@ -365,7 +365,7 @@ class Analytics_Panel {
 		}
 		$project_id = self::requested_project_id();
 
-		$scene_ids = isset( $_REQUEST['scene_ids'] ) ? array_map( 'absint', explode( ',', $_REQUEST['scene_ids'] ) ) : [];
+		$scene_ids = isset( $_REQUEST['scene_ids'] ) ? array_map( 'absint', explode( ',', sanitize_text_field( wp_unslash( $_REQUEST['scene_ids'] ) ) ) ) : [];
 
 		$graph = \WorldGraph\Utils\fetch_relationship_graph( [
 			'scene_ids'  => $scene_ids,
@@ -406,7 +406,7 @@ class Analytics_Panel {
 	 * @return int Project post ID.
 	 */
 	private static function requested_project_id(): int {
-		$project_id = isset( $_REQUEST['project_id'] ) ? absint( $_REQUEST['project_id'] ) : 0;
+		$project_id = isset( $_REQUEST['project_id'] ) ? absint( wp_unslash( $_REQUEST['project_id'] ) ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Every caller verifies the analytics AJAX nonce first.
 		if ( ! $project_id || 'worldgraph_project' !== get_post_type( $project_id ) ) {
 			wp_send_json_error( [
 				'message' => 'Select a valid World Graph Studio project to analyze.',

@@ -6,6 +6,8 @@
  */
 
 namespace WorldGraph\Utils {
+	defined( 'ABSPATH' ) || exit;
+
 	function get_post_meta( $post_id, $key = '', $single = false ) {
 		$value = $GLOBALS['worldgraph_import_journal_state']['meta'][ (int) $post_id ][ (string) $key ] ?? null;
 		return $single ? ( null === $value ? '' : $value ) : ( null === $value ? [] : [ $value ] );
@@ -60,6 +62,7 @@ namespace WorldGraph\Utils {
 
 	function wp_delete_file( $file ): void {
 		if ( file_exists( $file ) ) {
+			// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- WordPress-free test shim.
 			unlink( $file );
 		}
 	}

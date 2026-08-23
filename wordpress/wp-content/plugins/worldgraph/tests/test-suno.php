@@ -5,6 +5,8 @@
  * @package WorldGraph
  */
 
+defined( 'ABSPATH' ) || exit;
+
 use PHPUnit\Framework\TestCase;
 use WorldGraph\Utils\Connection_Adapters;
 use WorldGraph\Utils\Connection_Repository;
@@ -27,6 +29,7 @@ if ( ! function_exists( 'sanitize_key' ) ) {
 
 if ( ! function_exists( 'sanitize_text_field' ) ) {
 	function sanitize_text_field( $value ): string {
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.strip_tags_strip_tags -- WordPress-free test shim.
 		return trim( strip_tags( (string) $value ) );
 	}
 }
@@ -311,6 +314,7 @@ class Test_Suno extends TestCase {
 	/** Setup sends each service its own endpoint and key, then saves both references. */
 	public function test_setup_keeps_suno_endpoints_and_keys_separate(): void {
 		$source            = (string) file_get_contents( dirname( __DIR__ ) . '/includes/admin/setup-wizard.php' );
+		$script            = (string) file_get_contents( dirname( __DIR__ ) . '/assets/js/setup-wizard.js' );
 		$normalized_source = (string) preg_replace( '/\s+/', ' ', $source );
 
 		$this->assertStringContainsString( "Connection_Adapters::endpoint( 'suno' ), \$api_key", $source );
@@ -319,6 +323,7 @@ class Test_Suno extends TestCase {
 		$this->assertStringContainsString( "'mcp_credential_reference' => ! empty( \$generation_choice['separate_mcp_credential'] ) ? \$generation_mcp_api_key : ''", $normalized_source );
 		$this->assertStringContainsString( 'name="worldgraph_gen_credential_reference"', $source );
 		$this->assertStringContainsString( 'name="worldgraph_gen_mcp_credential_reference"', $source );
-		$this->assertStringContainsString( 'mcp_api_key: document.getElementById(\'worldgraph_gen_mcp_credential_reference\').value', $source );
+		$this->assertStringContainsString( "'worldgraph_gen_mcp_credential_reference'", $script );
+		$this->assertStringContainsString( 'mcp_api_key: generationMcpApiKeyInput.value', $script );
 	}
 }

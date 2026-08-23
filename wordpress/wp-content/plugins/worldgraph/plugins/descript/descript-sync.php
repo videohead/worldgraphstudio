@@ -1,13 +1,13 @@
 <?php
 /**
  * Plugin Name: World Graph Studio - Descript Sync
- * Plugin URI: https://github.com/videohead/worldgraph
+ * Plugin URI: https://github.com/videohead/storyos
  * Description: Import Descript project transcripts into the Story Graph and export bound Project media into new Descript projects.
  * Version: 1.0.0
  * Author: World Graph Studio Contributors
  * License: GPL v2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
- * Text Domain: worldgraph-descript
+ * Text Domain: worldgraph
  * Requires Plugins: worldgraph
  * Requires at least: 6.0
  * Requires PHP: 8.1

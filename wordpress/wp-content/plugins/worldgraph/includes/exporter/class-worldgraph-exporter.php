@@ -553,7 +553,7 @@ class WorldGraph_Exporter {
 		}
 
 		$value = (string) $value;
-		$value = strip_tags( $value );
+		$value = wp_strip_all_tags( $value );
 		$value = html_entity_decode( $value, ENT_QUOTES, 'UTF-8' );
 		$value = preg_replace( '/\s+/', ' ', $value );
 		$value = trim( $value );

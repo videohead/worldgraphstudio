@@ -5,6 +5,8 @@
  * @package WorldGraph
  */
 
+defined( 'ABSPATH' ) || exit;
+
 use PHPUnit\Framework\TestCase;
 use WorldGraph\REST\Generation_Authorization;
 use WorldGraph\REST\Generation_Controller;

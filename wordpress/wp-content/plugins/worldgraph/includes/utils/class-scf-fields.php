@@ -695,7 +695,11 @@ final class SCF_Fields {
 				) ) {
 					return new \WP_Error(
 						'worldgraph_scf_canonical_key_collision',
-						sprintf( __( 'Database field key "%s" is already used by an incompatible field.', 'worldgraph' ), $key )
+						sprintf(
+							/* translators: %s: stable SCF field key. */
+							__( 'Database field key "%s" is already used by an incompatible field.', 'worldgraph' ),
+							$key
+						)
 					);
 				}
 
@@ -710,7 +714,14 @@ final class SCF_Fields {
 
 			$name = (string) ( $field['name'] ?? '' );
 			if ( '' === $name || isset( $seen_names[ $name ] ) ) {
-				return new \WP_Error( 'worldgraph_scf_duplicate_field_name', sprintf( __( 'SCF sibling field name "%s" is empty or duplicated.', 'worldgraph' ), $name ) );
+				return new \WP_Error(
+					'worldgraph_scf_duplicate_field_name',
+					sprintf(
+						/* translators: %s: SCF field name. */
+						__( 'SCF sibling field name "%s" is empty or duplicated.', 'worldgraph' ),
+						$name
+					)
+				);
 			}
 			$seen_names[ $name ] = true;
 			$merged[]            = $field;
@@ -725,7 +736,14 @@ final class SCF_Fields {
 			$field = self::clean_database_field( $archive_field );
 			$name  = (string) ( $field['name'] ?? '' );
 			if ( '' === $key || '' === $name || isset( $seen_names[ $name ] ) ) {
-				return new \WP_Error( 'worldgraph_scf_archive_field_collision', sprintf( __( 'Archived SCF field "%s" conflicts with a database-managed field.', 'worldgraph' ), $name ) );
+				return new \WP_Error(
+					'worldgraph_scf_archive_field_collision',
+					sprintf(
+						/* translators: %s: archived SCF field name. */
+						__( 'Archived SCF field "%s" conflicts with a database-managed field.', 'worldgraph' ),
+						$name
+					)
+				);
 			}
 			$seen_names[ $name ] = true;
 			$seen_keys[ $key ]   = true;
@@ -1186,7 +1204,7 @@ final class SCF_Fields {
 
 	/** Detect SCF's direct group API, which otherwise deletes children before the protected group. */
 	private static function is_canonical_group_delete_context(): bool {
-		foreach ( debug_backtrace( DEBUG_BACKTRACE_IGNORE_ARGS, 12 ) as $frame ) { // phpcs:ignore PHPCompatibility.FunctionUse.ArgumentFunctionsReportCurrentValue -- bounded diagnostic stack.
+		foreach ( debug_backtrace( DEBUG_BACKTRACE_IGNORE_ARGS, 12 ) as $frame ) { // phpcs:ignore PHPCompatibility.FunctionUse.ArgumentFunctionsReportCurrentValue,WordPress.PHP.DevelopmentFunctions.error_log_debug_backtrace -- bounded stack is required to identify SCF's destructive call path.
 			if (
 				'ACF_Field_Group' === (string) ( $frame['class'] ?? '' )
 				&& in_array( (string) ( $frame['function'] ?? '' ), [ 'delete_post', 'trash_post' ], true )
@@ -1232,7 +1250,7 @@ final class SCF_Fields {
 		}
 
 		$remaining = [];
-		$ids       = array_map( 'absint', explode( '|', (string) $_POST['_acf_delete_fields'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Missing,WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- integer-normalized below.
+		$ids       = array_map( 'absint', explode( '|', (string) wp_unslash( $_POST['_acf_delete_fields'] ) ) ); // phpcs:ignore WordPress.Security.NonceVerification.Missing,WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- integer-normalized below.
 		foreach ( $ids as $field_id ) {
 			$field_post = get_post( $field_id );
 			if ( ! $field_post || 'acf-field' !== $field_post->post_type ) {
@@ -1487,7 +1505,11 @@ final class SCF_Fields {
 
 		return new \WP_Error(
 			'worldgraph_scf_unsupported_nested_field',
-			sprintf( __( 'Nested database fields under SCF type "%s" cannot be archived safely.', 'worldgraph' ), $type )
+			sprintf(
+				/* translators: %s: SCF field type. */
+				__( 'Nested database fields under SCF type "%s" cannot be archived safely.', 'worldgraph' ),
+				$type
+			)
 		);
 	}
 
@@ -2384,7 +2406,7 @@ final class SCF_Fields {
 		$cpts         = array_keys( worldgraph_get_all_cpts() );
 		$placeholders = implode( ', ', array_fill( 0, count( $cpts ), '%s' ) );
 		$query_args   = array_merge( [ $last_id ], $cpts, [ self::VALUE_MIGRATION_BATCH_SIZE ] );
-		$sql          = $wpdb->prepare( // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- placeholders are generated from the canonical CPT count.
+		$sql          = $wpdb->prepare( // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- placeholders are generated from the canonical CPT count and match the flattened argument array.
 			"SELECT ID, post_type FROM {$wpdb->posts} WHERE ID > %d AND post_type IN ({$placeholders}) ORDER BY ID ASC LIMIT %d",
 			$query_args
 		);
@@ -2453,13 +2475,27 @@ final class SCF_Fields {
 		foreach ( worldgraph_get_field_defaults( $cpt ) as $field_name => $config ) {
 			$field = self::get_field_object( $cpt, $field_name );
 			if ( ! $field ) {
-				return new \WP_Error( 'worldgraph_scf_canonical_field_missing', sprintf( __( 'Canonical SCF field %s is unavailable.', 'worldgraph' ), $field_name ) );
+				return new \WP_Error(
+					'worldgraph_scf_canonical_field_missing',
+					sprintf(
+						/* translators: %s: canonical SCF field name. */
+						__( 'Canonical SCF field %s is unavailable.', 'worldgraph' ),
+						$field_name
+					)
+				);
 			}
 
 			if ( metadata_exists( 'post', $post_id, $field_name ) ) {
 				update_post_meta( $post_id, '_' . $field_name, (string) $field['key'] );
 				if ( (string) get_post_meta( $post_id, '_' . $field_name, true ) !== (string) $field['key'] ) {
-					return new \WP_Error( 'worldgraph_scf_reference_migration_failed', sprintf( __( 'Could not backfill the SCF reference for %s.', 'worldgraph' ), $field_name ) );
+					return new \WP_Error(
+						'worldgraph_scf_reference_migration_failed',
+						sprintf(
+							/* translators: %s: SCF field name. */
+							__( 'Could not backfill the SCF reference for %s.', 'worldgraph' ),
+							$field_name
+						)
+					);
 				}
 			}
 
@@ -2475,7 +2511,14 @@ final class SCF_Fields {
 			if ( $normalized !== $raw_date ) {
 				worldgraph_update_field_value( $post_id, $field_name, $normalized );
 				if ( (string) get_post_meta( $post_id, $field_name, true ) !== $normalized ) {
-					return new \WP_Error( 'worldgraph_scf_date_migration_failed', sprintf( __( 'Could not normalize the SCF date field %s.', 'worldgraph' ), $field_name ) );
+					return new \WP_Error(
+						'worldgraph_scf_date_migration_failed',
+						sprintf(
+							/* translators: %s: SCF date field name. */
+							__( 'Could not normalize the SCF date field %s.', 'worldgraph' ),
+							$field_name
+						)
+					);
 				}
 			}
 		}
@@ -2521,22 +2564,52 @@ final class SCF_Fields {
 		$rows = [];
 		foreach ( $raw as $index => $row ) {
 			if ( ! is_array( $row ) ) {
-				return new \WP_Error( 'worldgraph_scf_malformed_dialogue', sprintf( __( 'Dialogue row %d is malformed.', 'worldgraph' ), (int) $index + 1 ) );
+				return new \WP_Error(
+					'worldgraph_scf_malformed_dialogue',
+					sprintf(
+						/* translators: %d: one-based dialogue row number. */
+						__( 'Dialogue row %d is malformed.', 'worldgraph' ),
+						(int) $index + 1
+					)
+				);
 			}
 
 			$known_properties = [ 'speaker', 'line', 'description', 'sequence' ];
 			$unknown          = array_diff( array_map( 'strval', array_keys( $row ) ), $known_properties );
 			if ( ! empty( $unknown ) ) {
-				return new \WP_Error( 'worldgraph_scf_unknown_dialogue_property', sprintf( __( 'Dialogue row %1$d contains unsupported data (%2$s).', 'worldgraph' ), (int) $index + 1, implode( ', ', $unknown ) ) );
+				return new \WP_Error(
+					'worldgraph_scf_unknown_dialogue_property',
+					sprintf(
+						/* translators: 1: one-based dialogue row number, 2: comma-separated unsupported field names. */
+						__( 'Dialogue row %1$d contains unsupported data (%2$s).', 'worldgraph' ),
+						(int) $index + 1,
+						implode( ', ', $unknown )
+					)
+				);
 			}
 
 			foreach ( $known_properties as $property ) {
 				if ( isset( $row[ $property ] ) && ! is_scalar( $row[ $property ] ) ) {
-					return new \WP_Error( 'worldgraph_scf_malformed_dialogue_value', sprintf( __( 'Dialogue row %1$d has an invalid %2$s value.', 'worldgraph' ), (int) $index + 1, $property ) );
+					return new \WP_Error(
+						'worldgraph_scf_malformed_dialogue_value',
+						sprintf(
+							/* translators: 1: one-based dialogue row number, 2: dialogue field name. */
+							__( 'Dialogue row %1$d has an invalid %2$s value.', 'worldgraph' ),
+							(int) $index + 1,
+							$property
+						)
+					);
 				}
 			}
 			if ( isset( $row['sequence'] ) && '' !== (string) $row['sequence'] && ! is_numeric( $row['sequence'] ) ) {
-				return new \WP_Error( 'worldgraph_scf_malformed_dialogue_sequence', sprintf( __( 'Dialogue row %d has a nonnumeric sequence.', 'worldgraph' ), (int) $index + 1 ) );
+				return new \WP_Error(
+					'worldgraph_scf_malformed_dialogue_sequence',
+					sprintf(
+						/* translators: %d: one-based dialogue row number. */
+						__( 'Dialogue row %d has a nonnumeric sequence.', 'worldgraph' ),
+						(int) $index + 1
+					)
+				);
 			}
 
 			$rows[] = [
@@ -2563,7 +2636,15 @@ final class SCF_Fields {
 		foreach ( $rows as $index => $row ) {
 			foreach ( $row as $name => $expected ) {
 				if ( (string) get_post_meta( $scene_id, 'dialogue_' . $index . '_' . $name, true ) !== (string) $expected ) {
-					return new \WP_Error( 'worldgraph_scf_dialogue_verification_failed', sprintf( __( 'SCF dialogue row %1$d did not preserve %2$s.', 'worldgraph' ), $index + 1, $name ) );
+					return new \WP_Error(
+						'worldgraph_scf_dialogue_verification_failed',
+						sprintf(
+							/* translators: 1: one-based dialogue row number, 2: dialogue field name. */
+							__( 'SCF dialogue row %1$d did not preserve %2$s.', 'worldgraph' ),
+							$index + 1,
+							$name
+						)
+					);
 				}
 			}
 		}
@@ -2656,7 +2737,11 @@ final class SCF_Fields {
 			'worldgraph_scf_retry_migration'
 		);
 		echo '<div class="notice notice-error"><p>'
-			. esc_html( sprintf( __( 'World Graph Studio preserved %d legacy SCF value(s) that require review.', 'worldgraph' ), count( $state['failures'] ) ) )
+			. esc_html( sprintf(
+				/* translators: %d: number of legacy SCF values requiring review. */
+				__( 'World Graph Studio preserved %d legacy SCF value(s) that require review.', 'worldgraph' ),
+				count( $state['failures'] )
+			) )
 			. ' <a href="' . esc_url( $retry_url ) . '">' . esc_html__( 'Retry migration', 'worldgraph' ) . '</a>'
 			. '</p></div>';
 	}

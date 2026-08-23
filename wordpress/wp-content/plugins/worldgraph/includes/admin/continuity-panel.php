@@ -109,7 +109,7 @@ class Continuity_Panel {
 		$summary    = self::compute_summary( $issues );
 
 		// Filter by severity if requested.
-		$filter = isset( $_GET['filter'] ) ? sanitize_text_field( $_GET['filter'] ) : 'all';
+		$filter = isset( $_GET['filter'] ) ? sanitize_key( wp_unslash( $_GET['filter'] ) ) : 'all';
 		if ( in_array( $filter, [ 'error', 'warning', 'info' ], true ) ) {
 			$filtered_issues = \WorldGraph\Utils\filter_issues_by_severity( $issues, $filter );
 		} else {

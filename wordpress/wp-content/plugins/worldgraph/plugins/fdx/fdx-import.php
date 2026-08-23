@@ -1,13 +1,13 @@
 <?php
 /**
  * Plugin Name: World Graph Studio - Final Draft FDX Import
- * Plugin URI: https://github.com/videohead/worldgraph
+ * Plugin URI: https://github.com/videohead/storyos
  * Description: Import Final Draft FDX screenplay files into the World Graph Studio Story Graph.
  * Version: 1.0.0
  * Author: World Graph Studio Contributors
  * License: GPL v2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
- * Text Domain: worldgraph-fdx
+ * Text Domain: worldgraph
  * Requires Plugins: worldgraph
  * Requires at least: 6.0
  * Requires PHP: 8.1
@@ -59,7 +59,7 @@ function add_admin_page(): void {
  * @param string $hook_suffix Current admin page hook.
  */
 function enqueue_assets( string $hook_suffix ): void {
-	if ( ! isset( $_GET['page'] ) || 'worldgraph-fdx' !== sanitize_key( wp_unslash( $_GET['page'] ) ) ) {
+	if ( ! isset( $_GET['page'] ) || 'worldgraph-fdx' !== sanitize_key( wp_unslash( $_GET['page'] ) ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin page routing.
 		return;
 	}
 
@@ -81,7 +81,7 @@ function handle_import(): void {
 	}
 
 	check_admin_referer( 'worldgraph_fdx_import' );
-	$json      = isset( $_POST['worldgraph_fdx_json'] ) ? wp_unslash( $_POST['worldgraph_fdx_json'] ) : '';
+	$json      = isset( $_POST['worldgraph_fdx_json'] ) ? wp_unslash( $_POST['worldgraph_fdx_json'] ) : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- JSON must remain intact and is schema-validated by the importer.
 	$overwrite = ! empty( $_POST['worldgraph_fdx_overwrite'] );
 
 	if ( '' === trim( (string) $json ) ) {
@@ -119,40 +119,40 @@ function render_admin_page(): void {
 	}
 
 	$report   = get_transient( 'worldgraph_fdx_import_report' );
-	$error    = isset( $_GET['error'] ) ? sanitize_text_field( wp_unslash( $_GET['error'] ) ) : '';
-	$imported = isset( $_GET['imported'] ) && '1' === $_GET['imported'];
+	$error    = isset( $_GET['error'] ) ? sanitize_text_field( wp_unslash( $_GET['error'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only redirect notice.
+	$imported = isset( $_GET['imported'] ) && '1' === sanitize_text_field( wp_unslash( $_GET['imported'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only redirect notice.
 	delete_transient( 'worldgraph_fdx_import_report' );
 	?>
 	<div class="wrap worldgraph-fdx-wrap">
-		<h1><?php esc_html_e( 'Import Final Draft FDX', 'worldgraph-fdx' ); ?></h1>
+		<h1><?php esc_html_e( 'Import Final Draft FDX', 'worldgraph' ); ?></h1>
 		<?php if ( $error ) : ?>
-			<div class="notice notice-error is-dismissible"><p><strong><?php esc_html_e( 'Import failed:', 'worldgraph-fdx' ); ?></strong> <?php echo esc_html( $error ); ?></p></div>
+			<div class="notice notice-error is-dismissible"><p><strong><?php esc_html_e( 'Import failed:', 'worldgraph' ); ?></strong> <?php echo esc_html( $error ); ?></p></div>
 		<?php endif; ?>
 		<?php if ( $imported && is_array( $report ) ) : ?>
-			<div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Final Draft import completed.', 'worldgraph-fdx' ); ?></p></div>
+			<div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Final Draft import completed.', 'worldgraph' ); ?></p></div>
 			<?php render_report( $report ); ?>
 		<?php endif; ?>
 
-		<p class="description"><?php esc_html_e( 'Upload an .fdx screenplay. Scene headings become scenes and locations; action becomes scene summaries; character, dialogue, and parenthetical paragraphs become structured scene dialogue.', 'worldgraph-fdx' ); ?></p>
+		<p class="description"><?php esc_html_e( 'Upload an .fdx screenplay. Scene headings become scenes and locations; action becomes scene summaries; character, dialogue, and parenthetical paragraphs become structured scene dialogue.', 'worldgraph' ); ?></p>
 		<form method="post" id="worldgraph-fdx-import-form" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
 			<input type="hidden" name="action" value="worldgraph_import_fdx" />
 			<?php wp_nonce_field( 'worldgraph_fdx_import' ); ?>
 			<input type="hidden" name="worldgraph_fdx_json" id="worldgraph_fdx_json" value="" />
 			<table class="form-table">
 				<tr>
-					<th scope="row"><label for="worldgraph_fdx_file"><?php esc_html_e( 'Final Draft file', 'worldgraph-fdx' ); ?></label></th>
+					<th scope="row"><label for="worldgraph_fdx_file"><?php esc_html_e( 'Final Draft file', 'worldgraph' ); ?></label></th>
 					<td>
 						<input type="file" id="worldgraph_fdx_file" accept=".fdx,application/xml,text/xml" />
-						<p class="description"><?php esc_html_e( 'The file is parsed locally in your browser. Only the generated World Graph JSON is submitted to WordPress.', 'worldgraph-fdx' ); ?></p>
+						<p class="description"><?php esc_html_e( 'The file is parsed locally in your browser. Only the generated World Graph JSON is submitted to WordPress.', 'worldgraph' ); ?></p>
 					</td>
 				</tr>
 				<tr>
-					<th scope="row"><?php esc_html_e( 'Options', 'worldgraph-fdx' ); ?></th>
-					<td><label><input type="checkbox" name="worldgraph_fdx_overwrite" value="1" /> <?php esc_html_e( 'Overwrite existing entities with the same generated external ID', 'worldgraph-fdx' ); ?></label></td>
+					<th scope="row"><?php esc_html_e( 'Options', 'worldgraph' ); ?></th>
+					<td><label><input type="checkbox" name="worldgraph_fdx_overwrite" value="1" /> <?php esc_html_e( 'Overwrite existing entities with the same generated external ID', 'worldgraph' ); ?></label></td>
 				</tr>
 			</table>
 			<p id="worldgraph-fdx-status" class="description" role="status"></p>
-			<?php submit_button( __( 'Import FDX screenplay', 'worldgraph-fdx' ) ); ?>
+			<?php submit_button( __( 'Import FDX screenplay', 'worldgraph' ) ); ?>
 		</form>
 	</div>
 	<?php
@@ -169,7 +169,7 @@ function render_report( array $report ): void {
 		return;
 	}
 	?>
-	<h2><?php esc_html_e( 'Import Report', 'worldgraph-fdx' ); ?></h2>
+	<h2><?php esc_html_e( 'Import Report', 'worldgraph' ); ?></h2>
 	<table class="widefat striped" style="max-width:600px"><tbody>
 	<?php foreach ( $totals as $cpt => $count ) : ?>
 		<tr><td><?php echo esc_html( $cpt ); ?></td><td><?php echo esc_html( (string) $count ); ?></td></tr>

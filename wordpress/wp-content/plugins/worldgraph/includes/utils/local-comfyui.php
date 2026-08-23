@@ -513,7 +513,14 @@ class Local_ComfyUI {
 			] );
 			if ( is_wp_error( $download ) || wp_remote_retrieve_response_code( $download ) < 200 || wp_remote_retrieve_response_code( $download ) >= 300 ) {
 				wp_delete_file( $path );
-				return new WP_Error( 'local_comfyui_input_download_failed', sprintf( __( 'Unable to download the generation input %s.', 'worldgraph' ), $reference ) );
+				return new WP_Error(
+					'local_comfyui_input_download_failed',
+					sprintf(
+						/* translators: %s: validated HTTPS URL of a generation input. */
+						__( 'Unable to download the generation input %s.', 'worldgraph' ),
+						$reference
+					)
+				);
 			}
 		} else {
 			return new WP_Error( 'local_comfyui_input_invalid', __( 'A generation input must be a WordPress attachment ID or a validated HTTPS URL.', 'worldgraph' ) );
@@ -637,11 +644,26 @@ class Local_ComfyUI {
 	private static function decode_response( $response, string $action, int $connection_id = 0 ) {
 		if ( is_wp_error( $response ) ) {
 			Generation_Log::add( 'error', 'local_comfyui', sprintf( 'Unreachable while trying to %s: %s', $action, $response->get_error_message() ), [], '', $connection_id );
-			return new WP_Error( 'local_comfyui_unreachable', sprintf( __( 'Unable to %s through local ComfyUI: %s', 'worldgraph' ), $action, $response->get_error_message() ) );
+			return new WP_Error(
+				'local_comfyui_unreachable',
+				sprintf(
+					/* translators: 1: attempted ComfyUI action, 2: connection error message. */
+					__( 'Unable to %1$s through local ComfyUI: %2$s', 'worldgraph' ),
+					$action,
+					$response->get_error_message()
+				)
+			);
 		}
 		if ( wp_remote_retrieve_response_code( $response ) < 200 || wp_remote_retrieve_response_code( $response ) >= 300 ) {
 			Generation_Log::add( 'error', 'local_comfyui', sprintf( 'HTTP %d while trying to %s.', wp_remote_retrieve_response_code( $response ), $action ), [ 'body' => wp_remote_retrieve_body( $response ) ], '', $connection_id );
-			return new WP_Error( 'local_comfyui_request_failed', sprintf( __( 'Local ComfyUI could not %s.', 'worldgraph' ), $action ) );
+			return new WP_Error(
+				'local_comfyui_request_failed',
+				sprintf(
+					/* translators: %s: attempted ComfyUI action. */
+					__( 'Local ComfyUI could not %s.', 'worldgraph' ),
+					$action
+				)
+			);
 		}
 
 		$result = json_decode( wp_remote_retrieve_body( $response ), true );

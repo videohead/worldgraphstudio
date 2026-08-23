@@ -62,7 +62,7 @@ class AI_Editor_REST {
 		register_rest_route( 'worldgraph/v1', '/ai/analyze', [
 			'methods'             => 'POST',
 			'callback'            => [ $this, 'analyze' ],
-			'permission_callback' => [ $this, 'check_permission' ],
+			'permission_callback' => [ $this, 'check_optional_edit_post_permission' ],
 			'args'                => [
 				'prompt'    => [
 					'required' => true,
@@ -78,7 +78,7 @@ class AI_Editor_REST {
 		register_rest_route( 'worldgraph/v1', '/ai/generate', [
 			'methods'             => 'POST',
 			'callback'            => [ $this, 'generate' ],
-			'permission_callback' => [ $this, 'check_permission' ],
+			'permission_callback' => [ $this, 'check_optional_edit_post_permission' ],
 			'args'                => [
 				'prompt'    => [
 					'required' => true,
@@ -98,7 +98,7 @@ class AI_Editor_REST {
 		register_rest_route( 'worldgraph/v1', '/ai/continuity', [
 			'methods'             => 'POST',
 			'callback'            => [ $this, 'continuity_check' ],
-			'permission_callback' => [ $this, 'check_permission' ],
+			'permission_callback' => [ $this, 'check_edit_post_permission' ],
 			'args'                => [
 				'post_id' => [
 					'required' => true,
@@ -110,10 +110,10 @@ class AI_Editor_REST {
 		register_rest_route( 'worldgraph/v1', '/ai/context', [
 			'methods'             => 'GET',
 			'callback'            => [ $this, 'get_context' ],
-			'permission_callback' => [ $this, 'check_permission' ],
+			'permission_callback' => [ $this, 'check_read_post_permission' ],
 			'args'                => [
 				'post_id' => [
-					'required' => false,
+					'required' => true,
 					'type'     => 'integer',
 				],
 			],
@@ -320,8 +320,12 @@ class AI_Editor_REST {
 	 */
 	public function analyze( \WP_REST_Request $request ): \WP_REST_Response {
 		// Sanitize input parameters.
-		$prompt  = sanitize_text_field( $request->get_param( 'prompt' ) );
-		$post_id = absint( $request->get_param( 'post_id' ) );
+		$prompt        = sanitize_text_field( $request->get_param( 'prompt' ) );
+		$post_id       = absint( $request->get_param( 'post_id' ) );
+		$authorization = $this->check_optional_edit_post_permission( $request );
+		if ( true !== $authorization ) {
+			return $this->authorization_error_response( $authorization );
+		}
 
 		// Validate prompt length to prevent abuse.
 		if ( empty( $prompt ) || strlen( $prompt ) > 10000 ) {
@@ -360,9 +364,13 @@ class AI_Editor_REST {
 	 */
 	public function generate( \WP_REST_Request $request ): \WP_REST_Response {
 		// Sanitize input parameters.
-		$prompt  = sanitize_text_field( $request->get_param( 'prompt' ) );
-		$post_id = absint( $request->get_param( 'post_id' ) );
-		$agent   = sanitize_text_field( $request->get_param( 'agent' ) );
+		$prompt        = sanitize_text_field( $request->get_param( 'prompt' ) );
+		$post_id       = absint( $request->get_param( 'post_id' ) );
+		$agent         = sanitize_text_field( $request->get_param( 'agent' ) );
+		$authorization = $this->check_optional_edit_post_permission( $request );
+		if ( true !== $authorization ) {
+			return $this->authorization_error_response( $authorization );
+		}
 
 		// Validate prompt length.
 		if ( empty( $prompt ) || strlen( $prompt ) > 10000 ) {
@@ -401,13 +409,10 @@ class AI_Editor_REST {
 	 */
 	public function continuity_check( \WP_REST_Request $request ): \WP_REST_Response {
 		// Sanitize input.
-		$post_id = absint( $request->get_param( 'post_id' ) );
-
-		if ( ! $post_id || ! get_post( $post_id ) ) {
-			return new \WP_REST_Response( [
-				'success' => false,
-				'error'   => 'Invalid post ID.',
-			], 400 );
+		$post_id       = absint( $request->get_param( 'post_id' ) );
+		$authorization = $this->check_edit_post_permission( $request );
+		if ( true !== $authorization ) {
+			return $this->authorization_error_response( $authorization );
 		}
 
 		$context_builder = new AI_Context_Builder();
@@ -443,13 +448,10 @@ class AI_Editor_REST {
 	 */
 	public function get_context( \WP_REST_Request $request ): \WP_REST_Response {
 		// Sanitize input.
-		$post_id = absint( $request->get_param( 'post_id' ) );
-
-		if ( ! $post_id || ! get_post( $post_id ) ) {
-			return new \WP_REST_Response( [
-				'success' => false,
-				'error'   => 'Invalid post ID.',
-			], 400 );
+		$post_id       = absint( $request->get_param( 'post_id' ) );
+		$authorization = $this->check_read_post_permission( $request );
+		if ( true !== $authorization ) {
+			return $this->authorization_error_response( $authorization );
 		}
 
 		$context_builder = new AI_Context_Builder();
@@ -531,6 +533,122 @@ class AI_Editor_REST {
 				'rate_limiting' => true,
 			],
 		], 200 );
+	}
+
+	/**
+	 * Check permission for AI endpoints with an optional editable post context.
+	 *
+	 * @param \WP_REST_Request $request REST request.
+	 * @return bool|\WP_Error True when authorized, otherwise false or an error.
+	 */
+	public function check_optional_edit_post_permission( \WP_REST_Request $request ) {
+		return $this->check_post_permission( $request, 'edit_post', false );
+	}
+
+	/**
+	 * Check permission for AI endpoints that require an editable post context.
+	 *
+	 * @param \WP_REST_Request $request REST request.
+	 * @return bool|\WP_Error True when authorized, otherwise false or an error.
+	 */
+	public function check_edit_post_permission( \WP_REST_Request $request ) {
+		return $this->check_post_permission( $request, 'edit_post', true );
+	}
+
+	/**
+	 * Check permission for AI endpoints that return a readable post context.
+	 *
+	 * @param \WP_REST_Request $request REST request.
+	 * @return bool|\WP_Error True when authorized, otherwise false or an error.
+	 */
+	public function check_read_post_permission( \WP_REST_Request $request ) {
+		return $this->check_post_permission( $request, 'read_post', true );
+	}
+
+	/**
+	 * Authorize access to a post supplied as AI context.
+	 *
+	 * @param \WP_REST_Request $request    REST request.
+	 * @param string           $capability Object-level post capability.
+	 * @param bool             $required   Whether the request must include a post ID.
+	 * @return bool|\WP_Error True when authorized, otherwise false or an error.
+	 */
+	private function check_post_permission( \WP_REST_Request $request, string $capability, bool $required ) {
+		if ( ! $this->check_permission() ) {
+			return false;
+		}
+
+		$raw_post_id = $request->get_param( 'post_id' );
+		if ( null === $raw_post_id || '' === $raw_post_id ) {
+			if ( ! $required ) {
+				return true;
+			}
+
+			return new \WP_Error(
+				'worldgraph_ai_post_invalid',
+				__( 'A valid post ID is required.', 'worldgraph' ),
+				[ 'status' => 400 ]
+			);
+		}
+
+		$post_id = filter_var(
+			$raw_post_id,
+			FILTER_VALIDATE_INT,
+			[ 'options' => [ 'min_range' => 1 ] ]
+		);
+		if ( false === $post_id ) {
+			return new \WP_Error(
+				'worldgraph_ai_post_invalid',
+				__( 'A valid post ID is required.', 'worldgraph' ),
+				[ 'status' => 400 ]
+			);
+		}
+
+		$post = get_post( $post_id );
+		if ( ! $post instanceof \WP_Post ) {
+			return new \WP_Error(
+				'worldgraph_ai_post_invalid',
+				__( 'The requested post does not exist.', 'worldgraph' ),
+				[ 'status' => 400 ]
+			);
+		}
+
+		if ( ! current_user_can( $capability, $post_id ) ) {
+			return new \WP_Error(
+				'worldgraph_ai_post_forbidden',
+				__( 'You are not allowed to use this post as AI context.', 'worldgraph' ),
+				[ 'status' => 403 ]
+			);
+		}
+
+		return true;
+	}
+
+	/**
+	 * Convert an authorization failure into the endpoint response shape.
+	 *
+	 * REST dispatch normally returns permission errors before invoking a handler.
+	 * This keeps the same checks effective when handlers are called directly.
+	 *
+	 * @param bool|\WP_Error $authorization Authorization result.
+	 * @return \WP_REST_Response REST response.
+	 */
+	private function authorization_error_response( $authorization ): \WP_REST_Response {
+		$status  = 403;
+		$message = __( 'You are not allowed to use this AI endpoint.', 'worldgraph' );
+
+		if ( is_wp_error( $authorization ) ) {
+			$message = $authorization->get_error_message();
+			$data    = $authorization->get_error_data();
+			if ( is_array( $data ) && isset( $data['status'] ) ) {
+				$status = absint( $data['status'] );
+			}
+		}
+
+		return new \WP_REST_Response( [
+			'success' => false,
+			'error'   => $message,
+		], $status );
 	}
 
 	/**

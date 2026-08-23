@@ -74,11 +74,12 @@ class Import {
 		}
 		check_admin_referer( 'worldgraph_import' );
 
-		$json = '';
-		if ( ! empty( $_FILES['worldgraph_json_file']['tmp_name'] ) && is_uploaded_file( $_FILES['worldgraph_json_file']['tmp_name'] ) ) {
-			$json = file_get_contents( $_FILES['worldgraph_json_file']['tmp_name'] );
+		$json     = '';
+		$tmp_name = isset( $_FILES['worldgraph_json_file']['tmp_name'] ) ? sanitize_text_field( wp_unslash( $_FILES['worldgraph_json_file']['tmp_name'] ) ) : '';
+		if ( '' !== $tmp_name && is_uploaded_file( $tmp_name ) ) {
+			$json = file_get_contents( $tmp_name );
 		} elseif ( isset( $_POST['worldgraph_json'] ) ) {
-			$json = wp_unslash( $_POST['worldgraph_json'] );
+			$json = wp_unslash( $_POST['worldgraph_json'] ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- JSON must remain intact and is schema-validated by the importer.
 		}
 
 		$overwrite = ! empty( $_POST['worldgraph_overwrite'] );
@@ -110,8 +111,8 @@ class Import {
 		$report = get_transient( 'worldgraph_import_report' );
 		delete_transient( 'worldgraph_import_report' );
 
-		$error = isset( $_GET['error'] ) ? sanitize_text_field( wp_unslash( $_GET['error'] ) ) : '';
-		$imported = isset( $_GET['imported'] ) ? '1' === $_GET['imported'] : false;
+		$error = isset( $_GET['error'] ) ? sanitize_text_field( wp_unslash( $_GET['error'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only redirect notice.
+		$imported = isset( $_GET['imported'] ) ? '1' === sanitize_text_field( wp_unslash( $_GET['imported'] ) ) : false; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only redirect notice.
 		?>
 		<div class="wrap worldgraph-import-wrap">
 			<h1><?php esc_html_e( 'Import World Graph Studio JSON', 'worldgraph' ); ?></h1>

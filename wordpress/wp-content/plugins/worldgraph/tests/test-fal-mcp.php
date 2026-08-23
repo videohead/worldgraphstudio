@@ -5,6 +5,8 @@
  * @package WorldGraph
  */
 
+defined( 'ABSPATH' ) || exit;
+
 use PHPUnit\Framework\TestCase;
 use WorldGraph\Utils\Fal_MCP;
 use WorldGraph\Utils\Fal_Catalog;

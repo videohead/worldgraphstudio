@@ -6,7 +6,7 @@
  * Version: 1.0.0
  * Author: World Graph Studio Contributors
  * License: GPL v2 or later
- * Text Domain: worldgraph-videodraft
+ * Text Domain: worldgraph
  * Requires Plugins: worldgraph
  * Requires at least: 6.0
  * Requires PHP: 8.1

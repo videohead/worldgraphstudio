@@ -6,6 +6,8 @@
  */
 
 namespace WorldGraph\Utils {
+	defined( 'ABSPATH' ) || exit;
+
 	if ( ! function_exists( __NAMESPACE__ . '\\get_posts' ) ) {
 		/** Lightweight post query used by incoming relationship traversal. */
 		function get_posts( array $args = [] ): array {
@@ -37,8 +39,10 @@ namespace {
 use PHPUnit\Framework\TestCase;
 use WorldGraph\REST\Base_Controller;
 use WorldGraph\REST\Characters_Controller;
+use WorldGraph\REST\Editorial_Controller;
 use WorldGraph\REST\Graph_Controller;
 use WorldGraph\REST\Locations_Controller;
+use WorldGraph\REST\Production_Controller;
 use WorldGraph\REST\Projects_Controller;
 use WorldGraph\REST\Sequences_Controller;
 use WorldGraph\REST\StoryWorlds_Controller;
@@ -125,10 +129,12 @@ if ( ! class_exists( 'WP_Query' ) ) {
 
 		public function __construct( array $args = [] ) {
 			$post_type   = (string) ( $args['post_type'] ?? '' );
+			$post__in    = array_map( 'intval', (array) ( $args['post__in'] ?? [] ) );
 			$this->posts = array_values(
 				array_filter(
 					(array) ( $GLOBALS['worldgraph_rest_api_query_posts'] ?? [] ),
-					static fn( WP_Post $post ): bool => '' === $post_type || $post_type === $post->post_type
+					static fn( WP_Post $post ): bool => ( '' === $post_type || $post_type === $post->post_type )
+						&& ( empty( $post__in ) || in_array( $post->ID, $post__in, true ) )
 				)
 			);
 			$this->found_posts   = count( $this->posts );
@@ -179,6 +185,7 @@ if ( ! function_exists( 'is_user_logged_in' ) ) {
 
 if ( ! function_exists( 'current_user_can' ) ) {
 	function current_user_can( string $capability, ...$args ): bool {
+		$GLOBALS['worldgraph_rest_api_capability_checks'][] = [ $capability, $args ];
 		$capabilities = (array) ( $GLOBALS['worldgraph_rest_api_capabilities'] ?? [] );
 		$object_key   = $capability . ( empty( $args ) ? '' : ':' . implode( ':', array_map( 'strval', $args ) ) );
 		if ( array_key_exists( $object_key, $capabilities ) ) {
@@ -189,6 +196,18 @@ if ( ! function_exists( 'current_user_can' ) ) {
 		}
 
 		return true;
+	}
+}
+
+if ( ! function_exists( 'sanitize_text_field' ) ) {
+	function sanitize_text_field( $value ): string {
+		return trim( (string) $value );
+	}
+}
+
+if ( ! function_exists( 'sanitize_key' ) ) {
+	function sanitize_key( $value ): string {
+		return strtolower( (string) preg_replace( '/[^a-zA-Z0-9_-]/', '', (string) $value ) );
 	}
 }
 
@@ -266,6 +285,7 @@ if ( ! function_exists( 'wp_set_object_terms' ) ) {
 
 if ( ! function_exists( 'wp_strip_all_tags' ) ) {
 	function wp_strip_all_tags( $value ): string {
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.strip_tags_strip_tags -- WordPress-free test shim.
 		return strip_tags( (string) $value );
 	}
 }
@@ -315,6 +335,17 @@ if ( ! function_exists( 'rest_url' ) ) {
 	}
 }
 
+if ( ! function_exists( 'register_rest_route' ) ) {
+	function register_rest_route( string $namespace, string $route, array $args ): bool {
+		$GLOBALS['worldgraph_rest_api_routes'][] = [
+			'namespace' => $namespace,
+			'route'     => $route,
+			'args'      => $args,
+		];
+		return true;
+	}
+}
+
 if ( ! function_exists( 'wp_reset_postdata' ) ) {
 	function wp_reset_postdata(): void {}
 }
@@ -332,6 +363,8 @@ require_once dirname( __DIR__ ) . '/includes/rest-api/characters-controller.php'
 require_once dirname( __DIR__ ) . '/includes/rest-api/locations-controller.php';
 require_once dirname( __DIR__ ) . '/includes/rest-api/storyworlds-controller.php';
 require_once dirname( __DIR__ ) . '/includes/rest-api/sequences-controller.php';
+require_once dirname( __DIR__ ) . '/includes/rest-api/editorial-controller.php';
+require_once dirname( __DIR__ ) . '/includes/rest-api/production-controller.php';
 
 /** Post object with the fields consumed by Base_Controller::get_item_data(). */
 final class WorldGraph_REST_Test_Post extends WP_Post {
@@ -744,6 +777,97 @@ final class Test_WorldGraph_REST_API extends TestCase {
 		);
 	}
 
+	/** Editorial and Production routes must authorize against their parent Project. */
+	public function test_workflow_routes_require_project_object_capabilities(): void {
+		$project             = new WorldGraph_REST_Test_Post( 900, 'worldgraph_project' );
+		$project->post_title = 'Private Project';
+		$this->register_post_object( $project );
+		$GLOBALS['worldgraph_rest_api_capabilities'] = [
+			'edit_posts'    => true,
+			'read_post:900' => false,
+			'edit_post:900' => false,
+		];
+
+		$request = new WP_REST_Request( [ 'project_id' => 900 ] );
+		foreach ( [ new Editorial_Controller(), new Production_Controller() ] as $controller ) {
+			$this->assertInstanceOf( WP_Error::class, $controller->check_project_read_permission( $request ) );
+			$this->assertInstanceOf( WP_Error::class, $controller->check_project_edit_permission( $request ) );
+		}
+
+		$GLOBALS['worldgraph_rest_api_capabilities']['read_post:900'] = true;
+		$GLOBALS['worldgraph_rest_api_capabilities']['edit_post:900'] = true;
+		$this->assertTrue( ( new Editorial_Controller() )->check_project_read_permission( $request ) );
+		$this->assertTrue( ( new Editorial_Controller() )->check_project_edit_permission( $request ) );
+		$this->assertContains( [ 'read_post', [ 900 ] ], $GLOBALS['worldgraph_rest_api_capability_checks'] );
+		$this->assertContains( [ 'edit_post', [ 900 ] ], $GLOBALS['worldgraph_rest_api_capability_checks'] );
+
+		( new Editorial_Controller() )->register_routes();
+		( new Production_Controller() )->register_routes();
+		foreach ( $GLOBALS['worldgraph_rest_api_routes'] as $route ) {
+			$callback = $route['args']['permission_callback'][1] ?? '';
+			$this->assertNotContains( $callback, [ 'check_read_permission', 'check_create_permission', 'check_update_permission' ] );
+			if ( str_contains( $route['route'], 'task_id' ) ) {
+				$this->assertSame( 'check_task_edit_permission', $callback );
+			} elseif ( 'GET' === $route['args']['methods'] ) {
+				$this->assertSame( 'check_project_read_permission', $callback );
+			} else {
+				$this->assertSame( 'check_project_edit_permission', $callback );
+			}
+		}
+	}
+
+	/** Task updates inherit edit authorization from the exact owning Project. */
+	public function test_production_task_permission_resolves_the_owning_project(): void {
+		$blocked_project = new WorldGraph_REST_Test_Post( 900, 'worldgraph_project' );
+		$allowed_project = new WorldGraph_REST_Test_Post( 901, 'worldgraph_project' );
+		$this->register_post_object( $blocked_project );
+		$this->register_post_object( $allowed_project );
+		$this->store_post_meta( 900, '_worldgraph_production_tasks', [ [ 'id' => 'blocked-task', 'status' => 'pending' ] ] );
+		$this->store_post_meta( 901, '_worldgraph_production_tasks', [ [ 'id' => 'allowed-task', 'status' => 'pending' ] ] );
+		$GLOBALS['worldgraph_rest_api_capabilities'] = [
+			'edit_posts'    => true,
+			'edit_post:900' => false,
+			'edit_post:901' => true,
+		];
+
+		$controller = new Production_Controller();
+		$this->assertInstanceOf(
+			WP_Error::class,
+			$controller->check_task_edit_permission( new WP_REST_Request( [ 'task_id' => 'blocked-task' ] ) )
+		);
+		$this->assertTrue( $controller->check_task_edit_permission( new WP_REST_Request( [ 'task_id' => 'allowed-task' ] ) ) );
+		$this->assertInstanceOf(
+			WP_Error::class,
+			$controller->check_task_edit_permission( new WP_REST_Request( [ 'task_id' => 'missing-task' ] ) )
+		);
+	}
+
+	/** Project exports must never contain another Project's Scenes or Shots. */
+	public function test_editorial_export_is_scoped_to_the_selected_project(): void {
+		foreach ( [
+			900 => 'worldgraph_project',
+			901 => 'worldgraph_project',
+			910 => 'worldgraph_scene',
+			911 => 'worldgraph_scene',
+			920 => 'worldgraph_shot',
+			921 => 'worldgraph_shot',
+		] as $post_id => $post_type ) {
+			$this->register_post_object( new WorldGraph_REST_Test_Post( $post_id, $post_type ) );
+		}
+		$this->store_post_meta( 910, 'worldgraph_relationships', [ [ 'to_id' => 900, 'to_type' => 'worldgraph_project', 'type' => 'belongs_to' ] ] );
+		$this->store_post_meta( 911, 'worldgraph_relationships', [ [ 'to_id' => 901, 'to_type' => 'worldgraph_project', 'type' => 'belongs_to' ] ] );
+		$this->store_post_meta( 920, 'worldgraph_relationships', [ [ 'to_id' => 910, 'to_type' => 'worldgraph_scene', 'type' => 'belongs_to' ] ] );
+		$this->store_post_meta( 921, 'worldgraph_relationships', [ [ 'to_id' => 911, 'to_type' => 'worldgraph_scene', 'type' => 'belongs_to' ] ] );
+		$GLOBALS['worldgraph_rest_api_query_posts'] = array_values( $GLOBALS['worldgraph_rest_api_post_objects'] );
+
+		$method = new ReflectionMethod( Editorial_Controller::class, 'build_export_data' );
+		$method->setAccessible( true );
+		$data = $method->invoke( null, 900, 'full' );
+
+		$this->assertSame( [ 910 ], array_map( static fn( WP_Post $post ): int => $post->ID, $data['scenes']->posts ) );
+		$this->assertSame( [ 920 ], array_map( static fn( WP_Post $post ): int => $post->ID, $data['shots']->posts ) );
+	}
+
 	/** Reset shared WordPress-stub state between tests and data-provider cases. */
 	private function reset_rest_state(): void {
 		unset( $GLOBALS['worldgraph_incoming_relationship_index'] );
@@ -755,6 +879,8 @@ final class Test_WorldGraph_REST_API extends TestCase {
 		$GLOBALS['worldgraph_rest_api_term_objects'] = [];
 		$GLOBALS['worldgraph_rest_api_query_posts']  = [];
 		$GLOBALS['worldgraph_rest_api_capabilities'] = [];
+		$GLOBALS['worldgraph_rest_api_capability_checks'] = [];
+		$GLOBALS['worldgraph_rest_api_routes']       = [];
 		$GLOBALS['worldgraph_generation_auth_meta']  = [];
 		$GLOBALS['worldgraph_generation_auth_posts'] = [];
 		$GLOBALS['worldgraph_import_journal_state']['meta'] = [];

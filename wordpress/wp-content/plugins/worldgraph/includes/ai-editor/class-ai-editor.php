@@ -242,7 +242,7 @@ class AI_Editor {
 	 */
 	public static function redirect_to_setup_page(): void {
 		$url = admin_url( 'admin.php?page=worldgraph-setup' );
-		if ( isset( $_GET['required'] ) ) {
+		if ( isset( $_GET['required'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only redirect flag.
 			$url = add_query_arg( [ 'required' => '1' ], $url );
 		}
 		wp_safe_redirect( $url );
@@ -331,7 +331,7 @@ class AI_Editor {
 					<tr>
 						<th scope="row"><label for="worldgraph_ai_api_key">API Key</label></th>
 						<td>
-							<input type="password" name="worldgraph_ai_api_key" id="worldgraph_ai_api_key" value="<?php echo esc_attr( get_option( 'worldgraph_ai_api_key' ) ); ?>" class="regular-text" />
+							<input type="password" name="worldgraph_ai_api_key" id="worldgraph_ai_api_key" value="<?php echo esc_attr( \WorldGraph\Utils\Credential_Store::masked_value( get_option( 'worldgraph_ai_api_key' ) ) ); ?>" class="regular-text" autocomplete="new-password" />
 							<p class="description">Required for hosted providers. A browser subscription without an API key cannot connect to World Graph Studio; local servers may be left blank only when they do not require authentication.</p>
 						</td>
 					</tr>
@@ -363,7 +363,7 @@ class AI_Editor {
 					<tr>
 						<th scope="row"><label for="worldgraph_ai_image_api_key">Image API Key</label></th>
 						<td>
-							<input type="password" name="worldgraph_ai_image_api_key" id="worldgraph_ai_image_api_key" value="<?php echo esc_attr( get_option( 'worldgraph_ai_image_api_key' ) ); ?>" class="regular-text" <?php disabled( defined( 'WORLDGRAPH_AI_IMAGE_API_KEY' ) ); ?> />
+							<input type="password" name="worldgraph_ai_image_api_key" id="worldgraph_ai_image_api_key" value="<?php echo esc_attr( \WorldGraph\Utils\Credential_Store::masked_value( get_option( 'worldgraph_ai_image_api_key' ) ) ); ?>" class="regular-text" autocomplete="new-password" <?php disabled( defined( 'WORLDGRAPH_AI_IMAGE_API_KEY' ) ); ?> />
 							<p class="description">Leave blank to reuse the API Key above. The `WORLDGRAPH_AI_IMAGE_API_KEY` constant takes precedence when defined.</p>
 						</td>
 					</tr>
@@ -399,7 +399,7 @@ class AI_Editor {
 					<tr>
 						<th scope="row"><label for="worldgraph_ai_fallback_api_key">Fallback API Key</label></th>
 						<td>
-							<input type="password" name="worldgraph_ai_fallback_api_key" id="worldgraph_ai_fallback_api_key" value="<?php echo esc_attr( get_option( 'worldgraph_ai_fallback_api_key' ) ); ?>" class="regular-text" />
+							<input type="password" name="worldgraph_ai_fallback_api_key" id="worldgraph_ai_fallback_api_key" value="<?php echo esc_attr( \WorldGraph\Utils\Credential_Store::masked_value( get_option( 'worldgraph_ai_fallback_api_key' ) ) ); ?>" class="regular-text" autocomplete="new-password" />
 						</td>
 					</tr>
 					<tr>
@@ -542,7 +542,11 @@ class AI_Editor {
 
 		add_meta_box(
 			'worldgraph_ai_workflow',
-			sprintf( __( 'AI %s Workflow', 'worldgraph' ), $label ),
+			sprintf(
+				/* translators: %s: singular Story Graph post-type label. */
+				__( 'AI %s Workflow', 'worldgraph' ),
+				$label
+			),
 			[ __CLASS__, 'render_story_element_workflow_metabox' ],
 			$post_type,
 			'normal',

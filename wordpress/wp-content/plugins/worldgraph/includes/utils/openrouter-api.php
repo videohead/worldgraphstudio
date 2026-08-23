@@ -268,6 +268,10 @@ class OpenRouter_API {
 			return sanitize_text_field( $decoded['error'] );
 		}
 
-		return sprintf( __( 'OpenRouter returned HTTP %d.', 'worldgraph' ), $code );
+		return sprintf(
+			/* translators: %d: HTTP response status code. */
+			__( 'OpenRouter returned HTTP %d.', 'worldgraph' ),
+			$code
+		);
 	}
 }

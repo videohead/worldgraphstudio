@@ -36,6 +36,14 @@ class Template_Smoke_Check {
 		if ( ! $update && ! in_array( $post->post_status, [ 'publish', 'draft' ], true ) ) {
 			return;
 		}
+		if ( ! current_user_can( 'manage_options' ) ) {
+			return;
+		}
+
+		$connection_id = absint( worldgraph_get_field_value( $post_id, 'connection_id' ) );
+		if ( $connection_id && ! Connection_Repository::current_user_can_manage( $connection_id ) ) {
+			return;
+		}
 
 		self::run_for_template( $post_id );
 	}

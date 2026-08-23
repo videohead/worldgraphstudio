@@ -1,13 +1,13 @@
 <?php
 /**
  * Plugin Name: World Graph Studio - Web Stories Prototype
- * Plugin URI: https://github.com/videohead/worldgraph
+ * Plugin URI: https://github.com/videohead/storyos
  * Description: Experimental adapter source for exploring World Graph Studio and Google Web Stories interoperability; not loaded by the main plugin.
  * Version: 1.0.0
  * Author: World Graph Studio Contributors
  * License: GPL v2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
- * Text Domain: worldgraph-web-stories
+ * Text Domain: worldgraph
  * Requires Plugins: worldgraph, web-stories
  * Requires at least: 6.0
  * Requires PHP: 8.1
@@ -112,7 +112,7 @@ function admin_notice_web_stories_missing(): void {
 		<p>
 			<?php
 			echo wp_kses(
-				__( 'World Graph Studio Web Stories Sync requires the <strong>Web Stories</strong> plugin by Google to be installed and activated.', 'worldgraph-web-stories' ),
+				__( 'World Graph Studio Web Stories Sync requires the <strong>Web Stories</strong> plugin by Google to be installed and activated.', 'worldgraph' ),
 				[ 'strong' => [] ]
 			);
 			?>
@@ -130,7 +130,7 @@ function admin_notice_worldgraph_missing(): void {
 		<p>
 			<?php
 			echo wp_kses(
-				__( 'World Graph Studio Web Stories Sync requires the <strong>World Graph Studio</strong> plugin to be installed and activated.', 'worldgraph-web-stories' ),
+				__( 'World Graph Studio Web Stories Sync requires the <strong>World Graph Studio</strong> plugin to be installed and activated.', 'worldgraph' ),
 				[ 'strong' => [] ]
 			);
 			?>

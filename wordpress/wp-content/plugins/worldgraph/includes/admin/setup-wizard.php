@@ -40,7 +40,7 @@ class Setup_Wizard {
 		}
 		delete_transient( 'worldgraph_activation_redirect' );
 
-		if ( wp_doing_ajax() || wp_doing_cron() || isset( $_GET['activate-multi'] ) ) {
+		if ( wp_doing_ajax() || wp_doing_cron() || isset( $_GET['activate-multi'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only activation redirect guard.
 			return;
 		}
 
@@ -81,7 +81,7 @@ class Setup_Wizard {
 			return;
 		}
 
-		$page = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
+		$page = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin routing.
 		if ( 'worldgraph-setup' === $page ) {
 			return;
 		}
@@ -103,7 +103,7 @@ class Setup_Wizard {
 			return;
 		}
 
-		$page = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
+		$page = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice routing.
 		if ( 'worldgraph-setup' === $page ) {
 			return;
 		}
@@ -249,8 +249,12 @@ class Setup_Wizard {
 		update_option( 'worldgraph_ai_backend', $backend );
 		update_option( 'worldgraph_ai_url', esc_url_raw( wp_unslash( $_POST['worldgraph_ai_url'] ?? '' ) ) );
 		update_option( 'worldgraph_ai_model', sanitize_text_field( wp_unslash( $_POST['worldgraph_ai_model'] ?? '' ) ) );
+		$submitted_ai_api_key = sanitize_text_field( wp_unslash( $_POST['worldgraph_ai_api_key'] ?? '' ) );
+		$ai_api_key = defined( 'WORLDGRAPH_AI_API_KEY' )
+			? ''
+			: \WorldGraph\Utils\Credential_Store::resolve_masked_option_input( $submitted_ai_api_key, 'worldgraph_ai_api_key' );
 		if ( ! defined( 'WORLDGRAPH_AI_API_KEY' ) && isset( $_POST['worldgraph_ai_api_key'] ) ) {
-			update_option( 'worldgraph_ai_api_key', sanitize_text_field( wp_unslash( $_POST['worldgraph_ai_api_key'] ) ) );
+			update_option( 'worldgraph_ai_api_key', $submitted_ai_api_key );
 		}
 
 		// Advanced LLM Configuration
@@ -260,7 +264,6 @@ class Setup_Wizard {
 		update_option( 'worldgraph_ai_temperature', $ai_temperature );
 
 		// Populate the "LLM" Connection record from this section.
-		$ai_api_key = defined( 'WORLDGRAPH_AI_API_KEY' ) ? '' : sanitize_text_field( wp_unslash( $_POST['worldgraph_ai_api_key'] ?? '' ) );
 		\WorldGraph\CPT\Connection::upsert_managed(
 			'llm',
 			'Primary LLM (Setup Wizard)',
@@ -302,7 +305,9 @@ class Setup_Wizard {
 			'backend' => $backend,
 			'url'     => esc_url_raw( wp_unslash( $_POST['url'] ?? '' ) ),
 			'model'   => sanitize_text_field( wp_unslash( $_POST['model'] ?? '' ) ),
-			'api_key' => defined( 'WORLDGRAPH_AI_API_KEY' ) ? \WORLDGRAPH_AI_API_KEY : sanitize_text_field( wp_unslash( $_POST['api_key'] ?? '' ) ),
+			'api_key' => defined( 'WORLDGRAPH_AI_API_KEY' )
+				? \WORLDGRAPH_AI_API_KEY
+				: \WorldGraph\Utils\Credential_Store::resolve_masked_option_input( sanitize_text_field( wp_unslash( $_POST['api_key'] ?? '' ) ), 'worldgraph_ai_api_key' ),
 		];
 
 		$result = ( new \WorldGraph\AI\AI_LLM_Client() )->test_connection( $configuration );
@@ -330,7 +335,7 @@ class Setup_Wizard {
 		$mode = sanitize_key( wp_unslash( $_POST['mode'] ?? 'local_mcp' ) );
 		if ( 'elevenlabs' === $mode ) {
 			\WorldGraph\Utils\Connection_Adapters::load( 'elevenlabs' );
-			$key = sanitize_text_field( wp_unslash( $_POST['api_key'] ?? '' ) );
+			$key = self::resolve_generation_credential_input( sanitize_text_field( wp_unslash( $_POST['api_key'] ?? '' ) ), 'credential_reference' );
 			$catalog = \WorldGraph\Utils\ElevenLabs_API::test_configuration( \WorldGraph\Utils\Connection_Adapters::endpoint( 'elevenlabs' ), $key );
 			if ( is_wp_error( $catalog ) ) {
 				wp_send_json_error( [ 'message' => $catalog->get_error_message() ] );
@@ -345,7 +350,7 @@ class Setup_Wizard {
 		}
 		if ( 'fal' === $mode ) {
 			\WorldGraph\Utils\Connection_Adapters::load( 'fal' );
-			$key = sanitize_text_field( wp_unslash( $_POST['api_key'] ?? '' ) );
+			$key = self::resolve_generation_credential_input( sanitize_text_field( wp_unslash( $_POST['api_key'] ?? '' ) ), 'credential_reference' );
 			$tools = \WorldGraph\Utils\Fal_MCP::test_configuration( \WorldGraph\Utils\Connection_Adapters::endpoint( 'fal' ), $key );
 			if ( is_wp_error( $tools ) ) {
 				wp_send_json_error( [ 'message' => $tools->get_error_message() ] );
@@ -358,8 +363,8 @@ class Setup_Wizard {
 		}
 		if ( 'suno' === $mode ) {
 			\WorldGraph\Utils\Connection_Adapters::load( 'suno' );
-			$api_key = sanitize_text_field( wp_unslash( $_POST['api_key'] ?? '' ) );
-			$mcp_api_key = sanitize_text_field( wp_unslash( $_POST['mcp_api_key'] ?? '' ) );
+			$api_key = self::resolve_generation_credential_input( sanitize_text_field( wp_unslash( $_POST['api_key'] ?? '' ) ), 'credential_reference' );
+			$mcp_api_key = self::resolve_generation_credential_input( sanitize_text_field( wp_unslash( $_POST['mcp_api_key'] ?? '' ) ), 'mcp_credential_reference' );
 			$credits = \WorldGraph\Utils\Suno_API::test_configuration( \WorldGraph\Utils\Connection_Adapters::endpoint( 'suno' ), $api_key );
 			if ( is_wp_error( $credits ) ) {
 				wp_send_json_error( [ 'message' => $credits->get_error_message() ] );
@@ -381,7 +386,7 @@ class Setup_Wizard {
 		}
 		if ( 'videodraft' === $mode ) {
 			\WorldGraph\Utils\Connection_Adapters::load( 'videodraft' );
-			$key = sanitize_text_field( wp_unslash( $_POST['api_key'] ?? '' ) );
+			$key = self::resolve_generation_credential_input( sanitize_text_field( wp_unslash( $_POST['api_key'] ?? '' ) ), 'credential_reference' );
 			$tools = \WorldGraph\Utils\VideoDraft_API::test_configuration( \WorldGraph\Utils\Connection_Adapters::endpoint( 'videodraft' ), $key );
 			if ( is_wp_error( $tools ) ) {
 				wp_send_json_error( [ 'message' => $tools->get_error_message() ] );
@@ -410,6 +415,26 @@ class Setup_Wizard {
 		wp_send_json_success( [ 'message' => sprintf( 'Connected to ComfyUI at %s.', $url ) ] );
 	}
 
+	/** Resolve a setup-form mask without sending the stored secret to the browser. */
+	private static function resolve_generation_credential_input( string $value, string $field_name ): string {
+		if ( \WorldGraph\Utils\Credential_Store::MASK !== $value ) {
+			return $value;
+		}
+
+		$connections = get_posts(
+			[
+				'post_type'      => 'worldgraph_conn',
+				'post_status'    => 'any',
+				'posts_per_page' => 1,
+				'fields'         => 'ids',
+				'meta_key'       => 'worldgraph_wizard_slot', // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key
+				'meta_value'     => 'generation', // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value
+			]
+		);
+
+		return $connections ? (string) \WorldGraph\Utils\worldgraph_get_field_value( (int) $connections[0], $field_name ) : '';
+	}
+
 	public static function render(): void {
 		$comfy_mode = get_option( 'worldgraph_gen_connection_mode', get_option( 'worldgraph_comfy_connection_mode', 'none' ) );
 		$generation_options = \WorldGraph\Utils\Connection_Adapters::setup_options();
@@ -423,16 +448,16 @@ class Setup_Wizard {
 			'meta_value'     => 'generation', // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value
 		] );
 		$generation_connection_id = $generation_connections ? (int) $generation_connections[0] : 0;
-		$generation_api_key = $generation_connection_id ? (string) \WorldGraph\Utils\worldgraph_get_field_value( $generation_connection_id, 'credential_reference' ) : '';
-		$generation_mcp_api_key = $generation_connection_id ? (string) \WorldGraph\Utils\worldgraph_get_field_value( $generation_connection_id, 'mcp_credential_reference' ) : '';
+		$generation_api_key = $generation_connection_id ? \WorldGraph\Utils\Credential_Store::masked_value( \WorldGraph\Utils\worldgraph_get_field_value( $generation_connection_id, 'credential_reference' ) ) : '';
+		$generation_mcp_api_key = $generation_connection_id ? \WorldGraph\Utils\Credential_Store::masked_value( \WorldGraph\Utils\worldgraph_get_field_value( $generation_connection_id, 'mcp_credential_reference' ) ) : '';
 
 		?>
 		<div class="wrap">
 			<h1>Set Up World Graph Studio</h1>
-			<?php if ( isset( $_GET['updated'] ) ) : ?>
+			<?php if ( isset( $_GET['updated'] ) ) : // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only redirect notice. ?>
 				<div class="notice notice-success"><p>World Graph Studio connections saved.</p></div>
 			<?php endif; ?>
-			<?php if ( isset( $_GET['required'] ) ) : ?>
+			<?php if ( isset( $_GET['required'] ) ) : // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only setup notice. ?>
 				<div class="notice notice-warning"><p>Please review the connection settings below before continuing. Submitting this form (even with fields left blank) completes setup.</p></div>
 			<?php endif; ?>
 			<p>World Graph Studio requires a WordPress.org host or local Docker/Lando deployment. An API-connected LLM enables the World Graph Studio agents, while a generation Connection is optional for media generation.</p>
@@ -453,7 +478,7 @@ class Setup_Wizard {
 					<?php endforeach; ?>
 				</select> <span class="description">This list is supplied by installed Connection adapters. Additional providers can be added from World Graph Studio &gt; Connections.</span></p>
 				<p id="worldgraph-generation-credential-fields"><label for="worldgraph_gen_credential_reference">Generation Provider API Key</label><br />
-				<input type="password" class="regular-text" name="worldgraph_gen_credential_reference" id="worldgraph_gen_credential_reference" value="<?php echo esc_attr( $generation_api_key ); ?>" autocomplete="new-password" /> <span class="description">Use the selected hosted provider's API key. The managed Connection stores this value as its API credential reference.</span></p>
+				<input type="password" class="regular-text" name="worldgraph_gen_credential_reference" id="worldgraph_gen_credential_reference" value="<?php echo esc_attr( $generation_api_key ); ?>" autocomplete="new-password" /> <span class="description">Use the selected hosted provider's API key. It is encrypted in the database; leave the masked value unchanged to keep it.</span></p>
 				<p id="worldgraph-generation-mcp-credential-fields"><label for="worldgraph_gen_mcp_credential_reference">Generation Provider MCP Token</label><br />
 				<input type="password" class="regular-text" name="worldgraph_gen_mcp_credential_reference" id="worldgraph_gen_mcp_credential_reference" value="<?php echo esc_attr( $generation_mcp_api_key ); ?>" autocomplete="new-password" /> <span class="description">Suno MCP is operated by AceData Cloud and requires its own token; a SunoAPI.org key cannot authenticate this endpoint.</span></p>
 				<p id="worldgraph-comfy-local-api-fields"><label for="worldgraph_comfy_local_url">Local ComfyUI API URL</label><br />
@@ -501,7 +526,7 @@ class Setup_Wizard {
 				</select></p>
 				<p><label for="worldgraph_ai_url">Base URL or Endpoint</label><br /><input type="url" class="regular-text" name="worldgraph_ai_url" id="worldgraph_ai_url" value="<?php echo esc_attr( get_option( 'worldgraph_ai_url', 'http://host.lando.internal:11434/v1' ) ); ?>" /> <span class="description">For llama.cpp, Ollama, vLLM, LM Studio, or another `/v1` endpoint. In Lando, use <code>host.lando.internal</code> for an LLM running on the development host; <code>localhost</code> refers to the WordPress container. Leave blank if using OpenAI or Anthropic.</span></p>
 				<p><label for="worldgraph_ai_model">Model Name</label><br /><input type="text" class="regular-text" name="worldgraph_ai_model" id="worldgraph_ai_model" list="worldgraph-ai-models" value="<?php echo esc_attr( get_option( 'worldgraph_ai_model', '' ) ); ?>" /> <datalist id="worldgraph-ai-models"></datalist> <span class="description">Examples: gpt-4, claude-3-sonnet, or local model name. Testing a local endpoint loads its available models.</span></p>
-				<p><label for="worldgraph_ai_api_key">API Key / Token</label><br /><input type="password" class="regular-text" name="worldgraph_ai_api_key" id="worldgraph_ai_api_key" value="<?php echo esc_attr( get_option( 'worldgraph_ai_api_key' ) ); ?>" <?php disabled( defined( 'WORLDGRAPH_AI_API_KEY' ) ); ?> />
+				<p><label for="worldgraph_ai_api_key">API Key / Token</label><br /><input type="password" class="regular-text" name="worldgraph_ai_api_key" id="worldgraph_ai_api_key" value="<?php echo esc_attr( \WorldGraph\Utils\Credential_Store::masked_value( get_option( 'worldgraph_ai_api_key' ) ) ); ?>" autocomplete="new-password" <?php disabled( defined( 'WORLDGRAPH_AI_API_KEY' ) ); ?> />
 				<?php if ( defined( 'WORLDGRAPH_AI_API_KEY' ) ) : ?> <span class="description">Configured through the deployment environment.</span><?php else : ?> <span class="description">Required for hosted providers and some local servers.</span><?php endif; ?></p>
 				<p><button type="button" class="button" id="worldgraph-test-llm-connection">Test LLM Connection</button> <span id="worldgraph-llm-test-result" aria-live="polite"></span></p>
 				

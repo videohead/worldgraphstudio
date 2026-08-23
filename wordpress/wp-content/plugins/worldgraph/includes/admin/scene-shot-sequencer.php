@@ -112,7 +112,11 @@ class Scene_Shot_Sequencer {
 		);
 		$blocked_labels = array_values(
 			array_map(
-				static fn( \WP_Post $shot ): string => $shot->post_title ?: sprintf( __( 'Shot #%d', 'worldgraph' ), $shot->ID ),
+				static fn( \WP_Post $shot ): string => $shot->post_title ?: sprintf(
+					/* translators: %d: Shot post ID. */
+					__( 'Shot #%d', 'worldgraph' ),
+					$shot->ID
+				),
 				array_filter( $blocked_shots, static fn( \WP_Post $shot ): bool => current_user_can( 'read_post', $shot->ID ) )
 			)
 		);
@@ -157,7 +161,11 @@ class Scene_Shot_Sequencer {
 							<span class="worldgraph-shot-sequencer__handle dashicons dashicons-move" aria-hidden="true"></span>
 							<span class="worldgraph-shot-sequencer__position" data-shot-position><?php echo esc_html( (string) ( $index + 1 ) ); ?></span>
 							<span class="worldgraph-shot-sequencer__details">
-								<a href="<?php echo esc_url( get_edit_post_link( $shot->ID ) ?: '#' ); ?>"><strong><?php echo esc_html( $shot->post_title ?: sprintf( __( 'Shot #%d', 'worldgraph' ), $shot->ID ) ); ?></strong></a>
+								<a href="<?php echo esc_url( get_edit_post_link( $shot->ID ) ?: '#' ); ?>"><strong><?php echo esc_html( $shot->post_title ?: sprintf(
+									/* translators: %d: Shot post ID. */
+									__( 'Shot #%d', 'worldgraph' ),
+									$shot->ID
+								) ); ?></strong></a>
 								<span class="worldgraph-shot-sequencer__meta">
 									<?php
 									echo esc_html(
@@ -165,7 +173,11 @@ class Scene_Shot_Sequencer {
 											' · ',
 											array_filter(
 												[
-													$shot_number ? sprintf( __( 'Shot %s', 'worldgraph' ), $shot_number ) : '',
+													$shot_number ? sprintf(
+														/* translators: %s: editorial Shot number. */
+														__( 'Shot %s', 'worldgraph' ),
+														$shot_number
+													) : '',
 													$shot_type ? ucwords( str_replace( '_', ' ', (string) $shot_type ) ) : '',
 													$duration,
 												]
@@ -198,8 +210,8 @@ class Scene_Shot_Sequencer {
 	public static function ajax_reorder(): void {
 		check_ajax_referer( self::ACTION, 'nonce' );
 
-		$scene_id = isset( $_POST['scene_id'] ) ? absint( $_POST['scene_id'] ) : 0;
-		$raw_order = isset( $_POST['ordered_ids'] ) && is_array( $_POST['ordered_ids'] ) ? wp_unslash( $_POST['ordered_ids'] ) : [];
+		$scene_id = isset( $_POST['scene_id'] ) ? absint( wp_unslash( $_POST['scene_id'] ) ) : 0;
+		$raw_order = isset( $_POST['ordered_ids'] ) && is_array( $_POST['ordered_ids'] ) ? array_map( 'absint', wp_unslash( $_POST['ordered_ids'] ) ) : [];
 		$revision  = isset( $_POST['revision'] ) ? sanitize_key( wp_unslash( $_POST['revision'] ) ) : '';
 		$result    = \WorldGraph\Utils\worldgraph_reorder_scene_shots( $scene_id, $raw_order, 0, $revision );
 		if ( is_wp_error( $result ) ) {

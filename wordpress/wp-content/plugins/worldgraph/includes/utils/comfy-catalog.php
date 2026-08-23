@@ -99,7 +99,18 @@ class Comfy_Catalog {
 		];
 
 		update_post_meta( $connection_id, self::CATALOG_META, wp_slash( (string) wp_json_encode( $snapshot ) ) );
-		Generation_Log::add( 'info', 'comfy_catalog', sprintf( __( 'Found %d available provider workflow(s).', 'worldgraph' ), count( $entries ) ), [ 'tier' => $capability['tier'] ], '', $connection_id );
+		Generation_Log::add(
+			'info',
+			'comfy_catalog',
+			sprintf(
+				/* translators: %d: number of provider workflows found. */
+				__( 'Found %d available provider workflow(s).', 'worldgraph' ),
+				count( $entries )
+			),
+			[ 'tier' => $capability['tier'] ],
+			'',
+			$connection_id
+		);
 
 		return $snapshot;
 	}
@@ -189,7 +200,18 @@ class Comfy_Catalog {
 
 		$enabled[] = $record;
 		self::store_enabled( $connection_id, $enabled );
-		Generation_Log::add( 'info', 'comfy_catalog', sprintf( __( 'Selected provider workflow "%s" for Studio.', 'worldgraph' ), $record['id'] ), $record, '', $connection_id );
+		Generation_Log::add(
+			'info',
+			'comfy_catalog',
+			sprintf(
+				/* translators: %s: provider workflow ID. */
+				__( 'Selected provider workflow "%s" for Studio.', 'worldgraph' ),
+				$record['id']
+			),
+			$record,
+			'',
+			$connection_id
+		);
 
 		return $record;
 	}
@@ -207,7 +229,18 @@ class Comfy_Catalog {
 		} ) );
 
 		self::store_enabled( $connection_id, $remaining );
-		Generation_Log::add( 'info', 'comfy_catalog', sprintf( __( 'Removed provider workflow "%s" from this Connection.', 'worldgraph' ), $entry_id ), [], '', $connection_id );
+		Generation_Log::add(
+			'info',
+			'comfy_catalog',
+			sprintf(
+				/* translators: %s: provider workflow ID. */
+				__( 'Removed provider workflow "%s" from this Connection.', 'worldgraph' ),
+				$entry_id
+			),
+			[],
+			'',
+			$connection_id
+		);
 
 		return $remaining;
 	}

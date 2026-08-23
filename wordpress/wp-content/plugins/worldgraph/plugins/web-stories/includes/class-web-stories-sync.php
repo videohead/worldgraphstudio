@@ -522,7 +522,7 @@ class Sync {
 						[
 							'type'    => 'text',
 							'values'  => [
-								'text' => strip_tags( $paragraph ),
+								'text' => wp_strip_all_tags( $paragraph ),
 							],
 						],
 					],

@@ -11,6 +11,8 @@
 
 namespace WorldGraph\Utils;
 
+defined( 'ABSPATH' ) || exit;
+
 /**
  * World Graph Studio Intelligence Search configuration.
  *
@@ -84,6 +86,27 @@ function fetch_semantic_search( string $query, array $args = [] ): array {
 }
 
 /**
+ * Normalize an untrusted public result limit while preserving its documented
+ * default. Signed integers are used deliberately so negative values clamp to
+ * the minimum instead of becoming large positive values through absint().
+ *
+ * @param mixed $value   Requested limit.
+ * @param int   $default Default when the request omits or malforms the value.
+ * @param int   $maximum Hard public-query ceiling.
+ * @return int
+ */
+function clamp_public_search_limit( $value, int $default, int $maximum ): int {
+	$maximum = max( 1, $maximum );
+	$default = min( $maximum, max( 1, $default ) );
+
+	if ( null === $value || '' === $value || ! is_scalar( $value ) || ! is_numeric( $value ) ) {
+		return $default;
+	}
+
+	return min( $maximum, max( 1, (int) $value ) );
+}
+
+/**
  * Fetch keyword search results using WordPress post search.
  *
  * @param string $query The search query.
@@ -97,7 +120,8 @@ function fetch_keyword_search( string $query, array $args = [] ): array {
 	$post_status = current_user_can( 'edit_posts' )
 		? [ 'publish', 'draft', 'pending', 'private', 'future' ]
 		: 'publish';
-	$posts = get_posts( [ 'post_type' => $post_types, 'post_status' => $post_status, 'posts_per_page' => absint( $args['top_k'] ?? $config['max_results'] ), 's' => $query ] );
+	$top_k = clamp_public_search_limit( $args['top_k'] ?? null, $config['max_results'], 50 );
+	$posts = get_posts( [ 'post_type' => $post_types, 'post_status' => $post_status, 'posts_per_page' => $top_k, 's' => $query ] );
 	$results = [];
 	foreach ( $posts as $post ) {
 		if ( 'publish' !== $post->post_status && ! current_user_can( 'read_post', $post->ID ) ) {
@@ -217,7 +241,7 @@ function entity_to_post_type( string $entity_type ): string {
 function enhance_search_query( \WP_Query $query ): void {
 	if ( ! is_admin() && $query->is_main_query() && $query->is_search() ) {
 		// Check if entity type filters are set
-		$entity_types = isset( $_GET['worldgraph_entity_type'] ) ? array_filter( explode( ',', sanitize_text_field( wp_unslash( $_GET['worldgraph_entity_type'] ) ) ) ) : [];
+		$entity_types = isset( $_GET['worldgraph_entity_type'] ) ? array_filter( explode( ',', sanitize_text_field( wp_unslash( $_GET['worldgraph_entity_type'] ) ) ) ) : []; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Public read-only search filter.
 
 		if ( ! empty( $entity_types ) ) {
 			// Convert entity types to post types
@@ -299,6 +323,8 @@ function register_search_endpoint(): void {
 			'query'     => [
 				'required'    => true,
 				'type'        => 'string',
+				'minLength'   => 1,
+				'maxLength'   => 200,
 				'description' => 'Search query.',
 			],
 			'entity_types' => [
@@ -317,6 +343,8 @@ function register_search_endpoint(): void {
 				'required'    => false,
 				'type'        => 'integer',
 				'default'     => 20,
+				'minimum'     => 1,
+				'maximum'     => 50,
 				'description' => 'Maximum results.',
 			],
 		],
@@ -330,12 +358,16 @@ function register_search_endpoint(): void {
 			'q' => [
 				'required'    => true,
 				'type'        => 'string',
+				'minLength'   => 2,
+				'maxLength'   => 100,
 				'description' => 'Partial search query.',
 			],
 			'limit' => [
 				'required'    => false,
 				'type'        => 'integer',
 				'default'     => 5,
+				'minimum'     => 1,
+				'maximum'     => 20,
 			],
 		],
 	] );
@@ -352,7 +384,7 @@ function handle_search_request( \WP_REST_Request $request ) {
 	$query     = sanitize_text_field( $request->get_param( 'query' ) );
 	$entity_types = $request->get_param( 'entity_types' ) ?: [];
 	$mode      = $request->get_param( 'mode' ) ?: 'hybrid';
-	$top_k     = (int) $request->get_param( 'top_k' );
+	$top_k     = clamp_public_search_limit( $request->get_param( 'top_k' ), 20, 50 );
 
 	if ( empty( $query ) ) {
 		return new \WP_Error( 'empty_query', 'Search query is required.', [ 'status' => 400 ] );
@@ -403,7 +435,7 @@ function handle_search_request( \WP_REST_Request $request ) {
  */
 function handle_search_suggestions( \WP_REST_Request $request ) {
 	$query = sanitize_text_field( $request->get_param( 'q' ) );
-	$limit = (int) $request->get_param( 'limit' );
+	$limit = clamp_public_search_limit( $request->get_param( 'limit' ), 5, 20 );
 
 	if ( empty( $query ) || strlen( $query ) < 2 ) {
 		return new \WP_REST_Response( [ 'suggestions' => [] ], 200 );

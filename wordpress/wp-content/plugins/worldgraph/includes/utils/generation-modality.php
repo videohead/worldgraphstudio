@@ -61,6 +61,13 @@ class Generation_Modality {
 				'folder'     => 'checkpoints',
 				'required'   => true,
 			],
+			'lora'       => [
+				'label'      => 'LoRA',
+				'node_class' => 'LoraLoader',
+				'field'      => 'lora_name',
+				'folder'     => 'loras',
+				'required'   => false,
+			],
 		];
 
 		$image_nodes = [ 'CheckpointLoaderSimple', 'CLIPTextEncode', 'KSampler', 'VAEDecode', 'SaveImage' ];
@@ -414,6 +421,26 @@ class Generation_Modality {
 				'inputs'     => [ 'samples' => [ '3', 0 ], 'vae' => [ '4', 2 ] ],
 			],
 		];
+
+		$lora_name = trim( (string) ( $settings['lora_name'] ?? '' ) );
+		if ( '' !== $lora_name ) {
+			$strength = is_numeric( $settings['lora_strength'] ?? null ) ? (float) $settings['lora_strength'] : 1.0;
+
+			$graph['11'] = [
+				'class_type' => 'LoraLoader',
+				'inputs'     => [
+					'lora_name'      => $lora_name,
+					'strength_model' => $strength,
+					'strength_clip'  => $strength,
+					'model'          => [ '4', 0 ],
+					'clip'           => [ '4', 1 ],
+				],
+			];
+			// Route the sampler and both encoders through the LoRA-patched model/CLIP.
+			$graph['3']['inputs']['model'] = [ '11', 0 ];
+			$graph['6']['inputs']['clip']  = [ '11', 1 ];
+			$graph['7']['inputs']['clip']  = [ '11', 1 ];
+		}
 
 		return 'video' === self::output_type( $slug )
 			? self::video_graph( $slug, $graph, $settings )

@@ -48,7 +48,7 @@ class Production_Controller extends Base_Controller {
 		register_rest_route( 'worldgraph/v1', '/production/(?P<project_id>\d+)/overview', [
 			'methods'             => 'GET',
 			'callback'            => [ $this, 'get_overview' ],
-			'permission_callback' => [ $this, 'check_read_permission' ],
+			'permission_callback' => [ $this, 'check_project_read_permission' ],
 			'args'                => [
 				'project_id' => [
 					'description' => 'Project ID.',
@@ -62,7 +62,7 @@ class Production_Controller extends Base_Controller {
 		register_rest_route( 'worldgraph/v1', '/production/(?P<project_id>\d+)/pipeline', [
 			'methods'             => 'GET',
 			'callback'            => [ $this, 'get_pipeline' ],
-			'permission_callback' => [ $this, 'check_read_permission' ],
+			'permission_callback' => [ $this, 'check_project_read_permission' ],
 			'args'                => [
 				'project_id' => [
 					'description' => 'Project ID.',
@@ -76,7 +76,7 @@ class Production_Controller extends Base_Controller {
 		register_rest_route( 'worldgraph/v1', '/production/(?P<project_id>\d+)/stage', [
 			'methods'             => 'PUT',
 			'callback'            => [ $this, 'update_stage' ],
-			'permission_callback' => [ $this, 'check_update_permission' ],
+			'permission_callback' => [ $this, 'check_project_edit_permission' ],
 			'args'                => [
 				'project_id' => [
 					'description' => 'Project ID.',
@@ -95,7 +95,7 @@ class Production_Controller extends Base_Controller {
 		register_rest_route( 'worldgraph/v1', '/production/(?P<project_id>\d+)/tasks', [
 			'methods'             => 'GET',
 			'callback'            => [ $this, 'get_tasks' ],
-			'permission_callback' => [ $this, 'check_read_permission' ],
+			'permission_callback' => [ $this, 'check_project_read_permission' ],
 			'args'                => [
 				'project_id' => [
 					'description' => 'Project ID.',
@@ -115,7 +115,7 @@ class Production_Controller extends Base_Controller {
 		register_rest_route( 'worldgraph/v1', '/production/(?P<project_id>\d+)/tasks', [
 			'methods'             => 'POST',
 			'callback'            => [ $this, 'create_task' ],
-			'permission_callback' => [ $this, 'check_create_permission' ],
+			'permission_callback' => [ $this, 'check_project_edit_permission' ],
 			'args'                => [
 				'project_id' => [
 					'description' => 'Project ID.',
@@ -140,14 +140,15 @@ class Production_Controller extends Base_Controller {
 		] );
 
 		// Update task status.
-		register_rest_route( 'worldgraph/v1', '/production/tasks/(?P<task_id>\d+)/status', [
+		register_rest_route( 'worldgraph/v1', '/production/tasks/(?P<task_id>[A-Za-z0-9-]+)/status', [
 			'methods'             => 'PUT',
 			'callback'            => [ $this, 'update_task_status' ],
-			'permission_callback' => [ $this, 'check_update_permission' ],
+			'permission_callback' => [ $this, 'check_task_edit_permission' ],
 			'args'                => [
 				'task_id'  => [
 					'description' => 'Task ID.',
-					'type'        => 'integer',
+					'type'        => 'string',
+					'pattern'     => '^[A-Za-z0-9-]+$',
 					'required'    => true,
 				],
 				'status'   => [
@@ -162,7 +163,7 @@ class Production_Controller extends Base_Controller {
 		register_rest_route( 'worldgraph/v1', '/production/(?P<project_id>\d+)/timeline', [
 			'methods'             => 'GET',
 			'callback'            => [ $this, 'get_timeline' ],
-			'permission_callback' => [ $this, 'check_read_permission' ],
+			'permission_callback' => [ $this, 'check_project_read_permission' ],
 			'args'                => [
 				'project_id' => [
 					'description' => 'Project ID.',
@@ -171,6 +172,75 @@ class Production_Controller extends Base_Controller {
 				],
 			],
 		] );
+	}
+
+	/**
+	 * Authorize a read against the Project named by the route.
+	 *
+	 * @param WP_REST_Request $request REST request.
+	 * @return true|WP_Error
+	 */
+	public function check_project_read_permission( WP_REST_Request $request ) {
+		return $this->check_project_permission( $request, 'read_post' );
+	}
+
+	/**
+	 * Authorize a mutation against the Project named by the route.
+	 *
+	 * @param WP_REST_Request $request REST request.
+	 * @return true|WP_Error
+	 */
+	public function check_project_edit_permission( WP_REST_Request $request ) {
+		return $this->check_project_permission( $request, 'edit_post' );
+	}
+
+	/**
+	 * Authorize a task mutation against the Project that owns that task.
+	 *
+	 * @param WP_REST_Request $request REST request.
+	 * @return true|WP_Error
+	 */
+	public function check_task_edit_permission( WP_REST_Request $request ) {
+		if ( ! is_user_logged_in() ) {
+			return new WP_Error( 'rest_forbidden', 'You must be logged in to access this resource.', [ 'status' => 401 ] );
+		}
+
+		$record = self::find_task( sanitize_text_field( (string) $request->get_param( 'task_id' ) ) );
+		if ( null === $record ) {
+			return new WP_Error( 'task_not_found', 'Task not found.', [ 'status' => 404 ] );
+		}
+
+		if ( ! current_user_can( 'edit_post', $record['project_id'] ) ) {
+			return new WP_Error( 'rest_forbidden', 'You cannot edit the Project that owns this task.', [ 'status' => 403 ] );
+		}
+
+		return true;
+	}
+
+	/**
+	 * Check an object capability on the route's Project.
+	 *
+	 * @param WP_REST_Request $request    REST request.
+	 * @param string          $capability Object capability to check.
+	 * @return true|WP_Error
+	 */
+	private function check_project_permission( WP_REST_Request $request, string $capability ) {
+		if ( ! is_user_logged_in() ) {
+			return new WP_Error( 'rest_forbidden', 'You must be logged in to access this resource.', [ 'status' => 401 ] );
+		}
+
+		$project_id = absint( $request->get_param( 'project_id' ) );
+		$project    = get_post( $project_id );
+		if ( ! $project || 'worldgraph_project' !== $project->post_type ) {
+			return new WP_Error( 'rest_project_not_found', 'Project not found.', [ 'status' => 404 ] );
+		}
+
+		if ( ! current_user_can( $capability, $project_id ) ) {
+			$message = 'read_post' === $capability ? 'You cannot read this Project.' : 'You cannot edit this Project.';
+			return new WP_Error( 'rest_forbidden', $message, [ 'status' => 403 ] );
+		}
+
+		return true;
 	}
 
 	/**
@@ -326,9 +396,12 @@ class Production_Controller extends Base_Controller {
 	 */
 	public static function create_task( WP_REST_Request $request ) {
 		$project_id = absint( $request->get_param( 'project_id' ) );
-		$title = $request->get_param( 'title' );
-		$description = $request->get_param( 'description' ) ?: '';
-		$status = $request->get_param( 'status' ) ?: 'pending';
+		$title       = sanitize_text_field( (string) $request->get_param( 'title' ) );
+		$description = sanitize_textarea_field( (string) ( $request->get_param( 'description' ) ?: '' ) );
+		$status      = sanitize_key( (string) ( $request->get_param( 'status' ) ?: 'pending' ) );
+		if ( '' === $title ) {
+			return new WP_Error( 'task_title_required', 'Task title is required.', [ 'status' => 400 ] );
+		}
 
 		$task = [
 			'id'          => wp_generate_uuid4(),
@@ -353,42 +426,63 @@ class Production_Controller extends Base_Controller {
 	 * @return WP_REST_Response|WP_Error
 	 */
 	public static function update_task_status( WP_REST_Request $request ) {
-		$task_id = $request->get_param( 'task_id' );
-		$status = $request->get_param( 'status' );
+		$task_id = sanitize_text_field( (string) $request->get_param( 'task_id' ) );
+		$status  = sanitize_key( (string) $request->get_param( 'status' ) );
+		$record  = self::find_task( $task_id );
 
-		// Find the task across all projects.
-		$query = new \WP_Query( [
+		if ( null === $record ) {
+			return new WP_Error( 'task_not_found', 'Task not found.', [ 'status' => 404 ] );
+		}
+
+		$tasks = $record['tasks'];
+		$tasks[ $record['index'] ]['status']     = $status;
+		$tasks[ $record['index'] ]['updated_at'] = current_time( 'mysql' );
+		update_post_meta( $record['project_id'], '_worldgraph_production_tasks', $tasks );
+
+		return rest_ensure_response( [
+			'message' => 'Task status updated.',
+			'task'    => [ 'id' => $task_id, 'status' => $status ],
+		] );
+	}
+
+	/**
+	 * Resolve a task to its owning Project and stored array position.
+	 *
+	 * @param string $task_id Task identifier.
+	 * @return array{project_id:int,index:int,tasks:array<int, array<string, mixed>>}|null
+	 */
+	private static function find_task( string $task_id ): ?array {
+		if ( '' === $task_id ) {
+			return null;
+		}
+
+		$projects = get_posts( [
 			'post_type'      => 'worldgraph_project',
-			'meta_key'       => '_worldgraph_production_tasks',
+			'post_status'    => 'any',
 			'posts_per_page' => -1,
+			'fields'         => 'ids',
+			'meta_key'       => '_worldgraph_production_tasks',
 		] );
 
-		foreach ( $query->posts as $project ) {
-			$tasks = get_post_meta( $project->ID, '_worldgraph_production_tasks', true ) ?: [];
-			$found = false;
-
-			foreach ( $tasks as &$task ) {
-				if ( $task['id'] === $task_id ) {
-					$task['status'] = $status;
-					$task['updated_at'] = current_time( 'mysql' );
-					$found = true;
-					break;
-				}
+		foreach ( $projects as $project ) {
+			$project_id = is_object( $project ) ? absint( $project->ID ?? 0 ) : absint( $project );
+			$tasks      = get_post_meta( $project_id, '_worldgraph_production_tasks', true );
+			if ( ! is_array( $tasks ) ) {
+				continue;
 			}
-			unset( $task );
 
-			if ( $found ) {
-				update_post_meta( $project->ID, '_worldgraph_production_tasks', $tasks );
-				return rest_ensure_response( [
-					'message' => 'Task status updated.',
-					'task'    => [ 'id' => $task_id, 'status' => $status ],
-				] );
+			foreach ( $tasks as $index => $task ) {
+				if ( is_array( $task ) && $task_id === (string) ( $task['id'] ?? '' ) ) {
+					return [
+						'project_id' => $project_id,
+						'index'      => (int) $index,
+						'tasks'      => $tasks,
+					];
+				}
 			}
 		}
 
-		wp_reset_postdata();
-
-		return new WP_Error( 'task_not_found', 'Task not found.', [ 'status' => 404 ] );
+		return null;
 	}
 
 	/**

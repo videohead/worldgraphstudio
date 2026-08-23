@@ -264,7 +264,11 @@ class Comfy_Manifest {
 	 * @return array<string, mixed>
 	 */
 	public static function template_settings( int $template_id, string $modality, array $runtime = [] ): array {
-		$settings = [ 'checkpoint' => trim( (string) worldgraph_get_field_value( $template_id, 'checkpoint' ) ) ];
+		$settings = [
+			'checkpoint'    => trim( (string) worldgraph_get_field_value( $template_id, 'checkpoint' ) ),
+			'lora_name'     => trim( (string) worldgraph_get_field_value( $template_id, 'lora_name' ) ),
+			'lora_strength' => trim( (string) worldgraph_get_field_value( $template_id, 'lora_strength' ) ),
+		];
 
 		foreach ( [ 'configuration_json', 'default_values' ] as $meta_key ) {
 			$decoded = json_decode( (string) worldgraph_get_field_value( $template_id, $meta_key ), true );
@@ -1012,10 +1016,24 @@ class Comfy_Manifest {
 
 		$response = wp_remote_get( $endpoint . '/object_info', [ 'timeout' => 30 ] );
 		if ( is_wp_error( $response ) ) {
-			return new WP_Error( 'worldgraph_comfy_unreachable', sprintf( __( 'Unable to read the ComfyUI node catalog: %s', 'worldgraph' ), $response->get_error_message() ) );
+			return new WP_Error(
+				'worldgraph_comfy_unreachable',
+				sprintf(
+					/* translators: %s: ComfyUI connection error message. */
+					__( 'Unable to read the ComfyUI node catalog: %s', 'worldgraph' ),
+					$response->get_error_message()
+				)
+			);
 		}
 		if ( wp_remote_retrieve_response_code( $response ) < 200 || wp_remote_retrieve_response_code( $response ) >= 300 ) {
-			return new WP_Error( 'worldgraph_comfy_catalog_failed', sprintf( __( 'ComfyUI returned HTTP %d from /object_info.', 'worldgraph' ), wp_remote_retrieve_response_code( $response ) ) );
+			return new WP_Error(
+				'worldgraph_comfy_catalog_failed',
+				sprintf(
+					/* translators: %d: HTTP response status code. */
+					__( 'ComfyUI returned HTTP %d from /object_info.', 'worldgraph' ),
+					wp_remote_retrieve_response_code( $response )
+				)
+			);
 		}
 
 		$catalog = json_decode( wp_remote_retrieve_body( $response ), true );

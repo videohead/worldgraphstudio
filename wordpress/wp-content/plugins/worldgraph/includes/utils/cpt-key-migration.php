@@ -12,6 +12,8 @@
 
 namespace WorldGraph\Utils;
 
+defined( 'ABSPATH' ) || exit;
+
 const WORLDGRAPH_NAMESPACE_MIGRATION_VERSION    = 1;
 const WORLDGRAPH_NAMESPACE_MIGRATION_BATCH_SIZE = 500;
 const WORLDGRAPH_NAMESPACE_MIGRATION_LOCK        = 'worldgraph_namespace_migration_lock';
@@ -874,7 +876,7 @@ function worldgraph_migrate_metadata_table( string $type, array &$errors, bool &
 		return;
 	}
 	[ $table, $primary, $object_column, $cache_group ] = $config[ $type ];
-	$rows = (array) $wpdb->get_results(
+	$rows = (array) $wpdb->get_results( // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter -- $primary is selected from the literal metadata-table map above, never request input.
 		$wpdb->prepare(
 			"SELECT {$primary} AS row_id, {$object_column} AS object_id, meta_key, meta_value
 			FROM {$table} WHERE meta_key LIKE %s ORDER BY {$primary} ASC LIMIT %d",
@@ -882,7 +884,7 @@ function worldgraph_migrate_metadata_table( string $type, array &$errors, bool &
 			WORLDGRAPH_NAMESPACE_MIGRATION_BATCH_SIZE + 1
 		),
 		ARRAY_A
-	); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Identifiers come from the fixed metadata-table map above.
 	if ( count( $rows ) > WORLDGRAPH_NAMESPACE_MIGRATION_BATCH_SIZE ) {
 		$pending = true;
 		array_pop( $rows );
@@ -896,7 +898,7 @@ function worldgraph_migrate_metadata_table( string $type, array &$errors, bool &
 			$errors[] = "Conflicting legacy and canonical keys remain in {$type} metadata row " . (int) $row['row_id'] . '.';
 			continue;
 		}
-		$targets = (array) $wpdb->get_results(
+		$targets = (array) $wpdb->get_results( // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter -- $primary is selected from the literal metadata-table map above, never request input.
 			$wpdb->prepare(
 				"SELECT {$primary} AS row_id, meta_value FROM {$table}
 				WHERE {$object_column} = %d AND meta_key = %s AND {$primary} != %d",
@@ -905,7 +907,7 @@ function worldgraph_migrate_metadata_table( string $type, array &$errors, bool &
 				(int) $row['row_id']
 			),
 			ARRAY_A
-		); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Identifiers come from the fixed metadata-table map above.
 		$duplicate     = false;
 		$target_failed = false;
 		foreach ( $targets as $target ) {
@@ -1184,7 +1186,7 @@ function worldgraph_namespace_migration_is_complete( array &$errors ): bool {
 		$complete = false;
 	}
 	foreach ( [ $wpdb->postmeta ?? '', $wpdb->termmeta ?? '', $wpdb->usermeta ?? '' ] as $table ) {
-		if ( $table && (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table} WHERE meta_key LIKE '%storyos%'" ) > 0 ) { // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		if ( $table && (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table} WHERE meta_key LIKE '%storyos%'" ) > 0 ) { // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.PreparedSQL.InterpolatedNotPrepared,PluginCheck.Security.DirectDB.UnescapedDBParameter -- Table names come from WordPress's fixed metadata table properties.
 			$errors[] = "Legacy metadata keys remain in {$table}.";
 			$complete = false;
 		}

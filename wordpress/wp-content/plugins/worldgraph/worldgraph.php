@@ -1,15 +1,15 @@
 <?php
 /**
  * Plugin Name: World Graph Studio - Story Core
- * Plugin URI: https://github.com/videohead/worldgraph
- * Description: World Graph Studio Story Core - The canonical Story Graph for AI-powered storytelling. Manages Projects, Story Worlds, Characters, Locations, Scenes, Shots, Storyboards, Assets, and Editorial Artifacts as WordPress Custom Post Types with structured content fields and graph relationships.
+ * Plugin URI: https://github.com/videohead/storyos
+ * Description: Structured story graphs, production planning, assets, relationships, and optional AI-assisted media workflows for WordPress.
  * Version: 1.0.0
  * Author: World Graph Studio Contributors
  * License: GPL v2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain: worldgraph
  * Requires Plugins: secure-custom-fields
- * Requires at least: 6.0
+ * Requires at least: 6.2
  * Requires PHP: 8.1
  *
  * @package WorldGraph
@@ -53,13 +53,13 @@ function worldgraph_scf_group_keys(): array {
 /** Whether the current administrator can persist World Graph Studio Local JSON edits. */
 function worldgraph_scf_archive_is_writable(): bool {
 	$path = WORLDGRAPH_PLUGIN_DIR . 'acf-json';
-	if ( ! is_dir( $path ) || ! is_writable( $path ) || ( is_multisite() && ! is_super_admin() ) ) {
+	if ( ! is_dir( $path ) || ! wp_is_writable( $path ) || ( is_multisite() && ! is_super_admin() ) ) {
 		return false;
 	}
 
 	foreach ( worldgraph_scf_group_keys() as $key ) {
 		$file = $path . '/' . $key . '.json';
-		if ( file_exists( $file ) && ! is_writable( $file ) ) {
+		if ( file_exists( $file ) && ! wp_is_writable( $file ) ) {
 			return false;
 		}
 	}
@@ -232,6 +232,7 @@ function init(): void {
 
 	// Load dependencies.
 	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/utils/helpers.php';
+	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/utils/class-credential-store.php';
 	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/utils/cpt-key-migration.php';
 	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/utils/generation-log.php';
 	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/utils/template-smoke-check.php';
@@ -247,6 +248,7 @@ function init(): void {
 	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/utils/scene-shot-order.php';
 	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/admin/dashboard.php';
 	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/admin/navigation.php';
+	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/admin/data-purge.php';
 	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/admin/setup-wizard.php';
 	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/admin/metaboxes.php';
 	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/admin/asset-generator-metabox.php';
@@ -264,6 +266,10 @@ function init(): void {
 	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/admin/story-media-gallery.php';
 	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/exporter/class-worldgraph-exporter.php';
 	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/cli/class-storyboard-cleanup.php';
+
+	// Credential filters must be active before Connections and provider modules
+	// read or write any protected values.
+	Utils\Credential_Store::init();
 
 	// Register CPTs.
 	CPT\Project::init();
@@ -328,6 +334,7 @@ function init(): void {
 	// Register admin pages and hooks.
 	Admin\Dashboard::init();
 	Admin\Navigation::init();
+	Admin\Data_Purge::init();
 	Admin\Setup_Wizard::init();
 	Admin\MetaBoxes::init();
 	Admin\Asset_Generator_MetaBox::init();

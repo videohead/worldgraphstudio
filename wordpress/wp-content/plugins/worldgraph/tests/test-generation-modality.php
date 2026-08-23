@@ -5,6 +5,8 @@
  * @package WorldGraph
  */
 
+defined( 'ABSPATH' ) || exit;
+
 use PHPUnit\Framework\TestCase;
 
 if ( ! function_exists( 'wp_rand' ) ) {
@@ -177,5 +179,39 @@ class Test_Generation_Modality extends TestCase {
 		$graph = Generation_Modality::default_workflow( Generation_Modality::TEXT_TO_IMAGE, [ 'checkpoint' => 'sd_xl_base_1.0.safetensors' ] );
 
 		$this->assertSame( 'sd_xl_base_1.0.safetensors', $graph['4']['inputs']['ckpt_name'] );
+	}
+
+	/**
+	 * A configured LoRA is inserted between the checkpoint and the sampler/encoders.
+	 */
+	public function test_lora_is_wired_between_checkpoint_and_sampler(): void {
+		$graph = Generation_Modality::default_workflow(
+			Generation_Modality::TEXT_TO_IMAGE,
+			[
+				'checkpoint'    => 'sd_xl_base_1.0.safetensors',
+				'lora_name'     => 'my-style.safetensors',
+				'lora_strength' => '0.8',
+			]
+		);
+
+		$this->assertSame( 'my-style.safetensors', $graph['11']['inputs']['lora_name'] );
+		$this->assertSame( 0.8, $graph['11']['inputs']['strength_model'] );
+		$this->assertSame( 0.8, $graph['11']['inputs']['strength_clip'] );
+		$this->assertSame( [ '4', 0 ], $graph['11']['inputs']['model'] );
+		$this->assertSame( [ '4', 1 ], $graph['11']['inputs']['clip'] );
+		$this->assertSame( [ '11', 0 ], $graph['3']['inputs']['model'] );
+		$this->assertSame( [ '11', 1 ], $graph['6']['inputs']['clip'] );
+		$this->assertSame( [ '11', 1 ], $graph['7']['inputs']['clip'] );
+	}
+
+	/**
+	 * Without a configured LoRA, the sampler and encoders read straight off the checkpoint.
+	 */
+	public function test_no_lora_leaves_the_checkpoint_wired_directly(): void {
+		$graph = Generation_Modality::default_workflow( Generation_Modality::TEXT_TO_IMAGE, [ 'checkpoint' => 'sd_xl_base_1.0.safetensors' ] );
+
+		$this->assertArrayNotHasKey( '11', $graph );
+		$this->assertSame( [ '4', 0 ], $graph['3']['inputs']['model'] );
+		$this->assertSame( [ '4', 1 ], $graph['6']['inputs']['clip'] );
 	}
 }

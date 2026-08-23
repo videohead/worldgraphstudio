@@ -48,7 +48,7 @@ class Editorial_Controller extends Base_Controller {
 		register_rest_route( 'worldgraph/v1', '/editorial/(?P<project_id>\d+)/overview', [
 			'methods'             => 'GET',
 			'callback'            => [ $this, 'get_overview' ],
-			'permission_callback' => [ $this, 'check_read_permission' ],
+			'permission_callback' => [ $this, 'check_project_read_permission' ],
 			'args'                => [
 				'project_id' => [
 					'description' => 'Project ID.',
@@ -62,7 +62,7 @@ class Editorial_Controller extends Base_Controller {
 		register_rest_route( 'worldgraph/v1', '/editorial/(?P<project_id>\d+)/artifacts', [
 			'methods'             => 'GET',
 			'callback'            => [ $this, 'get_artifacts' ],
-			'permission_callback' => [ $this, 'check_read_permission' ],
+			'permission_callback' => [ $this, 'check_project_read_permission' ],
 			'args'                => [
 				'project_id' => [
 					'description' => 'Project ID.',
@@ -82,7 +82,7 @@ class Editorial_Controller extends Base_Controller {
 		register_rest_route( 'worldgraph/v1', '/editorial/(?P<project_id>\d+)/artifacts', [
 			'methods'             => 'POST',
 			'callback'            => [ $this, 'create_artifact' ],
-			'permission_callback' => [ $this, 'check_create_permission' ],
+			'permission_callback' => [ $this, 'check_project_edit_permission' ],
 			'args'                => [
 				'project_id' => [
 					'description' => 'Project ID.',
@@ -105,7 +105,7 @@ class Editorial_Controller extends Base_Controller {
 		register_rest_route( 'worldgraph/v1', '/editorial/(?P<project_id>\d+)/export', [
 			'methods'             => 'POST',
 			'callback'            => [ $this, 'export_project' ],
-			'permission_callback' => [ $this, 'check_create_permission' ],
+			'permission_callback' => [ $this, 'check_project_edit_permission' ],
 			'args'                => [
 				'project_id' => [
 					'description' => 'Project ID.',
@@ -129,7 +129,7 @@ class Editorial_Controller extends Base_Controller {
 		register_rest_route( 'worldgraph/v1', '/editorial/(?P<project_id>\d+)/reviews', [
 			'methods'             => 'GET',
 			'callback'            => [ $this, 'get_reviews' ],
-			'permission_callback' => [ $this, 'check_read_permission' ],
+			'permission_callback' => [ $this, 'check_project_read_permission' ],
 			'args'                => [
 				'project_id' => [
 					'description' => 'Project ID.',
@@ -145,7 +145,7 @@ class Editorial_Controller extends Base_Controller {
 		register_rest_route( 'worldgraph/v1', '/editorial/(?P<project_id>\d+)/reviews', [
 			'methods'             => 'POST',
 			'callback'            => [ $this, 'add_review' ],
-			'permission_callback' => [ $this, 'check_create_permission' ],
+			'permission_callback' => [ $this, 'check_project_edit_permission' ],
 			'args'                => [
 				'project_id' => [
 					'description' => 'Project ID.',
@@ -167,6 +167,52 @@ class Editorial_Controller extends Base_Controller {
 				],
 			],
 		] );
+	}
+
+	/**
+	 * Authorize a read against the Project named by the route.
+	 *
+	 * @param WP_REST_Request $request REST request.
+	 * @return true|WP_Error
+	 */
+	public function check_project_read_permission( WP_REST_Request $request ) {
+		return $this->check_project_permission( $request, 'read_post' );
+	}
+
+	/**
+	 * Authorize a mutation or export against the Project named by the route.
+	 *
+	 * @param WP_REST_Request $request REST request.
+	 * @return true|WP_Error
+	 */
+	public function check_project_edit_permission( WP_REST_Request $request ) {
+		return $this->check_project_permission( $request, 'edit_post' );
+	}
+
+	/**
+	 * Check an object capability on the route's Project.
+	 *
+	 * @param WP_REST_Request $request    REST request.
+	 * @param string          $capability Object capability to check.
+	 * @return true|WP_Error
+	 */
+	private function check_project_permission( WP_REST_Request $request, string $capability ) {
+		if ( ! is_user_logged_in() ) {
+			return new WP_Error( 'rest_forbidden', 'You must be logged in to access this resource.', [ 'status' => 401 ] );
+		}
+
+		$project_id = absint( $request->get_param( 'project_id' ) );
+		$project    = get_post( $project_id );
+		if ( ! $project || 'worldgraph_project' !== $project->post_type ) {
+			return new WP_Error( 'rest_project_not_found', 'Project not found.', [ 'status' => 404 ] );
+		}
+
+		if ( ! current_user_can( $capability, $project_id ) ) {
+			$message = 'read_post' === $capability ? 'You cannot read this Project.' : 'You cannot edit this Project.';
+			return new WP_Error( 'rest_forbidden', $message, [ 'status' => 403 ] );
+		}
+
+		return true;
 	}
 
 	/**
@@ -268,8 +314,8 @@ class Editorial_Controller extends Base_Controller {
 	 */
 	public static function create_artifact( WP_REST_Request $request ) {
 		$project_id = absint( $request->get_param( 'project_id' ) );
-		$type = $request->get_param( 'type' );
-		$format = $request->get_param( 'format' ) ?: 'json';
+		$type       = sanitize_key( (string) $request->get_param( 'type' ) );
+		$format     = sanitize_key( (string) ( $request->get_param( 'format' ) ?: 'json' ) );
 
 		// Validate project exists.
 		$project = get_post( $project_id );
@@ -352,30 +398,190 @@ class Editorial_Controller extends Base_Controller {
 		$data = [
 			'project' => get_post( $project_id ),
 		];
+		$scene_ids = self::project_scene_ids( $project_id );
 
 		if ( in_array( $scope, [ 'full', 'scenes' ], true ) ) {
 			$data['scenes'] = new \WP_Query( [
 				'post_type'      => 'worldgraph_scene',
 				'post_status'    => 'any',
 				'posts_per_page' => -1,
-				'meta_query'     => [
-					[
-						'key'   => 'project',
-						'value' => $project_id,
-					],
-				],
+				'post__in'       => $scene_ids ?: [ 0 ],
+				'orderby'        => 'post__in',
 			] );
 		}
 
 		if ( in_array( $scope, [ 'full', 'shots' ], true ) ) {
+			$shot_ids = self::project_shot_ids( $scene_ids );
 			$data['shots'] = new \WP_Query( [
 				'post_type'      => 'worldgraph_shot',
 				'post_status'    => 'any',
 				'posts_per_page' => -1,
+				'post__in'       => $shot_ids ?: [ 0 ],
+				'orderby'        => 'post__in',
 			] );
 		}
 
 		return $data;
+	}
+
+	/**
+	 * Resolve the Scenes that belong to one Project through canonical or legacy edges.
+	 *
+	 * @param int $project_id Project post ID.
+	 * @return array<int, int>
+	 */
+	private static function project_scene_ids( int $project_id ): array {
+		$scene_ids   = [];
+		$episode_ids = [];
+
+		foreach ( self::relationship_targets( $project_id, 'worldgraph_project' ) as $target ) {
+			if ( 'worldgraph_scene' === $target['type'] ) {
+				$scene_ids[] = $target['id'];
+			} elseif ( 'worldgraph_episode' === $target['type'] ) {
+				$episode_ids[] = $target['id'];
+			}
+		}
+
+		$episodes = get_posts( [
+			'post_type'      => 'worldgraph_episode',
+			'post_status'    => 'any',
+			'posts_per_page' => -1,
+		] );
+		foreach ( $episodes as $episode ) {
+			$episode_id = is_object( $episode ) ? absint( $episode->ID ?? 0 ) : absint( $episode );
+			$owner_id   = absint( \WorldGraph\Utils\worldgraph_get_field_value( $episode_id, 'project' ) );
+			if ( $project_id === $owner_id || self::has_relationship_target( $episode_id, 'worldgraph_episode', $project_id, 'worldgraph_project' ) ) {
+				$episode_ids[] = $episode_id;
+			}
+		}
+		$episode_ids = array_values( array_unique( array_filter( array_map( 'absint', $episode_ids ) ) ) );
+
+		foreach ( $episode_ids as $episode_id ) {
+			foreach ( self::relationship_targets( $episode_id, 'worldgraph_episode' ) as $target ) {
+				if ( 'worldgraph_scene' === $target['type'] ) {
+					$scene_ids[] = $target['id'];
+				}
+			}
+		}
+
+		$scenes = get_posts( [
+			'post_type'      => 'worldgraph_scene',
+			'post_status'    => 'any',
+			'posts_per_page' => -1,
+		] );
+		foreach ( $scenes as $scene ) {
+			$scene_id = is_object( $scene ) ? absint( $scene->ID ?? 0 ) : absint( $scene );
+			if (
+				$project_id === absint( \WorldGraph\Utils\worldgraph_get_field_value( $scene_id, 'project' ) )
+				|| self::has_relationship_target( $scene_id, 'worldgraph_scene', $project_id, 'worldgraph_project' )
+			) {
+				$scene_ids[] = $scene_id;
+				continue;
+			}
+
+			$episode_id = absint( \WorldGraph\Utils\worldgraph_get_field_value( $scene_id, 'episode' ) );
+			if ( in_array( $episode_id, $episode_ids, true ) ) {
+				$scene_ids[] = $scene_id;
+				continue;
+			}
+
+			foreach ( self::relationship_targets( $scene_id, 'worldgraph_scene' ) as $target ) {
+				if ( 'worldgraph_episode' === $target['type'] && in_array( $target['id'], $episode_ids, true ) ) {
+					$scene_ids[] = $scene_id;
+					break;
+				}
+			}
+		}
+
+		return array_values( array_unique( array_filter( array_map( 'absint', $scene_ids ) ) ) );
+	}
+
+	/**
+	 * Resolve only the Shots that belong to the supplied Project Scenes.
+	 *
+	 * @param array<int, int> $scene_ids Project Scene IDs.
+	 * @return array<int, int>
+	 */
+	private static function project_shot_ids( array $scene_ids ): array {
+		$scene_ids = array_values( array_unique( array_filter( array_map( 'absint', $scene_ids ) ) ) );
+		if ( empty( $scene_ids ) ) {
+			return [];
+		}
+
+		$scene_lookup = array_fill_keys( $scene_ids, true );
+		$shot_ids     = [];
+		foreach ( $scene_ids as $scene_id ) {
+			foreach ( self::relationship_targets( $scene_id, 'worldgraph_scene' ) as $target ) {
+				if ( 'worldgraph_shot' === $target['type'] ) {
+					$shot_ids[] = $target['id'];
+				}
+			}
+		}
+
+		$shots = get_posts( [
+			'post_type'      => 'worldgraph_shot',
+			'post_status'    => 'any',
+			'posts_per_page' => -1,
+		] );
+		foreach ( $shots as $shot ) {
+			$shot_id  = is_object( $shot ) ? absint( $shot->ID ?? 0 ) : absint( $shot );
+			$scene_id = absint( \WorldGraph\Utils\worldgraph_get_field_value( $shot_id, 'scene' ) );
+			if ( isset( $scene_lookup[ $scene_id ] ) ) {
+				$shot_ids[] = $shot_id;
+				continue;
+			}
+
+			foreach ( self::relationship_targets( $shot_id, 'worldgraph_shot' ) as $target ) {
+				if ( 'worldgraph_scene' === $target['type'] && isset( $scene_lookup[ $target['id'] ] ) ) {
+					$shot_ids[] = $shot_id;
+					break;
+				}
+			}
+		}
+
+		return array_values( array_unique( array_filter( array_map( 'absint', $shot_ids ) ) ) );
+	}
+
+	/**
+	 * Return normalized outgoing Story Graph targets for an entity.
+	 *
+	 * @param int    $post_id   Source post ID.
+	 * @param string $post_type Source post type.
+	 * @return array<int, array{id:int,type:string}>
+	 */
+	private static function relationship_targets( int $post_id, string $post_type ): array {
+		$targets = [];
+		foreach ( \WorldGraph\Utils\get_relationships( $post_id, $post_type, 'outgoing' ) as $relationship ) {
+			$target_id   = absint( $relationship['to_id'] ?? 0 );
+			$target_type = (string) ( $relationship['to_type'] ?? '' );
+			if ( $target_id && '' !== $target_type ) {
+				$targets[] = [
+					'id'   => $target_id,
+					'type' => $target_type,
+				];
+			}
+		}
+
+		return $targets;
+	}
+
+	/**
+	 * Whether one outgoing Story Graph edge targets the expected object.
+	 *
+	 * @param int    $post_id     Source post ID.
+	 * @param string $post_type   Source post type.
+	 * @param int    $target_id   Expected target ID.
+	 * @param string $target_type Expected target type.
+	 * @return bool
+	 */
+	private static function has_relationship_target( int $post_id, string $post_type, int $target_id, string $target_type ): bool {
+		foreach ( self::relationship_targets( $post_id, $post_type ) as $target ) {
+			if ( $target_id === $target['id'] && $target_type === $target['type'] ) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	/**
@@ -428,10 +634,10 @@ class Editorial_Controller extends Base_Controller {
 	 * @return WP_REST_Response|WP_Error
 	 */
 	public static function add_review( WP_REST_Request $request ) {
-		$project_id = absint( $request->get_param( 'project_id' ) );
-		$content = $request->get_param( 'content' );
-		$entity_id = $request->get_param( 'entity_id' ) ? absint( $request->get_param( 'entity_id' ) ) : null;
-		$entity_type = $request->get_param( 'entity_type' );
+		$project_id  = absint( $request->get_param( 'project_id' ) );
+		$content     = sanitize_textarea_field( (string) $request->get_param( 'content' ) );
+		$entity_id   = $request->get_param( 'entity_id' ) ? absint( $request->get_param( 'entity_id' ) ) : null;
+		$entity_type = sanitize_key( (string) $request->get_param( 'entity_type' ) );
 
 		$review = [
 			'id'          => wp_generate_uuid4(),

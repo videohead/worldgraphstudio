@@ -38,7 +38,7 @@ class ElevenLabs_Catalog {
 	/** Discover usable models/voices and create Templates for generation methods. */
 	public static function provision( int $connection_id ) {
 		$connection = Connection_Repository::get( $connection_id );
-		if ( ! is_array( $connection ) || 'elevenlabs' !== ( $connection['provider_type'] ?? '' ) ) {
+		if ( ! is_array( $connection ) || 'elevenlabs' !== ( $connection['provider_type'] ?? '' ) || 'publish' !== ( $connection['status_wp'] ?? '' ) || 'disabled' === ( $connection['status'] ?? '' ) ) {
 			return new WP_Error( 'elevenlabs_connection_invalid', __( 'Template provisioning requires an ElevenLabs Connection.', 'worldgraph' ) );
 		}
 

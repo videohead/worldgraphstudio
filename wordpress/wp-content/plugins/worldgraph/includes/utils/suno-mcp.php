@@ -606,6 +606,11 @@ class Suno_MCP {
 		return '';
 	}
 
+	/** Whether an array uses zero-based consecutive integer keys. */
+	private static function is_list( array $value ): bool {
+		return $value === array_values( $value );
+	}
+
 	/** Normalize every final audio track or lyrics variant. */
 	private static function result_items( array $payload ): array {
 		$candidates = [
@@ -615,7 +620,7 @@ class Suno_MCP {
 		];
 		$records = [];
 		foreach ( $candidates as $candidate ) {
-			if ( is_array( $candidate ) && array_is_list( $candidate ) ) {
+			if ( is_array( $candidate ) && self::is_list( $candidate ) ) {
 				$records = $candidate;
 				break;
 			}

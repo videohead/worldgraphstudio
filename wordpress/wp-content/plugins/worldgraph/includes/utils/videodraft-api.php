@@ -563,7 +563,15 @@ class VideoDraft_API {
 		$status  = wp_remote_retrieve_response_code( $response );
 		$payload = json_decode( (string) wp_remote_retrieve_body( $response ), true );
 		if ( $status < 200 || $status >= 300 ) {
-			return new WP_Error( 'videodraft_request_failed', sprintf( __( 'VideoDraft returned HTTP %d.', 'worldgraph' ), $status ), [ 'status' => $status ] );
+			return new WP_Error(
+				'videodraft_request_failed',
+				sprintf(
+					/* translators: %d: HTTP response status code. */
+					__( 'VideoDraft returned HTTP %d.', 'worldgraph' ),
+					$status
+				),
+				[ 'status' => $status ]
+			);
 		}
 		if ( ! is_array( $payload ) ) {
 			return new WP_Error( 'videodraft_invalid_response', __( 'VideoDraft returned an invalid JSON response.', 'worldgraph' ) );

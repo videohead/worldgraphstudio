@@ -1628,15 +1628,15 @@ class WorldGraph_Importer {
 				$this->report['errors'][] = "Sound {$external_id} type: " . $term->get_error_message();
 			} else {
 				$term_id = is_array( $term ) ? (int) $term['term_id'] : (int) $term->term_id;
-				wp_set_object_terms( $post_id, [ $term_id ], 'worldgraph_sound_type', false );
+				\WorldGraph\Utils\worldgraph_update_field_value( (int) $post_id, 'sound_type', $term_id );
 			}
 
 			if ( array_key_exists( 'production_status', $sound ) ) {
 				$status_slug = sanitize_title( (string) $sound['production_status'] );
 				$status_term = '' !== $status_slug ? get_term_by( 'slug', $status_slug, 'worldgraph_status' ) : null;
-				wp_set_object_terms( $post_id, $status_term ? [ (int) $status_term->term_id ] : [], 'worldgraph_status', false );
+				\WorldGraph\Utils\worldgraph_update_field_value( (int) $post_id, 'production_status', $status_term ? (int) $status_term->term_id : '' );
 			} elseif ( $this->overwrite ) {
-				wp_set_object_terms( $post_id, [], 'worldgraph_status', false );
+				\WorldGraph\Utils\worldgraph_delete_field_value( (int) $post_id, 'production_status' );
 			}
 
 			$sound_index++;
@@ -1853,7 +1853,7 @@ class WorldGraph_Importer {
 				continue;
 			}
 
-			wp_set_object_terms( $scene_post_id, $term_id, 'worldgraph_sequence' );
+			\WorldGraph\Utils\worldgraph_update_field_value( (int) $scene_post_id, 'sequence', $term_id );
 			update_post_meta( $scene_post_id, 'sequence_order', $order );
 			$order++;
 		}
@@ -1868,7 +1868,7 @@ class WorldGraph_Importer {
 				continue;
 			}
 
-			wp_set_object_terms( $shot_post_id, $term_id, 'worldgraph_sequence', false );
+			\WorldGraph\Utils\worldgraph_update_field_value( (int) $shot_post_id, 'sequence', $term_id );
 		}
 
 		// Record the editorial order of the sequence term itself.

@@ -5,6 +5,8 @@
  * @package WorldGraph
  */
 
+defined( 'ABSPATH' ) || exit;
+
 use PHPUnit\Framework\TestCase;
 
 require_once dirname( __DIR__ ) . '/includes/ai-editor/class-ai-agent-router.php';

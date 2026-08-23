@@ -33,7 +33,8 @@ class Dramaturgy_Tool {
 	 * @param string $hook Current admin hook.
 	 */
 	public static function enqueue_assets( string $hook ): void {
-		if ( 'worldgraph-dramaturgy' !== sanitize_key( $_GET['page'] ?? '' ) ) {
+		$page = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only asset routing.
+		if ( 'worldgraph-dramaturgy' !== $page ) {
 			return;
 		}
 

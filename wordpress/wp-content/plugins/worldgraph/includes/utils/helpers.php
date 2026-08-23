@@ -7,6 +7,8 @@
 
 namespace WorldGraph\Utils;
 
+defined( 'ABSPATH' ) || exit;
+
 if ( ! function_exists( __NAMESPACE__ . '\\wp_strip_all_tags' ) ) {
 	/**
 	 * Lightweight fallback for environments without WordPress loaded.
@@ -889,6 +891,7 @@ function worldgraph_log( string $message, string $level = 'info' ): void {
 		$message
 	);
 
+	// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- This helper already requires WP_DEBUG.
 	error_log( $log_entry );
 }
 

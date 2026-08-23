@@ -48,7 +48,7 @@ class Fal_Catalog {
 	 */
 	public static function provision( int $connection_id ) {
 		$connection = Connection_Repository::get( $connection_id );
-		if ( ! is_array( $connection ) || 'fal' !== ( $connection['provider_type'] ?? '' ) ) {
+		if ( ! is_array( $connection ) || 'fal' !== ( $connection['provider_type'] ?? '' ) || 'publish' !== ( $connection['status_wp'] ?? '' ) || 'disabled' === ( $connection['status'] ?? '' ) ) {
 			return new WP_Error( 'fal_connection_invalid', __( 'Template provisioning requires a fal Connection.', 'worldgraph' ) );
 		}
 

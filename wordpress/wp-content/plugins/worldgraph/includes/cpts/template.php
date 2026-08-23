@@ -175,6 +175,9 @@ class Template {
 		if ( 'connection_id' === $name && '' !== trim( (string) $value ) && ( ! ctype_digit( (string) $value ) || 'worldgraph_conn' !== get_post_type( (int) $value ) ) ) {
 			return __( 'Select an existing World Graph Studio Connection ID.', 'worldgraph' );
 		}
+		if ( 'lora_strength' === $name && '' !== trim( (string) $value ) && ! is_numeric( $value ) ) {
+			return __( 'Enter a numeric LoRA strength, e.g. 0.8.', 'worldgraph' );
+		}
 		if ( in_array( $name, [ 'workflow_json', 'configuration_json', 'input_bindings', 'model_requirements', 'default_values' ], true ) && null === self::normalize_json( (string) $value ) ) {
 			return __( 'Enter valid JSON.', 'worldgraph' );
 		}
@@ -239,6 +242,18 @@ class Template {
 				'label'       => 'Checkpoint / Model',
 				'required'    => false,
 				'description' => 'Checkpoint filename installed on the Connection, e.g. LTX-2.3/ltx-2.3-22b-dev-fp8.safetensors.',
+			],
+			'lora_name'           => [
+				'type'        => 'text',
+				'label'       => 'LoRA',
+				'required'    => false,
+				'description' => 'Optional LoRA filename installed on the Connection\'s models/loras directory, applied on top of the checkpoint above for the built-in workflow. Leave blank to run without a LoRA. Ignored when a custom ComfyUI API Workflow is set below.',
+			],
+			'lora_strength'       => [
+				'type'        => 'text',
+				'label'       => 'LoRA Strength',
+				'required'    => false,
+				'description' => 'Model and CLIP strength applied to the LoRA above, typically 0.0-1.0. Defaults to 1.0 when left blank.',
 			],
 			'model_family'        => [
 				'type'        => 'select',
@@ -356,6 +371,9 @@ class Template {
 		if ( ! $post_id || ! current_user_can( 'edit_post', $post_id ) ) {
 			return;
 		}
+		if ( ! self::current_user_can_manage_provider_operations( $post_id ) ) {
+			return;
+		}
 
 		$handle      = 'worldgraph-template-requirements';
 		$script_path = WORLDGRAPH_PLUGIN_DIR . 'assets/js/template-requirements.js';
@@ -402,6 +420,15 @@ class Template {
 	 */
 	public static function render_requirements_meta_box( \WP_Post $post ): void {
 		$connection_id = absint( \WorldGraph\Utils\worldgraph_get_field_value( $post->ID, 'connection_id' ) );
+		if ( ! $connection_id ) {
+			echo '<p>' . esc_html__( 'Save this Template with a Connection before running provider checks.', 'worldgraph' ) . '</p>';
+			return;
+		}
+		if ( ! \WorldGraph\Utils\Connection_Repository::current_user_can_manage( $connection_id ) ) {
+			echo '<p>' . esc_html__( 'A site administrator who can manage the selected Connection must run provider checks, discovery, imports, and downloads.', 'worldgraph' ) . '</p>';
+			return;
+		}
+
 		$connection = \WorldGraph\Utils\Connection_Repository::get( $connection_id );
 		if ( ! $connection || 'comfyui' !== $connection['provider_type'] ) {
 			echo '<p>' . esc_html__( 'This Template is paired with a non-ComfyUI provider. Use that provider connection\'s adapter to discover and download its requirements.', 'worldgraph' ) . '</p>';
@@ -465,10 +492,22 @@ class Template {
 		$result  = \WorldGraph\Utils\Template_Smoke_Check::run_for_template( $post_id );
 
 		if ( ! empty( $result['passed'] ) ) {
-			wp_send_json_success( [ 'message' => sprintf( __( 'Smoke test passed: %s', 'worldgraph' ), (string) ( $result['message'] ?? __( 'Template queue smoke check passed.', 'worldgraph' ) ) ) ] );
+			wp_send_json_success( [
+				'message' => sprintf(
+					/* translators: %s: smoke-test result message. */
+					__( 'Smoke test passed: %s', 'worldgraph' ),
+					(string) ( $result['message'] ?? __( 'Template queue smoke check passed.', 'worldgraph' ) )
+				),
+			] );
 		}
 
-		wp_send_json_error( [ 'message' => sprintf( __( 'Smoke test failed: %s', 'worldgraph' ), (string) ( $result['message'] ?? __( 'No result was reported.', 'worldgraph' ) ) ) ] );
+		wp_send_json_error( [
+			'message' => sprintf(
+				/* translators: %s: smoke-test result message. */
+				__( 'Smoke test failed: %s', 'worldgraph' ),
+				(string) ( $result['message'] ?? __( 'No result was reported.', 'worldgraph' ) )
+			),
+		] );
 	}
 
 	public static function ajax_check_requirements(): void {
@@ -537,7 +576,7 @@ class Template {
 	public static function ajax_discover_comfy_templates(): void {
 		$post_id = self::authorize_requirements_request();
 		$connection_id = absint( \WorldGraph\Utils\worldgraph_get_field_value( $post_id, 'connection_id' ) );
-		$result = \WorldGraph\Utils\Comfy_Manifest::discover_provider_templates( sanitize_text_field( wp_unslash( $_POST['search'] ?? '' ) ), $connection_id );
+		$result = \WorldGraph\Utils\Comfy_Manifest::discover_provider_templates( sanitize_text_field( wp_unslash( $_POST['search'] ?? '' ) ), $connection_id ); // phpcs:ignore WordPress.Security.NonceVerification.Missing -- authorize_requirements_request() verified this AJAX request.
 		if ( is_wp_error( $result ) ) {
 			wp_send_json_error( [ 'message' => $result->get_error_message() ] );
 		}
@@ -559,7 +598,14 @@ class Template {
 			wp_send_json_error( [ 'message' => $result->get_error_message() ] );
 		}
 
-		wp_send_json_success( [ 'message' => sprintf( __( 'Requested %d provider Template requirement downloads.', 'worldgraph' ), count( $result['requested'] ?? [] ) ), 'result' => $result ] );
+		wp_send_json_success( [
+			'message' => sprintf(
+				/* translators: %d: number of provider Template requirement downloads requested. */
+				__( 'Requested %d provider Template requirement downloads.', 'worldgraph' ),
+				count( $result['requested'] ?? [] )
+			),
+			'result'  => $result,
+		] );
 	}
 
 	/** Import a provider template definition into this World Graph Studio Template post. */
@@ -642,7 +688,7 @@ class Template {
 	 * @return string
 	 */
 	private static function requested_provider_template_id( int $post_id ): string {
-		$posted = isset( $_POST['provider_template_id'] )
+		$posted = isset( $_POST['provider_template_id'] ) // phpcs:ignore WordPress.Security.NonceVerification.Missing -- authorize_requirements_request() verified every caller.
 			? sanitize_text_field( wp_unslash( $_POST['provider_template_id'] ) ) // phpcs:ignore WordPress.Security.NonceVerification.Missing -- verified in authorize_requirements_request().
 			: '';
 		if ( '' !== $posted ) {
@@ -661,13 +707,40 @@ class Template {
 	 */
 	private static function authorize_requirements_request(): int {
 		check_ajax_referer( 'worldgraph_template_requirements', 'nonce' );
-		$post_id = absint( $_POST['post_id'] ?? 0 );
-		if ( ! $post_id || ! current_user_can( 'edit_post', $post_id ) ) {
+		$post_id = isset( $_POST['post_id'] ) ? absint( wp_unslash( $_POST['post_id'] ) ) : 0;
+		$post    = $post_id ? get_post( $post_id ) : null;
+		if ( ! $post instanceof \WP_Post || 'worldgraph_template' !== $post->post_type || ! current_user_can( 'edit_post', $post_id ) ) {
 			wp_send_json_error( [ 'message' => __( 'You do not have permission to inspect this Template.', 'worldgraph' ) ], 403 );
+		}
+
+		$connection_id = absint( \WorldGraph\Utils\worldgraph_get_field_value( $post_id, 'connection_id' ) );
+		if ( ! $connection_id ) {
+			wp_send_json_error( [ 'message' => __( 'Save this Template with a Connection before running provider operations.', 'worldgraph' ) ], 400 );
+		}
+		if ( ! \WorldGraph\Utils\Connection_Repository::current_user_can_manage( $connection_id ) ) {
+			wp_send_json_error( [ 'message' => __( 'You do not have permission to manage this Template\'s Connection.', 'worldgraph' ) ], 403 );
+		}
+
+		$connection = \WorldGraph\Utils\Connection_Repository::get( $connection_id );
+		if ( ! is_array( $connection ) || 'comfyui' !== (string) ( $connection['provider_type'] ?? '' ) ) {
+			wp_send_json_error( [ 'message' => __( 'This Template is not paired with a ComfyUI Connection.', 'worldgraph' ) ], 400 );
 		}
 		\WorldGraph\Utils\Connection_Adapters::load( 'comfyui' );
 
 		return $post_id;
+	}
+
+	/**
+	 * Whether the current user may expose the provider-operation controls for a
+	 * Template. Ordinary Template editing does not require this privilege.
+	 *
+	 * @param int $post_id Template post ID.
+	 * @return bool
+	 */
+	private static function current_user_can_manage_provider_operations( int $post_id ): bool {
+		$connection_id = absint( \WorldGraph\Utils\worldgraph_get_field_value( $post_id, 'connection_id' ) );
+
+		return $connection_id && \WorldGraph\Utils\Connection_Repository::current_user_can_manage( $connection_id );
 	}
 
 	/**

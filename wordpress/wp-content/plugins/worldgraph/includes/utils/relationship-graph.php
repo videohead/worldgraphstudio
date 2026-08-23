@@ -15,6 +15,8 @@
 
 namespace WorldGraph\Utils;
 
+defined( 'ABSPATH' ) || exit;
+
 /**
  * Fetch relationship graph from local Story Graph.
  *

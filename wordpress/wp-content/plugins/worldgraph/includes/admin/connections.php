@@ -70,7 +70,7 @@ class Connections {
 	public static function handle_test_connection(): void {
 		self::verify_action( 'worldgraph_test_connection' );
 
-		$connection_id = isset( $_GET['connection_id'] ) ? absint( $_GET['connection_id'] ) : 0;
+		$connection_id = isset( $_GET['connection_id'] ) ? absint( wp_unslash( $_GET['connection_id'] ) ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- verify_action() validated this admin action.
 		$result        = Connection_Tester::test( $connection_id );
 		\WorldGraph\Utils\Generation_Log::add(
 			$result['success'] ? 'info' : 'error',
@@ -121,7 +121,7 @@ class Connections {
 	public static function handle_set_active_connection(): void {
 		self::verify_action( 'worldgraph_set_active_connection' );
 
-		$connection_id = isset( $_GET['connection_id'] ) ? absint( $_GET['connection_id'] ) : 0;
+		$connection_id = isset( $_GET['connection_id'] ) ? absint( wp_unslash( $_GET['connection_id'] ) ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- verify_action() validated this admin action.
 		$connection    = Connection_Repository::get( $connection_id );
 		if ( $connection ) {
 			\WorldGraph\Utils\worldgraph_update_field_value( $connection_id, 'is_default', 'yes' );
@@ -171,7 +171,7 @@ class Connections {
 			if ( 'saved' === $_GET['worldgraph_conns'] ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 				$notice = __( 'Connection saved.', 'worldgraph' );
 			} else {
-				$notice = isset( $_GET['message'] ) ? sanitize_text_field( rawurldecode( wp_unslash( $_GET['message'] ) ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+				$notice = isset( $_GET['message'] ) ? sanitize_text_field( rawurldecode( wp_unslash( $_GET['message'] ) ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended,WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Read-only redirect notice is decoded, sanitized, and escaped on output.
 				$notice_type = ( isset( $_GET['success'] ) && '1' === $_GET['success'] ) ? 'success' : 'error'; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 			}
 		}
@@ -311,14 +311,22 @@ class Connections {
 			return [
 				'label'  => __( 'Connected', 'worldgraph' ),
 				'tone'   => 'success',
-				'detail' => $checked ? sprintf( __( 'Checked %s', 'worldgraph' ), $checked ) : __( 'Provider responded successfully.', 'worldgraph' ),
+				'detail' => $checked ? sprintf(
+					/* translators: %s: formatted date and time of the connection check. */
+					__( 'Checked %s', 'worldgraph' ),
+					$checked
+				) : __( 'Provider responded successfully.', 'worldgraph' ),
 			];
 		}
 		if ( 'error' === $status ) {
 			return [
 				'label'  => __( 'Needs attention', 'worldgraph' ),
 				'tone'   => 'error',
-				'detail' => $checked ? sprintf( __( 'Last checked %s', 'worldgraph' ), $checked ) : __( 'The last connection check failed.', 'worldgraph' ),
+				'detail' => $checked ? sprintf(
+					/* translators: %s: formatted date and time of the connection check. */
+					__( 'Last checked %s', 'worldgraph' ),
+					$checked
+				) : __( 'The last connection check failed.', 'worldgraph' ),
 			];
 		}
 
@@ -355,7 +363,11 @@ class Connections {
 			return [
 				'label'     => __( 'Paused', 'worldgraph' ),
 				'tone'      => 'neutral',
-				'summary'   => sprintf( _n( '%d existing Generation Template is retained.', '%d existing Generation Templates are retained.', $template_count, 'worldgraph' ), $template_count ),
+				'summary'   => sprintf(
+					/* translators: %d: number of retained Generation Templates. */
+					_n( '%d existing Generation Template is retained.', '%d existing Generation Templates are retained.', $template_count, 'worldgraph' ),
+					$template_count
+				),
 				'refreshed' => '',
 				'activity'  => $activity,
 			];
@@ -387,8 +399,19 @@ class Connections {
 			return [
 				'label'     => $label,
 				'tone'      => $tone,
-				'summary'   => sprintf( __( '%1$d available · %2$d ready now · %3$d added to Studio · %4$d need attention', 'worldgraph' ), $total, $ready, $template_count, $attention ),
-				'refreshed' => $synced_at ? sprintf( __( 'Workflows refreshed %s', 'worldgraph' ), $synced_at ) : __( 'Open setup to refresh available workflows.', 'worldgraph' ),
+				'summary'   => sprintf(
+					/* translators: 1: available workflows, 2: ready workflows, 3: workflows added to Studio, 4: workflows needing attention. */
+					__( '%1$d available · %2$d ready now · %3$d added to Studio · %4$d need attention', 'worldgraph' ),
+					$total,
+					$ready,
+					$template_count,
+					$attention
+				),
+				'refreshed' => $synced_at ? sprintf(
+					/* translators: %s: formatted date and time when workflows were refreshed. */
+					__( 'Workflows refreshed %s', 'worldgraph' ),
+					$synced_at
+				) : __( 'Open setup to refresh available workflows.', 'worldgraph' ),
 				'activity'  => $activity,
 			];
 		}
@@ -408,8 +431,16 @@ class Connections {
 			return [
 				'label'     => $has_error ? __( 'Needs attention', 'worldgraph' ) : ( $synced_at ? __( 'Ready', 'worldgraph' ) : __( 'Setup pending', 'worldgraph' ) ),
 				'tone'      => $has_error ? 'error' : ( $synced_at ? 'success' : 'warning' ),
-				'summary'   => $has_error ? $error : sprintf( _n( '%d Generation Template is available.', '%d Generation Templates are available.', $template_count, 'worldgraph' ), $template_count ),
-				'refreshed' => $synced_at ? sprintf( __( 'Workflows refreshed %s', 'worldgraph' ), $synced_at ) : __( 'Save or check this Connection to discover workflows.', 'worldgraph' ),
+				'summary'   => $has_error ? $error : sprintf(
+					/* translators: %d: number of available Generation Templates. */
+					_n( '%d Generation Template is available.', '%d Generation Templates are available.', $template_count, 'worldgraph' ),
+					$template_count
+				),
+				'refreshed' => $synced_at ? sprintf(
+					/* translators: %s: formatted date and time when workflows were refreshed. */
+					__( 'Workflows refreshed %s', 'worldgraph' ),
+					$synced_at
+				) : __( 'Save or check this Connection to discover workflows.', 'worldgraph' ),
 				'activity'  => $activity,
 			];
 		}
@@ -418,7 +449,11 @@ class Connections {
 			'label'     => $template_count ? __( 'Ready', 'worldgraph' ) : __( 'No workflow setup', 'worldgraph' ),
 			'tone'      => $template_count ? 'success' : 'neutral',
 			'summary'   => $template_count
-				? sprintf( _n( '%d Generation Template is available.', '%d Generation Templates are available.', $template_count, 'worldgraph' ), $template_count )
+				? sprintf(
+					/* translators: %d: number of available Generation Templates. */
+					_n( '%d Generation Template is available.', '%d Generation Templates are available.', $template_count, 'worldgraph' ),
+					$template_count
+				)
 				: __( 'This provider does not publish reusable workflows through the Connection screen.', 'worldgraph' ),
 			'refreshed' => '',
 			'activity'  => $activity,

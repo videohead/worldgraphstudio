@@ -1,13 +1,13 @@
 <?php
 /**
  * Plugin Name: World Graph Studio - Headless Revalidation
- * Plugin URI: https://github.com/videohead/worldgraph
+ * Plugin URI: https://github.com/videohead/storyos
  * Description: Notifies an optional headless Next.js frontend (see /headless, based on 9d8dev/next-wp) to revalidate its cache when content changes.
  * Version: 1.1.0
  * Author: World Graph Studio Contributors
  * License: GPL v2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
- * Text Domain: worldgraph-headless
+ * Text Domain: worldgraph
  * Requires Plugins: worldgraph
  * Requires at least: 6.0
  * Requires PHP: 8.1
@@ -32,7 +32,7 @@ define( 'WORLDGRAPH_HEADLESS_NOTICE', 'worldgraph_headless_revalidation_failure'
  * @return bool
  */
 function is_enabled(): bool {
-	$settings = get_settings();
+	$settings = get_headless_settings();
 	return ! empty( $settings['next_url'] ) && ! empty( $settings['webhook_secret'] );
 }
 
@@ -41,7 +41,7 @@ function is_enabled(): bool {
  *
  * @return array{next_url: string, webhook_secret: string, notifications: bool}
  */
-function get_settings(): array {
+function get_headless_settings(): array {
 	$defaults = [
 		'next_url'       => '',
 		'webhook_secret' => '',
@@ -89,8 +89,8 @@ function init(): void {
  */
 function add_settings_page(): void {
 	add_options_page(
-		__( 'Headless Revalidation', 'worldgraph-headless' ),
-		__( 'Headless Revalidation', 'worldgraph-headless' ),
+		__( 'Headless Revalidation', 'worldgraph' ),
+		__( 'Headless Revalidation', 'worldgraph' ),
 		'manage_options',
 		'worldgraph-headless',
 		__NAMESPACE__ . '\\render_settings_page'
@@ -130,19 +130,19 @@ function render_settings_page(): void {
 		return;
 	}
 
-	$settings = get_settings();
+	$settings = get_headless_settings();
 	?>
 	<div class="wrap">
-		<h1><?php esc_html_e( 'Headless Revalidation', 'worldgraph-headless' ); ?></h1>
+		<h1><?php esc_html_e( 'Headless Revalidation', 'worldgraph' ); ?></h1>
 		<p>
-			<?php esc_html_e( 'Configure the optional headless Next.js frontend (see the /headless directory, based on 9d8dev/next-wp) so WordPress can tell it to refresh its cache.', 'worldgraph-headless' ); ?>
+			<?php esc_html_e( 'Configure the optional headless Next.js frontend (see the /headless directory, based on 9d8dev/next-wp) so WordPress can tell it to refresh its cache.', 'worldgraph' ); ?>
 		</p>
 		<form method="post" action="options.php">
 			<?php settings_fields( 'worldgraph_headless' ); ?>
 			<table class="form-table" role="presentation">
 				<tr>
 					<th scope="row">
-						<label for="worldgraph_headless_next_url"><?php esc_html_e( 'Next.js Site URL', 'worldgraph-headless' ); ?></label>
+						<label for="worldgraph_headless_next_url"><?php esc_html_e( 'Next.js Site URL', 'worldgraph' ); ?></label>
 					</th>
 					<td>
 						<input
@@ -157,23 +157,24 @@ function render_settings_page(): void {
 				</tr>
 				<tr>
 					<th scope="row">
-						<label for="worldgraph_headless_secret"><?php esc_html_e( 'Webhook Secret', 'worldgraph-headless' ); ?></label>
+						<label for="worldgraph_headless_secret"><?php esc_html_e( 'Webhook Secret', 'worldgraph' ); ?></label>
 					</th>
 					<td>
 						<input
-							type="text"
+							type="password"
 							id="worldgraph_headless_secret"
 							name="<?php echo esc_attr( WORLDGRAPH_HEADLESS_OPTION ); ?>[webhook_secret]"
-							value="<?php echo esc_attr( $settings['webhook_secret'] ); ?>"
+							value="<?php echo esc_attr( \WorldGraph\Utils\Credential_Store::masked_value( $settings['webhook_secret'] ) ); ?>"
 							class="regular-text"
+							autocomplete="new-password"
 						/>
 						<p class="description">
-							<?php esc_html_e( 'Must match WORDPRESS_WEBHOOK_SECRET in the headless app\'s .env.local.', 'worldgraph-headless' ); ?>
+							<?php esc_html_e( 'Must match WORDPRESS_WEBHOOK_SECRET in the headless app\'s .env.local. It is encrypted in the WordPress database; leave the masked value unchanged to keep it.', 'worldgraph' ); ?>
 						</p>
 					</td>
 				</tr>
 				<tr>
-					<th scope="row"><?php esc_html_e( 'Admin Notifications', 'worldgraph-headless' ); ?></th>
+					<th scope="row"><?php esc_html_e( 'Admin Notifications', 'worldgraph' ); ?></th>
 					<td>
 						<label>
 							<input
@@ -182,7 +183,7 @@ function render_settings_page(): void {
 								value="1"
 								<?php checked( $settings['notifications'] ); ?>
 							/>
-							<?php esc_html_e( 'Show an admin notice if a revalidation request fails.', 'worldgraph-headless' ); ?>
+							<?php esc_html_e( 'Show an admin notice if a revalidation request fails.', 'worldgraph' ); ?>
 						</label>
 					</td>
 				</tr>
@@ -218,7 +219,10 @@ function render_failure_notice(): void {
  * @param array<string, mixed> $settings Module settings.
  */
 function record_failure( string $message, array $settings ): void {
-	error_log( '[worldgraph-headless] ' . $message );
+	if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+		// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Failures are logged only when site debugging is explicitly enabled.
+		error_log( '[worldgraph-headless] ' . $message );
+	}
 	if ( ! empty( $settings['notifications'] ) ) {
 		set_transient( WORLDGRAPH_HEADLESS_NOTICE, $message, MINUTE_IN_SECONDS );
 	}
@@ -279,7 +283,7 @@ function is_allowed_local_revalidation_target( string $url ): bool {
  * @param string|null     $story_type   Optional plural Story route key.
  */
 function send_webhook( string $content_type, $content_id = null, ?string $slug = null, ?string $story_type = null ): void {
-	$settings = get_settings();
+	$settings = get_headless_settings();
 
 	if ( empty( $settings['next_url'] ) || empty( $settings['webhook_secret'] ) ) {
 		return;

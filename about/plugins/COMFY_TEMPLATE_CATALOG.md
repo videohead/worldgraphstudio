@@ -225,6 +225,10 @@ import, and provenance flow are delivered.
 ## Security rules
 
 - Only users allowed to edit the Connection may mutate its catalog.
+- Template editing remains available under the normal post capabilities, but
+  Connection-backed checks, discovery, imports, smoke tests, and model-download
+  requests require `manage_options` and permission to edit the selected
+  Connection.
 - Provider catalog data and URLs are untrusted input.
 - Credentials are resolved by the provider adapter and must not be copied into
   catalog snapshots, Template workflow JSON, generation records, or logs.

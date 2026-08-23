@@ -148,6 +148,10 @@ class Settings {
 	 * Render the settings page.
 	 */
 	public function render_settings_page(): void {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'You are not allowed to manage Celtx Sync.', 'worldgraph' ) );
+		}
+
 		// Get current credentials.
 		$credentials = get_option( self::OPTION_NAME, [
 			'api_key'    => '',
@@ -158,13 +162,15 @@ class Settings {
 		$message = '';
 		$message_type = '';
 
-		if ( isset( $_POST['celtx_settings_submit'] ) && wp_verify_nonce( $_POST['celtx_settings_nonce'], 'celtx_settings' ) ) {
+		$settings_nonce = isset( $_POST['celtx_settings_nonce'] ) ? sanitize_text_field( wp_unslash( $_POST['celtx_settings_nonce'] ) ) : '';
+		if ( isset( $_POST['celtx_settings_submit'] ) && wp_verify_nonce( $settings_nonce, 'celtx_settings' ) ) {
 			// Save settings.
-			$sanitized = $this->sanitize_credentials( $_POST['celtx_credentials'] );
+			$submitted_credentials = isset( $_POST['celtx_credentials'] ) && is_array( $_POST['celtx_credentials'] ) ? wp_unslash( $_POST['celtx_credentials'] ) : []; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- sanitize_credentials() allowlists and sanitizes both supported fields immediately below.
+			$sanitized = $this->sanitize_credentials( $submitted_credentials );
 			update_option( self::OPTION_NAME, $sanitized );
 
 			// Save enabled/disabled state.
-			$enabled = isset( $_POST['celtx_enabled'] ) && (int) $_POST['celtx_enabled'] === 1;
+			$enabled = isset( $_POST['celtx_enabled'] ) && 1 === absint( wp_unslash( $_POST['celtx_enabled'] ) );
 			if ( $enabled ) {
 				self::enable();
 			} else {
@@ -178,7 +184,8 @@ class Settings {
 		}
 
 		// Handle test connection.
-		if ( isset( $_POST['celtx_test_connection'] ) && wp_verify_nonce( $_POST['celtx_test_nonce'], 'celtx_test' ) ) {
+		$test_nonce = isset( $_POST['celtx_test_nonce'] ) ? sanitize_text_field( wp_unslash( $_POST['celtx_test_nonce'] ) ) : '';
+		if ( isset( $_POST['celtx_test_connection'] ) && wp_verify_nonce( $test_nonce, 'celtx_test' ) ) {
 			$client = \WorldGraphCeltx\API\Client::from_credentials();
 			
 			if ( $client ) {
@@ -222,12 +229,13 @@ class Settings {
 								type="password" 
 								id="celtx_credentials_api_key" 
 								name="celtx_credentials[api_key]" 
-								value="<?php echo esc_attr( $credentials['api_key'] ); ?>" 
+								value="<?php echo esc_attr( \WorldGraph\Utils\Credential_Store::masked_value( $credentials['api_key'] ?? '' ) ); ?>"
 								class="regular-text"
+								autocomplete="new-password"
 								placeholder="Enter your Celtx API key"
 							/>
 							<p class="description">
-								Your Celtx API key can be found in your Celtx account settings or API documentation.
+								Your Celtx API key is encrypted in the database. Leave the masked value unchanged to keep it.
 							</p>
 						</td>
 					</tr>
@@ -278,7 +286,7 @@ class Settings {
 						name="celtx_settings_submit" 
 						id="celtx_settings_submit" 
 						class="button button-primary" 
-						value="<?php esc_attr_e( 'Save Settings', 'worldgraph-celtx' ); ?>"
+						value="<?php esc_attr_e( 'Save Settings', 'worldgraph' ); ?>"
 					/>
 					<?php wp_nonce_field( 'celtx_settings', 'celtx_settings_nonce' ); ?>
 				</p>
@@ -296,7 +304,7 @@ class Settings {
 						name="celtx_test_connection" 
 						id="celtx_test_connection" 
 						class="button button-secondary" 
-						value="<?php esc_attr_e( 'Test Connection', 'worldgraph-celtx' ); ?>"
+						value="<?php esc_attr_e( 'Test Connection', 'worldgraph' ); ?>"
 					/>
 					<?php wp_nonce_field( 'celtx_test', 'celtx_test_nonce' ); ?>
 				</p>

@@ -193,12 +193,67 @@ class Generation_Workflows {
 	/** Six continuity-sensitive look-development views for a subject. */
 	private static function look_outputs( string $prefix, string $subject ): array {
 		return [
-			self::output( $prefix . '-full-view', 'image', __( 'Full view', 'worldgraph' ), sprintf( __( 'Create a complete head-to-toe or edge-to-edge full view of the %s, fully visible, centered, and unobstructed. Establish the canonical proportions, silhouette, materials, colors, and identifying details.', 'worldgraph' ), $subject ), true ),
-			self::output( $prefix . '-front-view', 'image', __( 'Front view', 'worldgraph' ), sprintf( __( 'Create a straight-on front orthographic-style view of the same %s. Preserve exact proportions, colors, construction, styling, and identifying details from the canonical design.', 'worldgraph' ), $subject ) ),
-			self::output( $prefix . '-three-quarter-view', 'image', __( 'Three-quarter view', 'worldgraph' ), sprintf( __( 'Create a three-quarter view of the same %s that clearly reveals volume and depth while preserving exact design continuity.', 'worldgraph' ), $subject ) ),
-			self::output( $prefix . '-profile-view', 'image', __( 'Profile view', 'worldgraph' ), sprintf( __( 'Create a clean side-profile view of the same %s, preserving the exact silhouette, proportions, materials, colors, and identifying details.', 'worldgraph' ), $subject ) ),
-			self::output( $prefix . '-back-view', 'image', __( 'Back view', 'worldgraph' ), sprintf( __( 'Create a straight-on back view of the same %s, revealing rear construction and details while preserving exact continuity with every other view.', 'worldgraph' ), $subject ) ),
-			self::output( $prefix . '-close-up', 'image', __( 'Close-up', 'worldgraph' ), sprintf( __( 'Create a close-up of the same %s focused on its most story-defining features, surface detail, materials, and craftsmanship. Preserve exact continuity.', 'worldgraph' ), $subject ) ),
+			self::output(
+				$prefix . '-full-view',
+				'image',
+				__( 'Full view', 'worldgraph' ),
+				sprintf(
+					/* translators: %s: subject type, such as character or location. */
+					__( 'Create a complete head-to-toe or edge-to-edge full view of the %s, fully visible, centered, and unobstructed. Establish the canonical proportions, silhouette, materials, colors, and identifying details.', 'worldgraph' ),
+					$subject
+				),
+				true
+			),
+			self::output(
+				$prefix . '-front-view',
+				'image',
+				__( 'Front view', 'worldgraph' ),
+				sprintf(
+					/* translators: %s: subject type, such as character or location. */
+					__( 'Create a straight-on front orthographic-style view of the same %s. Preserve exact proportions, colors, construction, styling, and identifying details from the canonical design.', 'worldgraph' ),
+					$subject
+				)
+			),
+			self::output(
+				$prefix . '-three-quarter-view',
+				'image',
+				__( 'Three-quarter view', 'worldgraph' ),
+				sprintf(
+					/* translators: %s: subject type, such as character or location. */
+					__( 'Create a three-quarter view of the same %s that clearly reveals volume and depth while preserving exact design continuity.', 'worldgraph' ),
+					$subject
+				)
+			),
+			self::output(
+				$prefix . '-profile-view',
+				'image',
+				__( 'Profile view', 'worldgraph' ),
+				sprintf(
+					/* translators: %s: subject type, such as character or location. */
+					__( 'Create a clean side-profile view of the same %s, preserving the exact silhouette, proportions, materials, colors, and identifying details.', 'worldgraph' ),
+					$subject
+				)
+			),
+			self::output(
+				$prefix . '-back-view',
+				'image',
+				__( 'Back view', 'worldgraph' ),
+				sprintf(
+					/* translators: %s: subject type, such as character or location. */
+					__( 'Create a straight-on back view of the same %s, revealing rear construction and details while preserving exact continuity with every other view.', 'worldgraph' ),
+					$subject
+				)
+			),
+			self::output(
+				$prefix . '-close-up',
+				'image',
+				__( 'Close-up', 'worldgraph' ),
+				sprintf(
+					/* translators: %s: subject type, such as character or location. */
+					__( 'Create a close-up of the same %s focused on its most story-defining features, surface detail, materials, and craftsmanship. Preserve exact continuity.', 'worldgraph' ),
+					$subject
+				)
+			),
 		];
 	}
 
@@ -533,7 +588,16 @@ class Generation_Workflows {
 
 		$maximum = max( 1, (int) apply_filters( 'worldgraph_generation_batch_max_tasks', self::MAX_BATCH_TASKS, $post_id, $scope ) );
 		if ( count( $tasks ) > $maximum ) {
-			return new WP_Error( 'worldgraph_generation_batch_too_large', sprintf( __( 'This plan contains %1$d jobs; the current limit is %2$d.', 'worldgraph' ), count( $tasks ), $maximum ), [ 'status' => 400 ] );
+			return new WP_Error(
+				'worldgraph_generation_batch_too_large',
+				sprintf(
+					/* translators: 1: number of jobs in the generation plan, 2: maximum number of jobs allowed. */
+					__( 'This plan contains %1$d jobs; the current limit is %2$d.', 'worldgraph' ),
+					count( $tasks ),
+					$maximum
+				),
+				[ 'status' => 400 ]
+			);
 		}
 
 		$counts = array_count_values( array_column( $tasks, 'type' ) );
@@ -826,7 +890,15 @@ class Generation_Workflows {
 		$missing        = [];
 		foreach ( $plan['tasks'] as $task ) {
 			if ( ! user_can( $requester_id, 'edit_post', (int) $task['source_id'] ) ) {
-				return new WP_Error( 'worldgraph_generation_source_forbidden', sprintf( __( 'You cannot generate media for %s.', 'worldgraph' ), $task['source_title'] ), [ 'status' => 403 ] );
+				return new WP_Error(
+					'worldgraph_generation_source_forbidden',
+					sprintf(
+						/* translators: %s: title of the Story Graph item. */
+						__( 'You cannot generate media for %s.', 'worldgraph' ),
+						$task['source_title']
+					),
+					[ 'status' => 403 ]
+				);
 			}
 			$explicit    = absint( $args[ (string) $task['type'] . '_template_id' ] ?? 0 );
 			$template_id = self::resolve_template_id( $task, $explicit );
@@ -876,7 +948,11 @@ class Generation_Workflows {
 			'post_type'   => 'worldgraph_gen',
 			'post_status' => 'draft',
 			'post_parent' => $post_id,
-			'post_title'  => sprintf( __( 'Representative media batch: %s', 'worldgraph' ), $root instanceof \WP_Post ? $root->post_title : $post_id ),
+			'post_title'  => sprintf(
+				/* translators: %s: title or ID of the Story Graph item. */
+				__( 'Representative media batch: %s', 'worldgraph' ),
+				$root instanceof \WP_Post ? $root->post_title : $post_id
+			),
 		], true );
 		if ( is_wp_error( $batch ) ) {
 			self::release_idempotency_key( $post_id, $requester_id, $idempotency_key, $reservation_token );

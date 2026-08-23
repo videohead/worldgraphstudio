@@ -46,7 +46,7 @@ class Story_Media_Gallery {
 
 	/** Show a one-shot notice when two editors changed gallery order at once. */
 	public static function render_conflict_notice(): void {
-		$post_id = isset( $_GET['post'] ) ? absint( $_GET['post'] ) : 0;
+		$post_id = isset( $_GET['post'] ) ? absint( wp_unslash( $_GET['post'] ) ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only one-shot notice lookup.
 		$user_id = get_current_user_id();
 		if ( ! $post_id || ! $user_id ) {
 			return;

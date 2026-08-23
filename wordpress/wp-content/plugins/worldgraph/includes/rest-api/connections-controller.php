@@ -25,6 +25,10 @@
 
 namespace WorldGraph\REST;
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 use WorldGraph\CPT\Connection as Connection_CPT;
 use WorldGraph\Utils\Capability_Sync;
 use WorldGraph\Utils\Connection_Repository;
@@ -55,6 +59,21 @@ class Connections_Controller extends Base_Controller {
 	public static function init(): void {
 		$instance = new self();
 		add_action( 'rest_api_init', [ $instance, 'register_routes' ] );
+	}
+
+	/**
+	 * Prepare a Connection without ever serializing its credential values.
+	 *
+	 * @param \WP_Post $post   Connection post.
+	 * @param array    $params Request parameters.
+	 * @return array<string, mixed>
+	 */
+	protected function get_item_data( \WP_Post $post, array $params = [] ): array {
+		$data = parent::get_item_data( $post, $params );
+		if ( isset( $data['meta'] ) && is_array( $data['meta'] ) ) {
+			$data['meta'] = Connection_Repository::redact_credentials( $data['meta'] );
+		}
+		return $data;
 	}
 
 	/**
@@ -274,7 +293,7 @@ class Connections_Controller extends Base_Controller {
 			return new \WP_Error( 'rest_connection_not_found', 'Connection not found.', [ 'status' => 404 ] );
 		}
 
-		return rest_ensure_response( $config );
+		return rest_ensure_response( Connection_Repository::redact_credentials( $config ) );
 	}
 
 	/**

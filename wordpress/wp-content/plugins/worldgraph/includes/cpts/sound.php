@@ -150,6 +150,7 @@ class Sound {
 	 * Validate cross-field Sound rules before SCF persists the edit form.
 	 */
 	public static function validate_scf_request(): void {
+		// phpcs:disable WordPress.Security.NonceVerification.Missing -- SCF verifies the enclosing field-group request before this validation hook runs.
 		$submitted = isset( $_POST['acf'] ) && is_array( $_POST['acf'] ) // phpcs:ignore WordPress.Security.NonceVerification.Missing -- SCF owns validation nonce handling.
 			? wp_unslash( $_POST['acf'] ) // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- validated by field below.
 			: [];
@@ -162,14 +163,17 @@ class Sound {
 			}
 		}
 
-		$post_id = absint( $_POST['post_ID'] ?? $_POST['_acf_post_id'] ?? 0 ); // phpcs:ignore WordPress.Security.NonceVerification.Missing -- validation only.
+		$post_id = isset( $_POST['post_ID'] )
+			? absint( wp_unslash( $_POST['post_ID'] ) ) // phpcs:ignore WordPress.Security.NonceVerification.Missing -- SCF owns validation nonce handling.
+			: ( isset( $_POST['_acf_post_id'] ) ? absint( wp_unslash( $_POST['_acf_post_id'] ) ) : 0 ); // phpcs:ignore WordPress.Security.NonceVerification.Missing -- SCF owns validation nonce handling.
 		if ( ! $is_sound && ( ! $post_id || 'worldgraph_sound' !== get_post_type( $post_id ) ) ) {
 			return;
 		}
 
-		if ( isset( $_POST['post_title'] ) && '' === trim( (string) wp_unslash( $_POST['post_title'] ) ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing -- validation only.
+		if ( isset( $_POST['post_title'] ) && '' === trim( sanitize_text_field( wp_unslash( $_POST['post_title'] ) ) ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing -- validation only.
 			acf_add_validation_error( 'post_title', __( 'A Sound title is required.', 'worldgraph' ) );
 		}
+		// phpcs:enable WordPress.Security.NonceVerification.Missing
 
 		$type_id      = absint( self::scf_request_value( 'sound_type', $submitted, $post_id ) );
 		$scene_id     = absint( self::scf_request_value( 'scene', $submitted, $post_id ) );

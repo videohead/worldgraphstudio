@@ -7,6 +7,8 @@
 
 namespace WorldGraph\Utils;
 
+defined( 'ABSPATH' ) || exit;
+
 /**
  * Relationship types defined by the Story Graph.
  *

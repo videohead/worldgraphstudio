@@ -906,9 +906,15 @@ class Template_Run_Controls {
 	/** Human-readable message for a validation reason. */
 	private static function validation_message( string $reason, string $field ): string {
 		$messages = [
-			'type'  => __( 'Generation control %s has the wrong value type.', 'worldgraph' ),
-			'range' => __( 'Generation control %s is outside its allowed range.', 'worldgraph' ),
-			'enum'  => __( 'Generation control %s is not one of its allowed values.', 'worldgraph' ),
+			'type'  =>
+				/* translators: %s: generation control field name. */
+				__( 'Generation control %s has the wrong value type.', 'worldgraph' ),
+			'range' =>
+				/* translators: %s: generation control field name. */
+				__( 'Generation control %s is outside its allowed range.', 'worldgraph' ),
+			'enum'  =>
+				/* translators: %s: generation control field name. */
+				__( 'Generation control %s is not one of its allowed values.', 'worldgraph' ),
 		];
 
 		return sprintf( $messages[ $reason ] ?? $messages['type'], $field );
@@ -1636,7 +1642,7 @@ class Template_Run_Controls {
 
 	/** Strip markup/control characters and bound public metadata strings. */
 	private static function bounded_plain_text( string $value, int $maximum ): string {
-		$value = function_exists( 'wp_strip_all_tags' ) ? wp_strip_all_tags( $value, true ) : strip_tags( $value );
+		$value = wp_strip_all_tags( $value, true );
 		$value = preg_replace( '/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', '', (string) $value );
 		$value = preg_replace( '/\s+/u', ' ', (string) $value );
 		$value = trim( (string) $value );

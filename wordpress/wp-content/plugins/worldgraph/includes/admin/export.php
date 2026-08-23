@@ -49,7 +49,7 @@ class Export {
 		}
 		check_admin_referer( 'worldgraph_export_markdown' );
 
-		$project_id = isset( $_POST['worldgraph_project_id'] ) ? absint( $_POST['worldgraph_project_id'] ) : 0;
+		$project_id = isset( $_POST['worldgraph_project_id'] ) ? absint( wp_unslash( $_POST['worldgraph_project_id'] ) ) : 0;
 		$format     = isset( $_POST['worldgraph_export_format'] ) ? sanitize_key( wp_unslash( $_POST['worldgraph_export_format'] ) ) : 'screenplay';
 		if ( ! $project_id ) {
 			wp_safe_redirect( add_query_arg( [ 'page' => 'worldgraph-export', 'error' => 'empty' ], admin_url( 'admin.php' ) ) );
@@ -70,6 +70,7 @@ class Export {
 		header( 'Content-Type: text/markdown; charset=UTF-8' );
 		header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
 		header( 'Content-Length: ' . strlen( $markdown ) );
+		// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- This is a generated Markdown download, not HTML output.
 		echo $markdown;
 		exit;
 	}
@@ -78,7 +79,7 @@ class Export {
 	 * Render the export page.
 	 */
 	public static function render_page(): void {
-		$error = isset( $_GET['error'] ) ? sanitize_text_field( wp_unslash( $_GET['error'] ) ) : '';
+		$error = isset( $_GET['error'] ) ? sanitize_text_field( wp_unslash( $_GET['error'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only redirect notice.
 		$projects = get_posts( [
 			'post_type'      => 'worldgraph_project',
 			'post_status'    => 'publish',

@@ -10,6 +10,8 @@
 
 namespace WorldGraph\Utils;
 
+defined( 'ABSPATH' ) || exit;
+
 /**
  * Fetch continuity validation from local analysis.
  *
@@ -78,7 +80,8 @@ function auto_check_continuity_on_save( int $post_id, \WP_Post $post, bool $upda
 	}
 
 	// Check if validation was explicitly requested via a meta flag.
-	$force = isset( $_POST['worldgraph_force_validation'] ) && wp_verify_nonce( $_POST['worldgraph_force_validation'] ?? '', 'worldgraph_validation' );
+	$validation_nonce = isset( $_POST['worldgraph_force_validation'] ) ? sanitize_text_field( wp_unslash( $_POST['worldgraph_force_validation'] ) ) : '';
+	$force            = '' !== $validation_nonce && wp_verify_nonce( $validation_nonce, 'worldgraph_validation' );
 	if ( ! $force && ! $update ) {
 		// On initial create, only force validate. On update, always validate.
 		return;

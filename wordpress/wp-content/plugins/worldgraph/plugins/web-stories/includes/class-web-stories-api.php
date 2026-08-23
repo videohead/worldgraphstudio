@@ -76,7 +76,7 @@ class Client {
 		$data = json_decode( $body, true );
 
 		if ( ! is_array( $data ) ) {
-			return new \WP_Error( 'invalid_response', __( 'Invalid response from Web Stories API.', 'worldgraph-web-stories' ) );
+			return new \WP_Error( 'invalid_response', __( 'Invalid response from Web Stories API.', 'worldgraph' ) );
 		}
 
 		return $data;
@@ -110,7 +110,7 @@ class Client {
 		$data = json_decode( $body, true );
 
 		if ( ! is_array( $data ) ) {
-			return new \WP_Error( 'invalid_response', __( 'Invalid response from Web Stories API.', 'worldgraph-web-stories' ) );
+			return new \WP_Error( 'invalid_response', __( 'Invalid response from Web Stories API.', 'worldgraph' ) );
 		}
 
 		return $data;
@@ -176,7 +176,7 @@ class Client {
 		$data = json_decode( $body, true );
 
 		if ( ! is_array( $data ) ) {
-			return new \WP_Error( 'invalid_response', __( 'Invalid response from Web Stories API.', 'worldgraph-web-stories' ) );
+			return new \WP_Error( 'invalid_response', __( 'Invalid response from Web Stories API.', 'worldgraph' ) );
 		}
 
 		return $data;
@@ -213,7 +213,7 @@ class Client {
 		$result = json_decode( $body, true );
 
 		if ( ! is_array( $result ) ) {
-			return new \WP_Error( 'invalid_response', __( 'Invalid response from Web Stories API.', 'worldgraph-web-stories' ) );
+			return new \WP_Error( 'invalid_response', __( 'Invalid response from Web Stories API.', 'worldgraph' ) );
 		}
 
 		return $result;
