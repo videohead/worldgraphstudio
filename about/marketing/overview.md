@@ -98,8 +98,8 @@ have their own prices, quotas, licenses, moderation rules, and terms.
 
 ## Core principles
 
-- **Free and open source.** The project is published under GNU GPL v2-or-later;
-  third-party components and dependencies retain their respective licenses.
+- **Free and open source.** The project's default license is GNU GPL
+  v2-or-later; components with their own notices retain those terms.
 - **Self-hosted.** Run the application and Story Graph in an environment you
   control.
 - **No World Graph Studio credits.** Local and open-model workflows do not
