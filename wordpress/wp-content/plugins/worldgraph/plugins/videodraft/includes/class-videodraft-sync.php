@@ -163,6 +163,9 @@ class Sync {
 		if ( self::$syncing ) {
 			return new WP_Error( 'videodraft_sync_reentrant', __( 'A VideoDraft sync is already running.', 'worldgraph' ) );
 		}
+		if ( ! class_exists( '\\WorldGraph\\Importer\\WorldGraph_Importer' ) ) {
+			return new WP_Error( 'videodraft_importer_disabled', __( 'Enable the Story Import & Export plugin before pulling a VideoDraft project.', 'worldgraph' ) );
+		}
 		$connection_id = self::connection_id( $connection_id );
 		$valid = self::validate_connection( $connection_id );
 		if ( is_wp_error( $valid ) ) {

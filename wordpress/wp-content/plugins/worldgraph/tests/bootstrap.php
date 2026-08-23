@@ -25,7 +25,7 @@ require_once dirname( __DIR__ ) . '/includes/utils/class-scf-fields.php';
 require_once dirname( __DIR__ ) . '/includes/utils/cpt-key-migration.php';
 require_once dirname( __DIR__ ) . '/includes/utils/relationships.php';
 require_once dirname( __DIR__ ) . '/includes/utils/relationship-graph.php';
-require_once dirname( __DIR__ ) . '/includes/exporter/class-worldgraph-exporter.php';
+require_once dirname( __DIR__ ) . '/plugins/story-import-export/includes/class-worldgraph-exporter.php';
 
 // Test files reference the global helper names used in older World Graph Studio tests.
 if ( ! function_exists( 'prefix' ) ) {

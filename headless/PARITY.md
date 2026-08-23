@@ -93,7 +93,8 @@ status of the WordPress core; it tracks the additional headless deliverable.
 | Asset generation | WordPress now exposes Template-conditional sanitized `run_controls` and validates optional direct/batch run values, but headless has no authenticated plan, generate, run-control, batch progress, cancel, history, or provenance path | Missing — authentication-blocked | First deliver browser-user authentication and object-level authorization, then define creator adapter/DTOs for `run_controls`, `run_values`, `image_run_values`, and `video_run_values`; invoke the shared PHP validation/freeze/idempotency behavior; cover complete job states, accessibility, and cross-stack tests |
 | Connections and Templates | `/connections` provides part of the ComfyUI catalog workflow through a server-side v1 adapter. The wp-admin Template Workflow Test (prompt-driven test run returning an Asset number, plus a prompt assistant) has no headless route, but it adds no new API contract: it composes the existing `worldgraph/v1/generation` submit/status and `worldgraph/v1/ai/chat` endpoints | Partial — production-blocked | Authenticate and authorize the browser user, define stable DTOs, preserve upstream errors, cover generic agreed workflows including the Template test run, and add contract/E2E tests |
 | Story intelligence | Published Project details render the limited read-only graph metrics exposed by `worldgraph_display`; search, continuity, summary, dramaturgy, and interactive analytics workflows remain absent | Partial | Deliver equivalent authorized outcomes for shipped workflows, add aggregate contract/cache tests, or record explicit exceptions |
-| Production, editorial, logs, and interchange | No headless production, editorial, generation-log, import/export, FDX, or VideoDraft workflow | Missing | Prioritize delivered workflows; exclude scaffolds until their delivery status changes |
+| Story import and export | The default-enabled WordPress feature plugin exposes administrator-only `worldgraph/v1/import/validate`, `/import`, `/import/decompose`, and `/export/{project_id}` routes for canonical JSON, selected-Connection story decomposition preview, and JSON/Markdown export. The Next.js app has no creator adapter, browser-user authorization, upload/retention controls, preview/confirm UI, or export download flow | Partial — authentication-blocked | Authenticate the browser user, map equivalent WordPress and object capabilities, define typed DTOs for persisted attachment preview/confirmation and all three export formats, expose retained-source deletion guidance, implement accessible long-running/error/cancel/success states, and add cross-stack tests |
+| Production, editorial, and logs | No headless production, editorial, or generation-log workflow | Missing | Prioritize delivered workflows; exclude scaffolds until their delivery status changes |
 | AI Editor and advisors | No headless interface | WP-only | The current project architecture keeps this editor inside WordPress; changing that boundary requires an explicit architecture decision |
 | Setup and plugin administration | No headless interface | Missing | Deliver the agreed administration outcomes or approve narrow deployment-only exceptions |
 | Design system and content rendering | Design tokens are manually mirrored; posts use rendered WordPress HTML; Story routes add content-specific cards, a reduced-motion Character flip state, responsive galleries, and native accessible audio/video controls | Partial | Establish canonical token/style ownership and test supported static, dynamic, interactive, keyboard, and reduced-motion output |
@@ -106,6 +107,14 @@ there is still no usable authenticated headless creator transport or UI, and
 the anonymous `wp/v2` projection cannot safely provide one. This is explicit
 parity debt blocked by the browser-user authentication and authorization gap,
 not a claim of headless parity or a `WP-only` exception.
+
+Likewise, the Story Import & Export REST routes move the transport evidence out
+of `Missing`, but they do not deliver creator parity by themselves. The current
+server-side Application Password pattern cannot stand in for the browser
+user's authority, and the Next.js application does not yet provide the
+persisted-upload, selected-Connection preview, explicit confirmation, source
+retention, or download outcomes. Interchange therefore remains explicitly
+authentication-blocked parity debt.
 
 ## Parity acceptance standard
 

@@ -16,7 +16,7 @@ class Test_WorldGraph_Import extends TestCase {
 	 * The import admin page should use a file input and not require pasted JSON.
 	 */
 	public function test_import_admin_page_uses_file_upload() {
-		$path = dirname( __DIR__ ) . '/includes/admin/import.php';
+		$path = dirname( __DIR__ ) . '/plugins/story-import-export/includes/class-import-admin.php';
 		$this->assertFileExists( $path );
 
 		$source = file_get_contents( $path );
@@ -94,7 +94,7 @@ class Test_WorldGraph_Import extends TestCase {
 	 * The importer should consume the structured prop-owner field.
 	 */
 	public function test_importer_maps_prop_ownership() {
-		$path   = dirname( __DIR__ ) . '/includes/importer/class-worldgraph-importer.php';
+		$path   = dirname( __DIR__ ) . '/plugins/story-import-export/includes/class-worldgraph-importer.php';
 		$source = file_get_contents( $path );
 
 		$this->assertNotFalse( $source );
@@ -111,7 +111,7 @@ class Test_WorldGraph_Import extends TestCase {
 	 * Imported shots should retain their required scalar Scene link.
 	 */
 	public function test_importer_persists_shot_scene_relationships() {
-		$path   = dirname( __DIR__ ) . '/includes/importer/class-worldgraph-importer.php';
+		$path   = dirname( __DIR__ ) . '/plugins/story-import-export/includes/class-worldgraph-importer.php';
 		$source = file_get_contents( $path );
 
 		$this->assertNotFalse( $source );
@@ -130,7 +130,7 @@ class Test_WorldGraph_Import extends TestCase {
 
 	/** Inserted Sequence term IDs must be normalized before taxonomy assignment. */
 	public function test_importer_normalizes_sequence_term_ids_to_integers() {
-		$source = file_get_contents( dirname( __DIR__ ) . '/includes/importer/class-worldgraph-importer.php' );
+		$source = file_get_contents( dirname( __DIR__ ) . '/plugins/story-import-export/includes/class-worldgraph-importer.php' );
 
 		$this->assertNotFalse( $source );
 		$this->assertStringContainsString(
@@ -149,7 +149,7 @@ class Test_WorldGraph_Import extends TestCase {
 
 	/** Validation rejects values that cannot round-trip through canonical fields. */
 	public function test_importer_rejects_lossy_v12_scalar_values() {
-		$source = file_get_contents( dirname( __DIR__ ) . '/includes/importer/class-worldgraph-importer.php' );
+		$source = file_get_contents( dirname( __DIR__ ) . '/plugins/story-import-export/includes/class-worldgraph-importer.php' );
 
 		$this->assertNotFalse( $source );
 		$this->assertStringContainsString( "! is_string( \$data[ \$section ]['id'] )", $source );
@@ -183,7 +183,7 @@ class Test_WorldGraph_Import extends TestCase {
 
 	/** Portable taxonomy fields accept only nonempty canonical slug strings. */
 	public function test_importer_enforces_canonical_taxonomy_slug_values() {
-		$source = file_get_contents( dirname( __DIR__ ) . '/includes/importer/class-worldgraph-importer.php' );
+		$source = file_get_contents( dirname( __DIR__ ) . '/plugins/story-import-export/includes/class-worldgraph-importer.php' );
 
 		$this->assertNotFalse( $source );
 		$this->assertStringContainsString(
@@ -221,7 +221,7 @@ class Test_WorldGraph_Import extends TestCase {
 
 	/** Editorial records must explicitly name the document Project. */
 	public function test_importer_requires_editorial_project_reference() {
-		$source = file_get_contents( dirname( __DIR__ ) . '/includes/importer/class-worldgraph-importer.php' );
+		$source = file_get_contents( dirname( __DIR__ ) . '/plugins/story-import-export/includes/class-worldgraph-importer.php' );
 
 		$this->assertNotFalse( $source );
 		$references_start = strpos( $source, 'private function validate_references( array $data )' );
@@ -246,7 +246,7 @@ class Test_WorldGraph_Import extends TestCase {
 
 	/** Episode Scene lists are ordered sets and may not repeat an external ID. */
 	public function test_importer_rejects_duplicate_episode_scene_ids() {
-		$source = file_get_contents( dirname( __DIR__ ) . '/includes/importer/class-worldgraph-importer.php' );
+		$source = file_get_contents( dirname( __DIR__ ) . '/plugins/story-import-export/includes/class-worldgraph-importer.php' );
 
 		$this->assertNotFalse( $source );
 		$this->assertStringContainsString( '$seen_scene_ids = [];', $source );
@@ -257,7 +257,7 @@ class Test_WorldGraph_Import extends TestCase {
 
 	/** Verification must resolve Asset references that were not imported in this run. */
 	public function test_import_verification_resolves_existing_library_assets() {
-		$source = file_get_contents( dirname( __DIR__ ) . '/includes/importer/class-worldgraph-importer.php' );
+		$source = file_get_contents( dirname( __DIR__ ) . '/plugins/story-import-export/includes/class-worldgraph-importer.php' );
 
 		$this->assertNotFalse( $source );
 		$verification_start = strpos( $source, 'private function verify_import(): void' );
@@ -304,7 +304,7 @@ class Test_WorldGraph_Import extends TestCase {
 			)
 		);
 
-		$importer = file_get_contents( dirname( __DIR__ ) . '/includes/importer/class-worldgraph-importer.php' );
+		$importer = file_get_contents( dirname( __DIR__ ) . '/plugins/story-import-export/includes/class-worldgraph-importer.php' );
 		$this->assertStringContainsString( 'private function import_sounds()', $importer );
 		$this->assertStringContainsString( "'worldgraph_sound_type'", $importer );
 		$this->assertStringContainsString( "worldgraph_update_field_value( \$sound_id, 'scene', \$scene_id )", $importer );

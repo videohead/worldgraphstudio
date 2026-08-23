@@ -41,12 +41,15 @@ All entities must be queryable by AI advisors and workflows.
 ## Interoperability
 
 Entities expose WordPress and World Graph Studio API surfaces where appropriate.
-The delivered interchange formats are World Graph Studio JSON and Final Draft
-FDX import, Markdown screenplay/storyboard export, and optional VideoDraft
-structural synchronization. Fountain, Celtx, Descript, the EDL admin workflow,
-and Google Web Stories remain scaffold or prototype surfaces; EDL PHP format
-functions are available to custom adapters. Further professional script-file
-formats can be added without changing the entity model.
+The default-enabled Story Import & Export feature plugin delivers canonical
+World Graph Studio JSON import/export, Markdown screenplay/storyboard export,
+and preview/confirm LLM decomposition for persisted JSON, TXT, Markdown,
+Fountain, RTF, text-layer PDF, EPUB, DOCX, and ODT story sources. Final Draft
+FDX import and optional VideoDraft structural synchronization reuse the same
+canonical importer. The separate deterministic Fountain-to-FDX page, Celtx,
+Descript, and Google Web Stories remain scaffold or prototype surfaces; EDL
+format functions and its admin workflow are delivered. Further lossless,
+application-specific formats can be added without changing the entity model.
 
 ---
 
@@ -628,20 +631,31 @@ remote Celtx record.
 
 ### Interchange Status
 
-- World Graph Studio JSON import creates and links the supported Story Graph
-  entities. Validation can run without committing changes.
+- The bundled Story Import & Export feature plugin owns canonical World Graph
+  Studio version 1.2 JSON import and export. Import validation can run without
+  committing changes; export projects one live Project and its supported graph
+  without serializing Connections, Templates, generation jobs, users, or
+  fields outside the import contract.
+- Persisted JSON, TXT, Markdown, Fountain, RTF, text-layer PDF, EPUB, DOCX, and
+  ODT story sources can produce a normalized, importer-validated preview.
+  Canonical JSON bypasses the LLM; other sources use only the selected
+  compatible LLM Connection and require explicit confirmation before commit.
+  The source remains a WordPress attachment and is not a Story Graph entity.
 - Final Draft FDX import normalizes screenplay structure into the canonical
   JSON contract and reuses the same entity and relationship persistence.
 - Markdown export produces screenplay and storyboard views from live project
   data.
 - VideoDraft synchronization optionally pushes and pulls its shared structural
   Project subset with persistent mapping and conflict checks.
-- Fountain and Celtx target these contracts but remain non-delivered scaffolds
-  until their documented runtime blockers are repaired.
+- The separate deterministic Fountain-to-FDX integration and Celtx target
+  these contracts but remain non-delivered scaffolds until their documented
+  runtime blockers are repaired. `.fountain` remains an accepted unstructured
+  source for LLM decomposition.
 
-Fade In, Highland, Story Architect, format-specific preview/merge workflows,
-and additional professional script exporters are possible extensions. They are
-not current API or schema contracts and do not reopen the closed roadmap item.
+Lossless Fade In, Highland, Story Architect, format-specific merge workflows,
+OCR for image-only PDFs, and additional professional script exporters are
+possible extensions. They are not current API or schema contracts and do not
+reopen the closed roadmap item.
 
 ---
 

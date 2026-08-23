@@ -87,10 +87,11 @@ The two directions preserve the shared structural subset:
 - available Shot and storyboard descriptions.
 
 Pull translates that subset into the canonical World Graph Studio JSON format
-and delegates persistence to the core importer. It then adds the Project edge
-needed to keep imported Scenes project-scoped. WGS Props are emitted with
-VideoDraft's `object` visual-asset type. An existing VideoDraft `style`,
-`custom`, or other provider subtype is retained when that record is updated.
+and delegates persistence to the Story Import & Export feature plugin's
+canonical importer. It then adds the Project edge needed to keep imported
+Scenes project-scoped. WGS Props are emitted with VideoDraft's `object`
+visual-asset type. An existing VideoDraft `style`, `custom`, or other provider
+subtype is retained when that record is updated.
 
 The top-level VideoDraft script, image and other media URLs, provider-only
 fields, production timeline clips, account data, comments, and checkpoints

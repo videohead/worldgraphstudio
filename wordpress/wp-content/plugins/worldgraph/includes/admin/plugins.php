@@ -45,6 +45,25 @@ class Plugins {
 	 * Register available plugins.
 	 */
 	private static function register_plugins(): void {
+		// Canonical JSON, Markdown, and LLM-assisted story interchange.
+		if ( file_exists( WORLDGRAPH_PLUGIN_DIR . 'plugins/story-import-export/story-import-export.php' ) ) {
+			self::register_plugin(
+				'story-import-export',
+				'World Graph Studio - Story Import & Export',
+				[
+					'name'         => 'Story Import & Export',
+					'description'  => 'Import canonical JSON or decompose uploaded story documents through a selected LLM Connection; export portable JSON or Markdown.',
+					'version'      => defined( 'WORLDGRAPH_STORY_IO_VERSION' ) ? WORLDGRAPH_STORY_IO_VERSION : '1.0.0',
+					'author'       => 'World Graph Studio Contributors',
+					'icon'         => 'dashicons-migrate',
+					'file'         => 'plugins/story-import-export/story-import-export.php',
+					'has_settings' => true,
+					'settings_url' => admin_url( 'admin.php?page=worldgraph-import' ),
+					'testable'     => false,
+				]
+			);
+		}
+
 		// Celtx connector.
 		if ( file_exists( WORLDGRAPH_PLUGIN_DIR . 'plugins/celtx/celtx-sync.php' ) ) {
 			self::register_plugin(
@@ -216,6 +235,9 @@ class Plugins {
 		}
 
 		switch ( $slug ) {
+			case 'story-import-export':
+				return (bool) get_option( 'worldgraph_story_io_enabled', true );
+
 			case 'celtx':
 				return (bool) get_option( 'celtx_enabled', false );
 
@@ -258,6 +280,9 @@ class Plugins {
 	 */
 	private static function is_plugin_configured( string $slug ): bool {
 		switch ( $slug ) {
+			case 'story-import-export':
+				return true;
+
 			case 'celtx':
 				if ( class_exists( '\\WorldGraphCeltx\\Settings' ) ) {
 					return \WorldGraphCeltx\Settings::has_credentials();
@@ -322,6 +347,10 @@ class Plugins {
 		update_option( self::STATE_OPTION, $states );
 
 		switch ( $slug ) {
+			case 'story-import-export':
+				update_option( 'worldgraph_story_io_enabled', $enabled );
+				break;
+
 			case 'celtx':
 				if ( class_exists( '\\WorldGraphCeltx\\Settings' ) ) {
 					if ( $enabled ) {
@@ -394,6 +423,7 @@ class Plugins {
 			'configured'  => false,
 			'has_settings' => ! empty( $args['has_settings'] ),
 			'settings_url' => $args['settings_url'] ?? '',
+			'testable'     => ! array_key_exists( 'testable', $args ) || ! empty( $args['testable'] ),
 		];
 	}
 
@@ -536,7 +566,7 @@ class Plugins {
 								<?php if ( $requires_configuration ) : ?>
 									<a href="<?php echo esc_url( $plugin['settings_url'] ); ?>" class="button button-small button-primary">Configure First</a>
 								<?php endif; ?>
-								<?php if ( $plugin['active'] && $plugin['configured'] ) : ?>
+								<?php if ( $plugin['active'] && $plugin['configured'] && $plugin['testable'] ) : ?>
 									<button class="button button-small worldgraph-test-connection" data-plugin="<?php echo esc_attr( $slug ); ?>">
 										Test Connection
 									</button>
@@ -544,24 +574,6 @@ class Plugins {
 							</td>
 						</tr>
 					<?php endforeach; ?>
-					<tr class="worldgraph-plugin-tool-row">
-						<td>
-							<strong><span class="dashicons dashicons-upload" style="margin-right: 5px;"></span>JSON Import</strong>
-							<br><small>Import a World Graph Studio project document and its story graph data.</small>
-						</td>
-						<td><span class="status-active">Available</span></td>
-						<td><span class="status-configured">Built in</span></td>
-						<td><a href="<?php echo esc_url( admin_url( 'admin.php?page=worldgraph-import' ) ); ?>" class="button button-small button-primary">Import JSON</a></td>
-					</tr>
-					<tr class="worldgraph-plugin-tool-row">
-						<td>
-							<strong><span class="dashicons dashicons-download" style="margin-right: 5px;"></span>Markdown Export</strong>
-							<br><small>Export a World Graph Studio project as a Markdown screenplay file.</small>
-						</td>
-						<td><span class="status-active">Available</span></td>
-						<td><span class="status-configured">Built in</span></td>
-						<td><a href="<?php echo esc_url( admin_url( 'admin.php?page=worldgraph-export' ) ); ?>" class="button button-small button-primary">Export Markdown</a></td>
-					</tr>
 				</tbody>
 			</table>
 		</div>

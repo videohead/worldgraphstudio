@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Core importer engine.
+ * Canonical importer engine owned by the Story Import & Export feature plugin.
  *
  * Implements the deterministic import workflow defined in
  * about/example-workflow/JSON_import_spec.md:

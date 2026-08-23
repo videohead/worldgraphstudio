@@ -36,6 +36,7 @@ class Child_Plugin_Loader {
 	 */
 	public static function load_child_plugins(): void {
 		$child_plugins = [
+			'plugins/story-import-export/story-import-export.php',
 			'plugins/celtx/celtx-sync.php',
 			'plugins/videodraft/videodraft-sync.php',
 			'plugins/descript/descript-sync.php',

@@ -3,8 +3,11 @@
 ## Purpose
 
 This document defines the portable World Graph Studio JSON contract used by the
-example workflow. The importer normalizes a document into WordPress posts,
-Structured Content Fields (SCF), taxonomies, and Story Graph relationships.
+example workflow. The default-enabled Story Import & Export feature plugin owns
+both directions: its importer normalizes a document into WordPress posts,
+Structured Content Fields (SCF), taxonomies, and Story Graph relationships,
+while its canonical exporter projects a live Project back into version 1.2
+JSON.
 
 Two examples are maintained:
 
@@ -165,6 +168,28 @@ assignments from that Sequence. Other Project and World container relationships
 are additive: an omitted child section or omitted child record does not remove
 an existing container edge.
 
+## Canonical Export
+
+The feature plugin can export one readable live Project as a version 1.2
+document from the WordPress Export screen or the administrator-only
+`GET /worldgraph/v1/export/{project_id}?format=json` compatibility route. It
+uses the nearest-Project Story Graph boundary and requires exactly one directly
+related Story World.
+
+The exporter emits `project`, `world`, `characters`, `locations`, `props`,
+`organizations`, `episodes`, `scenes`, `shots`, `sounds`, `assets`,
+`editorial_artifacts`, and one synthetic `sequence`. Stored external IDs are
+preserved. A record without one receives a deterministic, non-persisted
+`worldgraph-{cpt}-{post_id}` fallback so repeated exports from the same site are
+stable.
+
+Ordering is deterministic: Episodes use `episode_number`; Scenes use Sequence
+order and then `scene_number`; Shots and Sounds are grouped by Scene; remaining
+entity collections use external ID order. Connections, Templates, generation
+jobs, WordPress users/status, the non-existent Storyboard CPT, and
+`generation_prompt` or other fields outside the actual importer contract are
+not portable and are excluded.
+
 ## Top-Level Document
 
 | Field | Type | Required | Notes |
@@ -181,9 +206,12 @@ an existing container edge.
 | `shots` | array | Yes | May be empty. |
 | `sounds` | array | No | Missing means `[]`. |
 | `assets` | array | No | Missing means `[]`; records are planned media metadata, not uploaded binaries. |
-| `storyboards` | array | Yes | May be empty. |
 | `editorial_artifacts` | array | No | Missing means `[]`. |
 | `sequence` | object | Yes | One Sequence taxonomy term and its ordered Scene list. |
+
+There is no top-level `storyboards` section in the canonical version 1.2
+contract. A storyboard is a derived Markdown view of Scenes, Shots, and linked
+assets, not a separately imported document section.
 
 ## Project
 
@@ -540,9 +568,7 @@ Before creating posts or terms, readers validate that:
 - Sound Scene, Shot, Character, and Asset references resolve, and a referenced
   Shot belongs to the same Scene;
 - audio-linked Sounds reference audio Assets;
-- Asset Project, Character, Location, Scene, and Storyboard references resolve;
-- Storyboard Scene, Shot, and Asset references resolve, and its Shot belongs to
-  the same Scene;
+- Asset Project, Character, Location, and Scene references resolve;
 - Editorial Project, Scene, and Shot references resolve, and a referenced Shot
   belongs to its source Scene; and
 - every Scene in `sequence.order` resolves and is assigned to that Sequence.
@@ -591,7 +617,7 @@ Sequences:           1 taxonomy term
 - [ ] All canonical scalar values survive sanitization and SCF persistence.
 - [ ] Project, Episode, Sound, Asset, Character, and Scene taxonomies use the requested slugs.
 - [ ] Project owner is the authenticated importing WordPress user.
-- [ ] Explicit Scene, Shot, Frame, Sequence, Episode, and dialogue ordering is preserved.
+- [ ] Explicit Scene, Shot, Sequence, Episode, and dialogue ordering is preserved.
 - [ ] Full Scene script content and structured dialogue are both preserved.
 - [ ] Every relationship field resolves to the intended CPT and graph slot.
 - [ ] Sound cues are imported without duplicating ordinary Scene dialogue.

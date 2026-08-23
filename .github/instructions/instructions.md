@@ -102,12 +102,13 @@ This is a diagnostic fallback, not a general replacement for WP-CLI commands.
     - `includes/agents/` - Agent-related code and integrations
     - `includes/ai-editor/` - AI Editor implementation
     - `includes/cpts/` - Custom Post Type definitions and handlers
-      - `includes/exporter/` - Markdown screenplay and storyboard export
-      - `includes/importer/` - World Graph Studio JSON import
     - `includes/rest-api/` - REST API controllers and endpoints
     - `includes/taxonomies/` - Custom taxonomy definitions
     - `includes/utils/` - Utility functions and helpers (generation, search, relationships, continuity)
     - `plugins/` - Sub-plugins and integrations:
+      - `story-import-export/` - Default-enabled canonical JSON importer and
+        exporter, Markdown exporters, persisted story-source extraction, and
+        selected-Connection LLM decomposition with preview/confirm
       - `celtx/` - Celtx GEM API connector scaffold
       - `descript/` - Experimental Descript transcript/media exchange
       - `edl/` - EDL PHP format functions and admin scaffold
@@ -132,12 +133,20 @@ integration catalog as the status sources of truth.
 
 ### Script Ecosystem
 
-- World Graph Studio JSON and Final Draft FDX import.
-- Markdown screenplay and storyboard export.
+- The default-enabled `plugins/story-import-export/` feature plugin owns World
+  Graph Studio JSON import/export, Markdown screenplay/storyboard export, and
+  preview/confirm decomposition of persisted JSON, TXT, Markdown, Fountain,
+  RTF, text-layer PDF, EPUB, DOCX, and ODT sources through a selected LLM
+  Connection.
+- Final Draft FDX import normalizes through the feature plugin's canonical
+  importer.
 - Bidirectional VideoDraft synchronization for its shared structural Project
   subset, with preview, checkpoints, conflict hashes, and persistent mapping.
-- Fountain importer source is bootstrap-blocked; Celtx connector source needs
-  response and Scene-call repair; Descript exchange remains experimental.
+- The separate deterministic Fountain-to-FDX importer source is
+  bootstrap-blocked; this does not prevent the Story Import & Export plugin
+  from treating `.fountain` as an unstructured LLM source. Celtx connector
+  source needs response and Scene-call repair; Descript exchange remains
+  experimental.
 - Further screenplay formats and professional exporters are extension
   opportunities, not unfinished current-release commitments.
 
@@ -152,9 +161,9 @@ integration catalog as the status sources of truth.
   [provider Connection adapter specification](../../about/Connection_Adapter_Development_Specification.md)
   for the exact REST API, MCP, Template, execution, security, and test
   contracts.
-- Format integrations should normalize into the canonical World Graph Studio
-  import contract or project an export from live Story Graph data rather than
-  create a parallel data model.
+- Format integrations should normalize through the Story Import & Export
+  plugin's canonical World Graph Studio import contract or project an export
+  from live Story Graph data rather than create a parallel data model.
 
 ### Editorial Ecosystem
 

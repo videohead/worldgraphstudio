@@ -35,7 +35,8 @@ The setup screen separates core WordPress operation from optional services:
 - **No AI connection:** create and manage the Story Graph, assets, continuity
   metadata, imports, exports, and integrations manually.
 - **LLM connection:** enable AI Editor conversations, analysis, generation
-  assistance, and specialist advisor workflows.
+  assistance, specialist advisor workflows, and optional decomposition of
+  unstructured story uploads into a canonical import preview.
 - **Generation connection:** submit supported Templates through Comfy Cloud
   MCP, local ComfyUI, fal MCP, ElevenLabs, SunoAPI.org REST, AceData Cloud Suno
   MCP, or VideoDraft hosted MCP, depending on the adapter and Templates you
@@ -48,6 +49,10 @@ For production, prefer environment-managed secrets. See
 requirements and network boundaries.
 
 ## 3. Import the sample project
+
+The bundled **Story Import & Export** feature is enabled by default under
+**World Graph Studio > Plugins**. Its canonical JSON path does not require an
+LLM Connection.
 
 The repository includes a comprehensive version 1.2 Little Red Riding Hood
 example:
@@ -63,14 +68,55 @@ In WordPress:
 1. Open **World Graph Studio > Import**.
 2. Choose the `.worldgraph.json` sample.
 3. Leave overwrite disabled for a first import.
-4. Select **Import World Graph Studio JSON**.
-5. Review the import report for created, updated, and skipped records.
+4. Select **Create Import Preview**.
+5. Review the validated canonical JSON preview, enable the confirmation
+   checkbox, and select **Confirm and Import Project**.
+6. Review the import report for created, updated, and skipped records.
 
 The full-featured importer example creates the Project, Story World,
 Characters, Locations, Props, Organization, Episode, Scenes, Shots, Sounds,
 Assets, Editorial Artifact, Sequence data, taxonomies, and
 relationships. The [JSON import contract](JSON_import_spec.md) documents the
 exact mapping, compatibility behavior, and expected record counts.
+
+### Import an existing story document
+
+The same screen accepts JSON, TXT, Markdown, Fountain, RTF, PDF, EPUB, DOCX,
+and ODT files up to 20 MB. Canonical JSON follows that upload-size boundary;
+other extracted sources are limited to 500,000 characters, and a non-canonical
+source sent for LLM decomposition is limited to 300,000 characters. Sources
+over 60,000 characters within that limit are processed in as many as six
+bounded parts; sources above 300,000 characters must be split before retrying.
+WordPress first saves the selected file as a Media Library attachment. If it is
+already canonical World Graph Studio JSON, the plugin validates it directly and
+makes no model request. Otherwise:
+
+1. Select a published OpenAI-compatible, OpenAI, or Anthropic LLM Connection
+   that you are allowed to manage.
+2. Choose the source file and select **Create Import Preview**.
+3. Wait while the plugin extracts text, asks only that selected Connection to
+   produce a version 1.2 document, normalizes the response, and dry-run
+   validates it with the canonical importer.
+4. Read the resulting Project, entity counts, source/preparation details, and
+   JSON candidate.
+   Model output is a draft; cancel and revise the source or retry if the
+   candidate does not represent the source accurately.
+5. Enable **I reviewed this candidate and want to import it.**, then select
+   **Confirm and Import Project**. No Story Graph records are written before
+   this step.
+
+PDF support requires an extractable text layer. If the PDF is a scan or contains
+only page images, the plugin reports that OCR is required; run OCR and upload
+the searchable PDF or a text/EPUB version. Password-protected PDFs are not
+supported.
+
+The original upload remains in WordPress uploads after confirmation or
+cancellation. Delete it separately from the Media Library if your retention
+policy does not allow keeping the manuscript. Access follows the site's
+WordPress media/upload policy; do not assume a manuscript attachment is private
+solely because the import screen is administrator-only. When a hosted LLM
+Connection is selected, the extracted story text is sent to that provider;
+review its privacy and data-retention terms before proceeding.
 
 ## 4. Explore the Story Graph
 
@@ -137,11 +183,16 @@ Sync](../plugins/VIDEODRAFT.md).
 The current release provides and catalogs these portable surfaces:
 
 - **World Graph Studio JSON import** for structured project data.
+- **World Graph Studio JSON export** for a deterministic canonical version 1.2
+  snapshot of one live Project and its supported Story Graph.
+- **Story document import** for JSON, TXT, Markdown, Fountain, RTF, text-layer
+  PDF, EPUB, DOCX, and ODT through a selected-Connection preview/confirm flow.
 - **Final Draft FDX import** for screenplay scenes, locations, characters,
   action, and dialogue normalized into the Story Graph.
-- **Fountain importer source** targeting the shared browser-side
+- **Deterministic Fountain importer source** targeting the shared browser-side
   Fountain-to-FDX and Story Graph pipeline; its current bootstrap blocker is
-  cataloged and the workflow is not yet delivered.
+  cataloged and is separate from the delivered LLM decomposition of a
+  `.fountain` upload.
 - **Markdown screenplay export** from live project and scene records.
 - **Markdown storyboard export** with shot and storyboard context.
 - **Celtx connector source** for intended outbound synchronization; current
@@ -154,15 +205,17 @@ The current release provides and catalogs these portable surfaces:
 The repository also contains prototype source for a Google Web Stories
 connector. It is not loaded or supported as a current release workflow.
 
-Open **World Graph Studio > Export** to download a Markdown screenplay or
-storyboard. The sample output is
+Open **World Graph Studio > Export** to download canonical World Graph Studio
+JSON, a Markdown screenplay, or a Markdown storyboard. The sample Markdown
+output is
 [Little Red Riding Hood screenplay export](Little-Red-Riding-Hood-Screenplay-Example-Export.md).
 
 Open **World Graph Studio > Import Final Draft FDX** to select a screenplay
 file. Parsing and conversion happen in the browser; the normalized World Graph
 Studio document is then validated and persisted by the canonical importer.
-The Fountain admin surface remains a scaffold until its browser bootstrap is
-repaired.
+The deterministic Fountain-to-FDX admin surface remains a scaffold until its
+browser bootstrap is repaired; use the general Import screen and an LLM
+Connection when a Fountain file can be treated as unstructured story text.
 
 The previously paused blanket category is closed for the current release:
 Final Draft FDX is delivered, while Fade In, Highland, Story Architect,
@@ -172,6 +225,8 @@ possible adapters rather than unfinished requirements.
 ## 8. Keep the project portable and private
 
 - Back up the WordPress database and uploads together.
+- Remember that story-source uploads are retained in the Media Library; delete
+  them separately when they should no longer be stored.
 - Restrict site access using WordPress, hosting, and network controls when a
   project should remain private.
 - Keep API credentials in deployment environment variables for production.
@@ -193,3 +248,4 @@ and licensing terms.
 - [Suno integration](../plugins/SUNO.md)
 - [VideoDraft connection and sync](../plugins/VIDEODRAFT.md)
 - [Script and EDL integration](../Script_EDL_Integration.md)
+- [Story Import & Export plugin](../plugins/STORY_IMPORT_EXPORT.md)

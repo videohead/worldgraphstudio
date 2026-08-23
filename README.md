@@ -31,12 +31,16 @@ team of specialist agents with new profile files.
 - Template-backed image, video, and audio generation jobs through providers
   including VideoDraft, with WordPress media imports, provenance, status tracking,
   cancellation, and scheduled batches.
-- World Graph Studio JSON and Final Draft FDX import plus Markdown screenplay
-  and storyboard export.
+- A default-enabled Story Import & Export feature plugin with canonical World
+  Graph Studio JSON import/export, Markdown screenplay/storyboard export, and
+  preview-before-commit LLM decomposition for persisted JSON, TXT, Markdown,
+  Fountain, RTF, text-layer PDF, EPUB, DOCX, and ODT uploads.
+- Final Draft FDX import, normalized through the same canonical JSON importer.
 - Optional bidirectional VideoDraft structural Project sync and reusable EDL
   parsing, timecode, and format-generation code.
-- Bundled Fountain, Celtx, Descript, and Web Stories integration source with
-  readiness and current blockers called out in the integration catalog.
+- Bundled deterministic Fountain-to-FDX, Celtx, Descript, and Web Stories
+  integration source with readiness and current blockers called out in the
+  integration catalog.
 - A filterable Connection adapter manifest that lets integrations register
   provider types, guided setup choices, and a conditional implementation
   loader.
@@ -44,21 +48,24 @@ team of specialist agents with new profile files.
   and prompts.
 
 The additional-script roadmap area that was previously described as on hold is
-closed for the current release: Final Draft FDX import is delivered, while
-Fade In, Highland, Story Architect, and other unaccepted formats are extension
-opportunities rather than unfinished requirements. The bundled Fountain,
-Celtx, EDL admin, Descript, and Web Stories surfaces remain visible in the
-catalog with their actual scaffold or prototype status. See [Delivery
-status](about/Delivery_Status.md) for exact directions and boundaries.
+closed for the current release: story documents in the listed text-bearing
+formats can now be decomposed through a selected LLM Connection, and Final
+Draft FDX import remains delivered. Format-specific, lossless Fade In,
+Highland, Story Architect, and other unaccepted adapters are extension
+opportunities rather than unfinished requirements. The separate deterministic
+Fountain-to-FDX importer, Celtx, Descript, and Web Stories surfaces remain
+visible in the catalog with their actual scaffold or prototype status. See
+[Delivery status](about/Delivery_Status.md) for exact directions and
+boundaries.
 
 ## Built to extend
 
-- **Interchange adapters reuse one Story Graph contract.** FDX normalizes
-  screenplay data for the same validated importer used by World Graph Studio
-  JSON; exporters derive portable projections from live Story Graph records;
-  and VideoDraft maps external project structure without replacing WordPress
-  as the source of truth. Bundled scaffolds target the same contracts as they
-  are hardened.
+- **Interchange adapters reuse one Story Graph contract.** The bundled Story
+  Import & Export plugin owns canonical JSON import/export and Markdown
+  projections. It can also extract persisted story uploads and ask a selected
+  LLM Connection for a validated JSON candidate that the creator must preview
+  and confirm. FDX and VideoDraft pull reuse that importer rather than replacing
+  WordPress as the source of truth.
 - **Connections are an extension surface.** An integration can register its
   provider metadata, a conditional loader, and setup choices through a
   WordPress hook. Its implementation then supplies any provider-specific
@@ -94,7 +101,9 @@ WordPress + World Graph Studio
   |
   +--> optional LLM connection
   +--> optional ComfyUI / Comfy Cloud / provider connection
-  +--> JSON / FDX import and Markdown export
+  +--> canonical JSON import/export and Markdown export
+  +--> optional LLM decomposition of persisted story documents
+  +--> FDX import
   +--> adjacent EDL format code
   +--> optional VideoDraft generation and structural project sync
   +--> experimental Descript transcript/media exchange source
@@ -162,7 +171,11 @@ then import the archive into the new app and activate `worldgraph`.
 
 Open **World Graph Studio > Setup** to configure an LLM and any optional
 generation connections. Core story and production planning work without those
-services.
+services. The bundled **Story Import & Export** feature is enabled by default
+under **World Graph Studio > Plugins**. Canonical JSON import/export and
+Markdown export work without an LLM; importing an unstructured story document
+requires a compatible selected LLM Connection and an explicit preview/confirm
+step.
 
 ## Documentation
 
@@ -176,6 +189,7 @@ references:
 - [User guide](about/example-workflow/USER_GUIDE.md)
 - [Integration catalog](about/Integration_Catalog.md)
 - [Script and editorial interchange](about/Script_EDL_Integration.md)
+- [Story Import & Export plugin](about/plugins/STORY_IMPORT_EXPORT.md)
 - [Agent architecture](about/Agent_Architecture.md)
 - [Deployment and connections](about/Deployment_and_Connections.md)
 - [VideoDraft connection and sync](about/plugins/VIDEODRAFT.md)

@@ -17,13 +17,15 @@ See [Delivery Status](Delivery_Status.md) for the release boundary and
 credential setup.
 
 The API covers Story Graph resources, relationships, production/editorial
-views, JSON import, generation jobs, the AI Editor, search, and optional
-integrations. Final Draft FDX is a delivered WordPress admin import workflow
-that normalizes into the canonical JSON importer; it does not register a
-`/scripts/*` REST route. Fountain targets the same admin/importer pattern but
-has a current browser bootstrap blocker and is not a delivered workflow.
-Further professional script-file adapters are extension opportunities rather
-than part of the v1 API contract.
+views, canonical JSON import/export, uploaded-story decomposition preview,
+generation jobs, the AI Editor, search, and optional integrations. Final Draft
+FDX is a delivered WordPress admin import workflow that normalizes into the
+canonical JSON importer; it does not register a `/scripts/*` REST route. The
+separate deterministic Fountain-to-FDX page has a current browser bootstrap
+blocker, while the Story Import & Export plugin can accept `.fountain` as an
+unstructured text source for LLM decomposition. Further lossless,
+application-specific script adapters are extension opportunities rather than
+part of the v1 API contract.
 
 ## Authentication and Permissions
 
@@ -292,35 +294,102 @@ Scene assignment through `sequences/{id}/scenes` snapshots both the prior
 Sequence terms and raw `sequence_order` metadata before writing either. If an
 order write cannot be verified, both sets of values are restored and verified.
 
-## World Graph Studio JSON Import
+## Story Import & Export
 
-The delivered importer accepts a World Graph Studio JSON document. It validates
-cross-references, creates or updates supported Story Graph entities, assigns
-taxonomies, builds relationships, and reports the resolved counts.
+The default-enabled Story Import & Export feature plugin owns canonical World
+Graph Studio JSON import/export, Markdown screenplay/storyboard export, and
+LLM-assisted decomposition previews for supported persisted story uploads. Its
+administrator-only compatibility routes are:
 
 ```http
 POST /wp-json/worldgraph/v1/import/validate
 POST /wp-json/worldgraph/v1/import
+POST /wp-json/worldgraph/v1/import/decompose
+GET  /wp-json/worldgraph/v1/export/{project_id}?format=json
+GET  /wp-json/worldgraph/v1/export/{project_id}?format=screenplay
+GET  /wp-json/worldgraph/v1/export/{project_id}?format=storyboard
 ```
 
 `/import/validate` performs a dry run. `/import` accepts the JSON document and
-an optional overwrite flag. Import requires administrator permission. The same
-engine is available through the WordPress Import admin screen.
+an optional `overwrite` boolean. The importer validates cross-references,
+creates or updates supported Story Graph entities, assigns taxonomies, builds
+relationships, and reports resolved counts. Canonical JSON uses these routes
+and the WordPress Import screen without an LLM.
 
-Markdown screenplay and storyboard export is delivered through the WordPress
-admin export action and exporter class; there is no `/scripts/export` REST
-route in v1.
+`/import/decompose` is preview-only. It accepts an `attachment_id` for a real
+WordPress attachment stored inside the uploads tree. A `connection_id` for a
+manageable LLM Connection is required for a non-canonical source and may be
+omitted for canonical World Graph Studio JSON. The current source extractor
+accepts JSON, TXT, Markdown, Fountain, RTF, PDF, EPUB, DOCX, and ODT files up
+to 20 MB. PDFs must
+have an extractable text layer; encrypted PDFs are rejected, and scanned or
+image-only PDFs return an OCR-required error. Non-canonical sources are sent
+only to the selected OpenAI-compatible, OpenAI, or Anthropic Connection. The
+server normalizes and dry-run validates the candidate before returning. An
+abbreviated response shape is:
+
+```json
+{
+  "success": true,
+  "document": { "worldgraph_version": "1.2" },
+  "json": "{\n  \"worldgraph_version\": \"1.2\"\n}",
+  "source": {
+    "attachment_id": 123,
+    "filename": "story.pdf",
+    "format": "pdf",
+    "characters": 48210
+  },
+  "decomposition": {
+    "generated": true,
+    "attempts": 1,
+    "tokens": 9210,
+    "backend": "openai_compatible",
+    "model": "configured-model",
+    "connection_id": 45,
+    "chunks": 1
+  }
+}
+```
+
+For non-canonical sources, the response never contains the original extracted
+manuscript. No response contains the endpoint, credential reference, or
+resolved credential. A client must show the derived candidate for review and
+submit the confirmed `json` value to `POST /import`; decomposition alone never
+writes Story Graph records. The WordPress admin flow applies the same
+preview/confirm boundary and keeps the original source as a Media Library
+attachment after confirmation or cancellation.
+
+`/export/{project_id}` requires a readable `worldgraph_project` and accepts
+`json`, `screenplay`, or `storyboard`. Its response includes `project_id`,
+`format`, suggested `filename`, `mime_type`, and `content`. JSON `content` is a
+canonical version 1.2 object; Markdown `content` is a string. Canonical JSON
+contains the supported live Project graph and a synthetic Sequence, with
+deterministic ordering and stable stored external IDs or deterministic fallback
+IDs. Connections, Templates, generation jobs, WordPress users/status, and
+fields outside the importer contract are excluded.
+
+Import and decomposition require `manage_options`. Decomposition additionally
+requires permission to read the attachment and, when a Connection is supplied,
+manage that selected Connection.
+Export requires `manage_options` plus `read_post` for the named Project.
+Successful decomposition and export payloads carry no-store headers because
+they can contain private project material. Provider and credential failures
+are normalized before they are returned.
+
+There is no `/scripts/import` or `/scripts/export` alias in v1. Clients use the
+routes above.
 
 The bundled Final Draft FDX integration runs through a capability- and nonce-
 protected WordPress admin action. It parses locally in the browser, normalizes
 supported screenplay structure into the World Graph Studio JSON contract, and
-delegates persistence to the importer above. Fountain source targets the same
-pattern but is currently bootstrap-blocked. Neither adds REST routes.
+delegates persistence to the importer above. The separate deterministic
+Fountain source targets the same pattern but is currently bootstrap-blocked.
+Neither adds REST routes.
 
-Fade In, Highland, Story Architect, format-specific preview/merge, and
-professional script-export routes are not registered in v1. Consumers must
-not depend on `/scripts/*` paths; future adapters should document their own
-route contracts.
+Lossless Fade In, Highland, Story Architect, format-specific merge, and
+professional screenplay-file export routes are not registered in v1.
+Consumers must not depend on `/scripts/*` paths; future adapters should
+document their own route contracts.
 
 ## Generation
 

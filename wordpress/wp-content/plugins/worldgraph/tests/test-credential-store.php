@@ -114,4 +114,27 @@ class Test_Credential_Store extends TestCase {
 		$this->assertStringContainsString( "! current_user_can( 'manage_options' )", $source );
 		$this->assertStringContainsString( "'publish' !== get_post_status", $source );
 	}
+
+	/** Strict env:// references resolve without accepting shell-like names. */
+	public function test_environment_credential_references_are_strict(): void {
+		putenv( 'WORLDGRAPH_STORY_IO_TEST_KEY=story-secret' );
+		$this->assertSame( 'story-secret', Credential_Store::resolve_reference( 'env://WORLDGRAPH_STORY_IO_TEST_KEY' ) );
+		$this->assertSame( 'literal-secret', Credential_Store::resolve_reference( 'literal-secret' ) );
+
+		$invalid = Credential_Store::resolve_reference( 'env://bad-name' );
+		$this->assertTrue( is_wp_error( $invalid ) );
+		$this->assertSame( 'worldgraph_credential_reference_invalid', $invalid->get_error_code() );
+		putenv( 'WORLDGRAPH_STORY_IO_TEST_KEY' );
+	}
+
+	/** Manuscript decomposition uses exactly the selected published Connection. */
+	public function test_llm_connection_chat_disables_cache_and_fallback(): void {
+		$source = (string) file_get_contents( dirname( __DIR__ ) . '/includes/ai-editor/class-ai-llm-client.php' );
+
+		$this->assertStringContainsString( 'public function chat_with_connection(', $source );
+		$this->assertStringContainsString( "'publish' !== (string) ( \$record['status_wp'] ?? '' )", $source );
+		$this->assertStringContainsString( "\$options['allow_fallback'] = false", $source );
+		$this->assertStringContainsString( "\$options['cache']          = false", $source );
+		$this->assertStringContainsString( 'Credential_Store::resolve_reference(', $source );
+	}
 }

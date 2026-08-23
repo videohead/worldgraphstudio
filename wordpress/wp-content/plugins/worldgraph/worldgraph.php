@@ -125,8 +125,6 @@ function autoloader( string $class ): void {
 		'Taxonomies\\' => 'taxonomies/',
 		'Admin\\' => 'admin/',
 		'Utils\\' => 'utils/',
-		'Importer\\' => 'importer/',
-		'Exporter\\' => 'exporter/',
 		'AI\\' => 'ai-editor/',
 	];
 	foreach ( $special_mappings as $ns => $dir ) {
@@ -260,11 +258,9 @@ function init(): void {
 	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/admin/summary-tool.php';
 	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/admin/dramaturgy-tool.php';
 	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/admin/analytics-panel.php';
-	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/admin/import.php';
 	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/admin/editorial-cut.php';
 	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/admin/scene-shot-sequencer.php';
 	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/admin/story-media-gallery.php';
-	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/exporter/class-worldgraph-exporter.php';
 	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/cli/class-storyboard-cleanup.php';
 
 	// Credential filters must be active before Connections and provider modules
@@ -308,6 +304,14 @@ function init(): void {
 	// runtime-authoritative and managed in Secure Custom Fields.
 	Utils\SCF_Fields::boot( Utils\worldgraph_get_all_field_defaults() );
 
+	// Canonical story interchange is owned by a bundled, independently gated
+	// feature plugin. Load it before any connector that consumes the legacy
+	// WorldGraph\Importer or WorldGraph\Exporter compatibility class names.
+	$story_io_plugin = WORLDGRAPH_PLUGIN_DIR . 'plugins/story-import-export/story-import-export.php';
+	if ( file_exists( $story_io_plugin ) ) {
+		require_once $story_io_plugin;
+	}
+
 	// Register REST API routes.
 	REST\Projects_Controller::init();
 	REST\StoryWorlds_Controller::init();
@@ -329,7 +333,6 @@ function init(): void {
 	REST\Production_Controller::init();
 	REST\Editorial_Controller::init();
 	REST\Connections_Controller::init();
-	REST\Import_Controller::init();
 
 	// Register admin pages and hooks.
 	Admin\Dashboard::init();
@@ -347,8 +350,6 @@ function init(): void {
 	Admin\Dramaturgy_Tool::init();
 	Admin\Analytics_Panel::init();
 	Admin\Connections::init();
-	Admin\Import::init();
-	Admin\Export::init();
 	Admin\Editorial_Cut::init();
 	Admin\Scene_Shot_Sequencer::init();
 	Admin\Story_Media_Gallery::init();
@@ -517,6 +518,7 @@ function activate(): void {
 	// Set default World Graph Studio options.
 	add_option( 'worldgraph_version', WORLDGRAPH_VERSION );
 	add_option( 'worldgraph_enabled', true );
+	add_option( 'worldgraph_story_io_enabled', true );
 	Utils\Generation_Batch::schedule();
 
 	// Send the admin to the connection setup wizard on first activation.

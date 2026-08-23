@@ -355,7 +355,7 @@ class Test_VideoDraft extends TestCase {
 		$mapper = file_get_contents( $root . '/plugins/videodraft/includes/class-videodraft-mapper.php' );
 		$sync = file_get_contents( $root . '/plugins/videodraft/includes/class-videodraft-sync.php' );
 		$rest = file_get_contents( $root . '/plugins/videodraft/includes/rest-api/class-videodraft-controller.php' );
-		$importer = file_get_contents( $root . '/includes/importer/class-worldgraph-importer.php' );
+		$importer = file_get_contents( $root . '/plugins/story-import-export/includes/class-worldgraph-importer.php' );
 
 		$this->assertStringContainsString( "'videodraft' => [", $registry );
 		$this->assertStringContainsString( 'VideoDraft_API::class', $batch );

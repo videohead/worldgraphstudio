@@ -34,8 +34,8 @@ Story Graph + SCF + Media Library
 AI Editor    Generation Engine   Interchange
     |             |              |
     v             v              v
-Configured     Comfy / fal /        JSON / FDX / Markdown /
-LLM endpoint   ElevenLabs / Suno /  VideoDraft
+Configured     Comfy / fal /        Story Import & Export /
+LLM endpoint   ElevenLabs / Suno /  FDX / VideoDraft
                VideoDraft /         + cataloged scaffolds
                OpenRouter
 ```
@@ -69,11 +69,11 @@ is divided by responsibility:
 | --- | --- | --- |
 | Content model | `includes/cpts/`, `includes/taxonomies/`, `acf-json/` | Content types, taxonomies, SCF field groups, and REST-visible schemas |
 | Story services | `includes/utils/` | Relationships, graph traversal, search, continuity, generation, provider adapters, and compatibility migration |
-| REST API | `includes/rest-api/` | Permission-aware Story Graph, generation, production, editorial, connection, agent, and import routes |
+| REST API | `includes/rest-api/` | Permission-aware Story Graph, generation, production, editorial, connection, and agent routes |
 | AI Editor | `includes/ai-editor/`, `assets/ai-editor/` | Context assembly, LLM access, specialist advisors, Abilities, and Gutenberg UI |
-| Administration | `includes/admin/`, `assets/` | Setup, dashboards, metaboxes, connections, import/export, intelligence panels, and logs |
-| Core interchange | `includes/importer/`, `includes/exporter/` | World Graph Studio JSON import and Markdown screenplay/storyboard export |
-| Bundled integrations | `plugins/` | Delivered FDX import and VideoDraft sync plus Fountain, Celtx, Descript, EDL admin, and Web Stories scaffolds/prototypes |
+| Administration | `includes/admin/`, `assets/` | Setup, dashboards, metaboxes, connections, plugin management, intelligence panels, and logs |
+| Story interchange feature plugin | `plugins/story-import-export/` | Default-enabled canonical JSON import/export, Markdown screenplay/storyboard export, bounded story-source extraction, selected-Connection LLM decomposition, and import/export REST/admin surfaces |
+| Other bundled integrations | `plugins/` | Delivered FDX import and VideoDraft sync plus Fountain, Celtx, Descript, EDL, and Web Stories scaffolds/prototypes |
 | Verification | `tests/` | Unit, schema-contract, migration, and behavior coverage |
 
 SCF is a plugin dependency. Local JSON archives seed portable field groups;
@@ -120,10 +120,11 @@ verification where applicable, input sanitization, and output escaping.
 
 The established REST compatibility API uses the `worldgraph/v1` namespace.
 Controllers expose Story Graph entities, relationships, agents, generation,
-connections, production, editorial workflows, and JSON import. The namespace
-remains supported for existing clients, but it is not the canonical product
-model or the automatic contract for new headless work. Child integrations use
-their own namespaces when they own the external contract.
+connections, production, editorial workflows, and the feature plugin's JSON
+import, story-decomposition preview, and project-export operations. The
+namespace remains supported for existing clients, but it is not the canonical
+product model or the automatic contract for new headless work. Child
+integrations use their own namespaces when they own the external contract.
 
 REST is an application boundary, not a second data model. Controllers call the
 same WordPress services used by admin and Ability surfaces. See the
@@ -226,21 +227,24 @@ Interchange is deliberately adapter-based:
 
 | Workflow | Owner | Status / behavior |
 | --- | --- | --- |
-| Project JSON | Main plugin | Validate and import the World Graph Studio document format |
-| Final Draft FDX | Bundled import integration | Parse supported screenplay structure in the browser, normalize it to World Graph Studio JSON, and delegate to the core importer |
-| Fountain | Bundled import source | Intended to convert supported Fountain structure through FDX normalization; browser bootstrap currently blocks the workflow |
-| Markdown | Main plugin | Export screenplay and storyboard views from live project data |
+| Project JSON | Story Import & Export feature plugin | Validate/import canonical JSON and export a deterministic canonical version 1.2 document from one live Project |
+| Story document | Story Import & Export feature plugin | Persist JSON, TXT, Markdown, Fountain, RTF, text-layer PDF, EPUB, DOCX, or ODT in WordPress uploads; canonical JSON validates directly, while other sources use a selected compatible LLM Connection to produce a validated preview before confirmation |
+| Markdown | Story Import & Export feature plugin | Export screenplay and storyboard views from live project data |
+| Final Draft FDX | Bundled import integration | Parse supported screenplay structure in the browser, normalize it to World Graph Studio JSON, and delegate to the feature plugin importer |
+| Deterministic Fountain-to-FDX | Bundled import source | Intended to convert supported Fountain structure through FDX normalization; browser bootstrap currently blocks this separate workflow |
 | Celtx | Bundled connector source | Intended outbound synchronization and persistent mapping; response and Scene-call repair required |
 | VideoDraft | Optional child integration | Bidirectional structural Project sync, preview, checkpointed push, conflict hashes, and per-Connection mapping |
 | Descript | Experimental source | Intended transcript import and bound-media export; relationship, callback, binary-format, wizard, and runtime work remains |
 | EDL | Bundled PHP library and admin scaffold | CMX 3600 and SMPTE 436m XML parsing, timecode, and format helpers are implemented; the admin workflow is incomplete |
 | Google Web Stories | Prototype source | Bundled design/implementation scaffold; not loaded or supported as a current workflow |
 
-This closes the former blanket roadmap hold for a defined scope: FDX is the
-accepted delivered script-file addition, while other formats are extensions or
-explicitly classified scaffolds. Additional formats must not be implied by the
-generic import/export surfaces until implemented. See [Script and
-Editorial Interchange](Script_EDL_Integration.md).
+This closes the former blanket roadmap hold for a defined scope: the feature
+plugin accepts the listed text-bearing story documents for LLM-assisted
+decomposition, and FDX remains the delivered deterministic screenplay-file
+adapter. Application-specific lossless adapters remain extensions or
+explicitly classified scaffolds. See
+[Story Import & Export](plugins/STORY_IMPORT_EXPORT.md) and
+[Script and Editorial Interchange](Script_EDL_Integration.md).
 
 ## Trust boundaries
 
@@ -264,8 +268,15 @@ Editorial Interchange](Script_EDL_Integration.md).
 - Validate document shape before creating records.
 - Sanitize text, identifiers, relationships, and filenames.
 - Enforce file type and size constraints on returned media.
+- Retain uploaded story sources in the WordPress uploads tree so the operator
+  can audit or remove them through normal Media Library controls.
+- Send extracted story text only to the explicitly selected LLM Connection;
+  canonical JSON import/export and Markdown export do not require an LLM.
+- Accept PDFs only when a usable text layer can be extracted. Scanned or
+  image-only PDFs return an OCR-required error.
 - Retain source and provenance links without persisting secrets or raw
-  authorization data.
+  authorization data, and never serialize Connection credentials or raw source
+  manuscripts in REST metadata or error responses.
 
 ## Availability and failure behavior
 
@@ -277,6 +288,10 @@ Editorial Interchange](Script_EDL_Integration.md).
   failed state.
 - Optional child integrations fail within their own boundary and do not become
   a dependency of Story Core.
+- Disabling the default-enabled Story Import & Export feature removes its
+  admin and REST surfaces without making stored Story Graph data unavailable.
+- An unavailable LLM Connection prevents unstructured story decomposition but
+  does not prevent canonical JSON import/export or Markdown export.
 - Health and connection checks report actionable status without exposing
   credentials.
 
@@ -316,3 +331,4 @@ provider work is an extension surface, not a current roadmap commitment.
 - [Roadmap](ROADMAP_World_Graph_Studio.md)
 - [Deployment and Connections](Deployment_and_Connections.md)
 - [Example Workflow User Guide](example-workflow/USER_GUIDE.md)
+- [Story Import & Export](plugins/STORY_IMPORT_EXPORT.md)

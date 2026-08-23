@@ -236,6 +236,44 @@ class Credential_Store {
 	}
 
 	/**
+	 * Resolve a literal credential or a strict env:// environment reference.
+	 *
+	 * This is a server-side boundary. Callers must never serialize the returned
+	 * credential into a browser response, log, exception, or health report.
+	 *
+	 * @param string $reference Literal credential or env://VARIABLE_NAME.
+	 * @return string|\WP_Error Resolved credential or a stable configuration error.
+	 */
+	public static function resolve_reference( string $reference ) {
+		$reference = trim( $reference );
+		if ( ! str_starts_with( $reference, 'env://' ) ) {
+			return $reference;
+		}
+
+		$name = substr( $reference, 6 );
+		if ( ! preg_match( '/^[A-Z_][A-Z0-9_]*$/', $name ) ) {
+			return new \WP_Error(
+				'worldgraph_credential_reference_invalid',
+				__( 'The Connection uses an invalid env:// credential reference.', 'worldgraph' )
+			);
+		}
+
+		$value = getenv( $name );
+		if ( false === $value || '' === trim( (string) $value ) ) {
+			return new \WP_Error(
+				'worldgraph_credential_environment_missing',
+				sprintf(
+					/* translators: %s: environment variable name. */
+					__( 'The %s environment variable referenced by this Connection is not available.', 'worldgraph' ),
+					$name
+				)
+			);
+		}
+
+		return (string) $value;
+	}
+
+	/**
 	 * Convert a masked submitted option value back to its current plaintext for
 	 * a trusted server-side copy into a Connection record.
 	 */

@@ -1,6 +1,6 @@
 <?php
 /**
- * World Graph Studio markdown exporter.
+ * World Graph Studio Markdown exporter owned by the Story Import & Export feature plugin.
  *
  * Exports live World Graph Studio project data into a screenplay-style Markdown document
  * that mirrors the example workflow export and stays aligned with the current

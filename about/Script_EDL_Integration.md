@@ -10,9 +10,10 @@ integration scaffolds:
 
 | Capability | Current status |
 | --- | --- |
-| World Graph Studio JSON import | Delivered |
+| World Graph Studio JSON import/export | Delivered by the default-enabled Story Import & Export feature plugin |
+| Uploaded story decomposition | Delivered for JSON/TXT/Markdown/Fountain/RTF/text-layer PDF/EPUB/DOCX/ODT, with selected-Connection preview/confirm |
 | Final Draft FDX screenplay import | Delivered bundled admin integration |
-| Fountain screenplay import | Bootstrap-blocked scaffold; not currently delivered |
+| Deterministic Fountain-to-FDX import | Bootstrap-blocked scaffold; separate from LLM decomposition of `.fountain` text |
 | Markdown screenplay export | Delivered |
 | Markdown storyboard export | Delivered |
 | Celtx synchronization | Bundled source; response and Scene-call repair required |
@@ -31,12 +32,11 @@ still needs implementation work.
 ## Canonical Workflow
 
 ```text
-JSON / FDX / VideoDraft pull
-            ↓
-      Story Graph
-       ↙       ↘
-Markdown     VideoDraft push
-exports
+canonical JSON ────────────────┐
+story uploads → extract → LLM  ├→ preview/confirm → Story Graph
+FDX / VideoDraft pull ─────────┘                       │
+                          JSON / Markdown export ←────┤
+                          VideoDraft push ←───────────┘
 
 CMX/XML files ↔ implemented EDL PHP format functions ↔ clip arrays
 ```
@@ -47,9 +47,11 @@ Asset, and relationship records remain canonical in WordPress.
 
 ## Delivered Project Interchange
 
-### World Graph Studio JSON Import
+### World Graph Studio JSON Import and Export
 
-The core importer accepts a versioned World Graph Studio JSON document through
+The default-enabled
+[`plugins/story-import-export/`](plugins/STORY_IMPORT_EXPORT.md) feature plugin
+owns the versioned World Graph Studio JSON importer. It is available through
 the WordPress admin or these administrator-only REST routes:
 
 ```http
@@ -66,6 +68,45 @@ The JSON engine is the canonical structured project importer. FDX and
 VideoDraft pull normalize their supported external structures into this
 contract so validation and persistence do not fork by source format.
 
+The same feature plugin exports one live Project as canonical version 1.2 JSON
+from **World Graph Studio > Export** or:
+
+```http
+GET /wp-json/worldgraph/v1/export/{project_id}?format=json
+```
+
+The export contains the supported Project, World, Character, Location, Prop,
+Organization, Episode, Scene, Shot, Sound, Asset, Editorial Artifact, and
+Sequence sections. It omits Connections, Templates, generation jobs,
+installation-specific users/status, and fields outside the importer contract.
+
+### Uploaded Story Decomposition
+
+The same Import screen accepts persisted JSON, TXT, Markdown, Fountain, RTF,
+PDF, EPUB, DOCX, and ODT attachments. Canonical JSON is dry-run validated
+without calling an LLM. Other sources are converted to bounded UTF-8 text and
+sent only to the administrator-selected OpenAI-compatible, OpenAI, or Anthropic
+Connection. The returned candidate is normalized and dry-run validated by the
+canonical importer before it is shown.
+
+The creator must inspect the preview and explicitly confirm before the plugin
+commits any Story Graph records. Cancelling or completing that flow does not
+delete the source attachment; it remains in WordPress uploads. PDF support is
+limited to documents with an extractable text layer. A scan or image-only PDF
+returns an OCR-required error and must be made searchable before retrying.
+
+The headless-compatible preview endpoint accepts a persisted attachment and
+selected Connection:
+
+```http
+POST /wp-json/worldgraph/v1/import/decompose
+```
+
+It returns the derived canonical candidate and bounded processing metadata.
+For non-canonical sources it does not return the original manuscript, and it
+never returns resolved Connection credentials. A REST client confirms by
+submitting the reviewed candidate to `POST /import`.
+
 ### Final Draft FDX Import
 
 The bundled FDX integration reads a `.fdx` screenplay locally in the browser.
@@ -79,7 +120,7 @@ The integration is an administrator workflow rather than a `/scripts/*` REST
 surface. Its import direction is Final Draft FDX into the Story Graph; the
 current release does not claim FDX export.
 
-### Fountain Import Scaffold
+### Deterministic Fountain Import Scaffold
 
 The bundled Fountain source is intended to read `.fountain`, `.spmd`, or
 plain-text Fountain files locally in the browser, convert their supported
@@ -94,14 +135,18 @@ bootstrap defect is fixed and tested, its intended direction remains Fountain
 into the Story Graph—not Fountain export or lossless preservation of every
 application-specific syntax extension.
 
+This blocker applies only to the deterministic Fountain-to-FDX page. A
+`.fountain` file can already be persisted and treated as text by the Story
+Import & Export plugin, then decomposed through a selected LLM Connection.
+
 ### Markdown Screenplay Export
 
-The WordPress Export screen derives a screenplay-style Markdown document from
-the selected live Project, including ordered Scenes, Scene summary and script
-content, linked Character names, and Shot headings where present. Structured
-Scene dialogue is not read separately by this exporter, so it appears only
-when it is already represented in `script_content`. The download uses a
-`-screenplay.md` suffix.
+The Story Import & Export plugin's WordPress Export screen derives a
+screenplay-style Markdown document from the selected live Project, including
+ordered Scenes, Scene summary and script content, linked Character names, and
+Shot headings where present. Structured Scene dialogue is not read separately
+by this exporter, so it appears only when it is already represented in
+`script_content`. The download uses a `-screenplay.md` suffix.
 
 ### Markdown Storyboard Export
 
@@ -168,19 +213,24 @@ capabilities or active delivery commitments:
 - Fade In import.
 - Highland import.
 - Story Architect project import.
-- PDF screenplay extraction.
-- Automated screenplay parsing and Story Graph entity extraction for those
-  formats.
-- Format-specific import preview, deduplication, and merge workflows.
+- OCR inside image-only or scanned PDFs.
+- Deterministic, lossless application-specific parsing beyond the accepted FDX
+  adapter and the LLM-assisted story decomposition surface.
+- Format-specific deduplication and merge workflows beyond canonical
+  validation and preview.
 - Professional screenplay exporters beyond the delivered Markdown views.
 - Additional script synchronization providers beyond delivered VideoDraft
   structural sync.
 
-No `/scripts/import`, `/scripts/export`, preview, or commit REST routes are
-registered in v1. Delivered FDX import uses a capability- and nonce-protected
-WordPress admin action; Fountain source targets the same pattern but is not yet
-operational. Extensions should use their own namespaces until they satisfy the
-core Story Graph mapping and validation contract.
+No `/scripts/*` routes are registered in v1. The Story Import & Export plugin
+instead provides administrator-only `/import/validate`, `/import`,
+`/import/decompose`, and `/export/{project_id}` compatibility routes. The
+headless REST contract therefore exists, but the optional Next.js application
+still lacks browser-user authentication, a creator adapter, and import/export
+UI. Delivered FDX import uses a capability- and nonce-protected WordPress admin
+action; the deterministic Fountain source targets the same pattern but is not
+yet operational. Extensions should use their own namespaces until they satisfy
+the canonical Story Graph mapping and validation contract.
 
 ## Story Graph Mapping Rules
 

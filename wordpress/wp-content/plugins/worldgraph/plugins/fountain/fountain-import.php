@@ -88,6 +88,9 @@ function handle_import(): void {
 	}
 
 	check_admin_referer( 'worldgraph_fountain_import' );
+	if ( ! class_exists( '\\WorldGraph\\Importer\\WorldGraph_Importer' ) ) {
+		redirect_with_error( 'Enable the Story Import & Export plugin before importing Fountain files.' );
+	}
 	$json      = isset( $_POST['worldgraph_fountain_json'] ) ? wp_unslash( $_POST['worldgraph_fountain_json'] ) : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- JSON must remain intact and is schema-validated by the importer.
 	$overwrite = ! empty( $_POST['worldgraph_fountain_overwrite'] );
 
@@ -123,6 +126,9 @@ function redirect_with_error( string $message ): void {
 function render_admin_page(): void {
 	if ( ! current_user_can( 'manage_worldgraph' ) ) {
 		wp_die( 'You do not have permission to import Fountain files.' );
+	}
+	if ( ! class_exists( '\\WorldGraph\\Importer\\WorldGraph_Importer' ) ) {
+		wp_die( esc_html__( 'Enable the Story Import & Export plugin before importing Fountain files.', 'worldgraph' ) );
 	}
 
 	$report   = get_transient( 'worldgraph_fountain_import_report' );

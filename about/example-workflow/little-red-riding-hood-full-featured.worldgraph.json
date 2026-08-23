@@ -19,8 +19,8 @@
       "lrrh_full_char_woodsman"
     ],
     "production_stage": "pre_production",
-    "frame_width": 1920,
-    "frame_height": 1080,
+    "frame_width": 1280,
+    "frame_height": 720,
     "aspect_ratio": "16:9",
     "frame_rate": 24
   },
