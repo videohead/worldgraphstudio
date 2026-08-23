@@ -430,6 +430,10 @@ class Connection {
 				'public'             => false,
 				'publicly_queryable' => false,
 				'show_in_rest'       => false,
+				// These are primitive administrator capabilities. Enabling meta-cap
+				// mapping would register manage_options as a post meta capability and
+				// make unrelated administrator checks require a post ID.
+				'map_meta_cap'       => false,
 				'capabilities'       => [
 					'edit_post'              => 'manage_options',
 					'read_post'              => 'manage_options',

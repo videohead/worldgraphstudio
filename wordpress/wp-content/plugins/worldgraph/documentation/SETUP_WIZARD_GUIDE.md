@@ -23,6 +23,41 @@ to setup; unrelated WordPress admin screens remain accessible.
 
 The form may be submitted with all optional service fields blank.
 
+## Third-party services, accounts, and billing
+
+Connections and Templates are configuration records stored on the WordPress
+site. World Graph Studio and installed adapters may create or update those
+records, but the records do not include an external service, provider account,
+provider-owned workflow, API or model access, usage credits, compute, model
+license, availability, or provider support. World Graph Studio does not own,
+operate, maintain, or provide the third-party services, provider-owned
+workflows, or paid models those records reference, and it does not collect
+provider fees. Administrators must independently obtain and connect each
+external service they choose to use.
+
+For a hosted Connection that requires an API key or token, the administrator
+is expected to:
+
+1. Visit the selected provider's official developer or API portal and create
+   an account directly with that provider.
+2. Enable API access and provider billing. The provider may require a plan,
+   prepaid credits, or acceptance of usage-based charges and bills the
+   administrator directly; World Graph Studio does not handle those payments.
+3. Generate a provider-issued API key or token and confirm that the account
+   can access the intended model, workflow, or tool.
+4. Enter that credential in the matching wizard field, test the Connection,
+   and save the wizard.
+
+Access to a model through a provider's web chat or consumer application is not
+API access. A ChatGPT, Claude, Suno, or other browser subscription, login,
+session, or cookie cannot replace a provider-issued API credential, and API
+access or billing may be a separate product. Review the provider's current
+pricing, terms, data practices, and model availability before connecting it.
+
+For a local or self-hosted Connection, the administrator is responsible for
+installing and maintaining the service and models, supplying the required
+hardware, and complying with their licenses.
+
 ## Wizard sections
 
 ### 1. WordPress Runtime

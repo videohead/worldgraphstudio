@@ -109,6 +109,7 @@ class Test_Credential_Store extends TestCase {
 	public function test_connection_credentials_have_an_admin_capability_boundary(): void {
 		$source = (string) file_get_contents( dirname( __DIR__ ) . '/includes/cpts/connection.php' );
 
+		$this->assertStringContainsString( "'map_meta_cap'       => false", $source );
 		$this->assertStringContainsString( "'create_posts'           => 'manage_options'", $source );
 		$this->assertStringContainsString( "! current_user_can( 'manage_options' )", $source );
 		$this->assertStringContainsString( "'publish' !== get_post_status", $source );

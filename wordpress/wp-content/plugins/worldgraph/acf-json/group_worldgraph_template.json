@@ -142,6 +142,46 @@
             "append": ""
         },
         {
+            "key": "field_worldgraph_template_lora_name",
+            "label": "LoRA",
+            "name": "lora_name",
+            "aria-label": "",
+            "type": "text",
+            "instructions": "Optional LoRA filename installed on the Connection's models\/loras directory, applied on top of the checkpoint above for the built-in workflow. Leave blank to run without a LoRA. Ignored when a custom ComfyUI API Workflow is set below.",
+            "required": 0,
+            "conditional_logic": 0,
+            "wrapper": {
+                "width": "",
+                "class": "",
+                "id": ""
+            },
+            "default_value": "",
+            "maxlength": "",
+            "placeholder": "",
+            "prepend": "",
+            "append": ""
+        },
+        {
+            "key": "field_worldgraph_template_lora_strength",
+            "label": "LoRA Strength",
+            "name": "lora_strength",
+            "aria-label": "",
+            "type": "text",
+            "instructions": "Model and CLIP strength applied to the LoRA above, typically 0.0-1.0. Defaults to 1.0 when left blank.",
+            "required": 0,
+            "conditional_logic": 0,
+            "wrapper": {
+                "width": "",
+                "class": "",
+                "id": ""
+            },
+            "default_value": "",
+            "maxlength": "",
+            "placeholder": "",
+            "prepend": "",
+            "append": ""
+        },
+        {
             "key": "field_worldgraph_template_model_family",
             "label": "Model Family",
             "name": "model_family",

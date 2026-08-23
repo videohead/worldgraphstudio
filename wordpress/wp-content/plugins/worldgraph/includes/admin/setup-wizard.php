@@ -461,8 +461,21 @@ class Setup_Wizard {
 				<div class="notice notice-warning"><p>Please review the connection settings below before continuing. Submitting this form (even with fields left blank) completes setup.</p></div>
 			<?php endif; ?>
 			<p>World Graph Studio requires a WordPress.org host or local Docker/Lando deployment. An API-connected LLM enables the World Graph Studio agents, while a generation Connection is optional for media generation.</p>
+			<div class="notice notice-warning inline" role="note" aria-labelledby="worldgraph-third-party-services-heading">
+				<h2 id="worldgraph-third-party-services-heading">External Services and API Charges Are Not Included</h2>
+				<p><strong>Connections and Templates are configuration records stored on your WordPress site.</strong> World Graph Studio and installed adapters may create or update those records, but the records do not include an external service, provider account, provider-owned workflow, API or model access, usage credits, compute, model license, availability, or provider support. World Graph Studio does not own, operate, maintain, or provide the third-party services, provider-owned workflows, or paid models those records reference, and it does not collect provider fees. You must independently obtain and connect every external service you choose to use.</p>
+				<p>For each hosted Connection that uses an API key or token:</p>
+				<ol>
+					<li>Go to the selected provider's official developer or API portal and create your own provider account.</li>
+					<li>Enable API access and billing with that provider. Purchase a plan or credits, or accept usage-based charges, when the provider requires it; the provider bills you directly.</li>
+					<li>Create a provider-issued API key or token and confirm that account can use the model, workflow, or tool you intend to select.</li>
+					<li>Enter the key or token in the matching field below, test the Connection, and then save the wizard.</li>
+				</ol>
+				<p><strong>Access to a model in a web chat or consumer app is not API access.</strong> A ChatGPT, Claude, Suno, or other browser subscription, login, session, or cookie cannot be used in place of a provider-issued API key. API access and billing may be separate even when the same company offers both products. Review the provider's current pricing, terms, data practices, and model availability before connecting it.</p>
+				<p>For a local or self-hosted Connection, you are responsible for installing and maintaining the service and models, providing the required hardware, and complying with their licenses.</p>
+			</div>
 			<div class="notice notice-info inline">
-				<p><strong>Do not have API access?</strong> You can still use World Graph Studio to develop stories, manage characters and scenes, track continuity, and organize media. Generate content in a browser-based service using its own web app, download the result, and attach it to a World Graph Studio post as the featured asset or in its asset gallery. Browser subscriptions and web login credentials cannot be used as server API credentials.</p>
+				<p><strong>Do not want to connect an API?</strong> You can still use World Graph Studio to develop stories, manage characters and scenes, track continuity, and organize media. Generate content separately in a browser-based service, download the result, and attach it to a World Graph Studio post as the featured asset or in its asset gallery.</p>
 			</div>
 			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
 				<input type="hidden" name="action" value="worldgraph_save_setup" />
@@ -478,7 +491,7 @@ class Setup_Wizard {
 					<?php endforeach; ?>
 				</select> <span class="description">This list is supplied by installed Connection adapters. Additional providers can be added from World Graph Studio &gt; Connections.</span></p>
 				<p id="worldgraph-generation-credential-fields"><label for="worldgraph_gen_credential_reference">Generation Provider API Key</label><br />
-				<input type="password" class="regular-text" name="worldgraph_gen_credential_reference" id="worldgraph_gen_credential_reference" value="<?php echo esc_attr( $generation_api_key ); ?>" autocomplete="new-password" /> <span class="description">Use the selected hosted provider's API key. It is encrypted in the database; leave the masked value unchanged to keep it.</span></p>
+				<input type="password" class="regular-text" name="worldgraph_gen_credential_reference" id="worldgraph_gen_credential_reference" value="<?php echo esc_attr( $generation_api_key ); ?>" autocomplete="new-password" /> <span class="description">Use an API key issued for your own account by the selected provider after enabling any required API billing. The provider charges you directly. The key is encrypted in the database; leave the masked value unchanged to keep it.</span></p>
 				<p id="worldgraph-generation-mcp-credential-fields"><label for="worldgraph_gen_mcp_credential_reference">Generation Provider MCP Token</label><br />
 				<input type="password" class="regular-text" name="worldgraph_gen_mcp_credential_reference" id="worldgraph_gen_mcp_credential_reference" value="<?php echo esc_attr( $generation_mcp_api_key ); ?>" autocomplete="new-password" /> <span class="description">Suno MCP is operated by AceData Cloud and requires its own token; a SunoAPI.org key cannot authenticate this endpoint.</span></p>
 				<p id="worldgraph-comfy-local-api-fields"><label for="worldgraph_comfy_local_url">Local ComfyUI API URL</label><br />
@@ -515,7 +528,7 @@ class Setup_Wizard {
 				</ol>
 				<p class="description">Direct connectors for services such as Sora, Runway, Veo, Kling, Seedance, Firefly, Midjourney, and Amazon video endpoints require additional API discovery and provider-specific implementation.</p>
 				<h2>LLM Connection (Required for AI Agents)</h2>
-				<p>An API-connected LLM is required for World Graph Studio agents. Browser-only ChatGPT, Claude, or Claude Code subscriptions are not supported by this server integration. Without one, leave these fields empty and use World Graph Studio for story data, WordPress media, and external-generation asset tracking.</p>
+				<p>An API-connected LLM is required for World Graph Studio agents. Obtain hosted LLM access and a key from the provider's developer or API portal; API billing is commonly separate from a consumer subscription. Browser-only ChatGPT, Claude, or Claude Code subscriptions are not supported by this server integration. Without one, leave these fields empty and use World Graph Studio for story data, WordPress media, and external-generation asset tracking.</p>
 				<p class="description">Saving this section creates or updates a <strong>Connection</strong> record, testable from <a href="<?php echo esc_url( admin_url( 'admin.php?page=worldgraph-connections' ) ); ?>">World Graph Studio &gt; Connections</a>. Configure additional connections (e.g. a fallback or secondary LLM) directly on the Connections screen.</p>
 				<h3>Primary LLM Configuration</h3>
 				<p><label for="worldgraph_ai_backend">Provider</label><br /><select name="worldgraph_ai_backend" id="worldgraph_ai_backend">

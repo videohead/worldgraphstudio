@@ -60,6 +60,25 @@ class Test_Connection_Workflow_UX extends TestCase {
 		$this->assertStringNotContainsString( '>Sync Capabilities<', preg_replace( '/\s+/', ' ', $admin ) ?? $admin );
 	}
 
+	/** The Setup Wizard must explain third-party ownership and API account costs. */
+	public function test_setup_wizard_discloses_third_party_services_and_api_billing(): void {
+		$wizard = $this->source( 'includes/admin/setup-wizard.php' );
+
+		foreach (
+			[
+				'does not own, operate, maintain, or provide',
+				'Connections and Templates are configuration records',
+				'You must independently obtain and connect every external service',
+				'official developer or API portal',
+				'Enable API access and billing',
+				'the provider bills you directly',
+				'Access to a model in a web chat or consumer app is not API access',
+			] as $disclosure
+		) {
+			$this->assertStringContainsString( $disclosure, $wizard );
+		}
+	}
+
 	/** Connection activity is projected from the canonical generation log. */
 	public function test_connection_activity_uses_generation_log(): void {
 		$editor = $this->source( 'includes/cpts/connection.php' );
