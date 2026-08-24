@@ -84,6 +84,7 @@ class Generation_Job {
 		add_filter( 'manage_' . self::POST_TYPE . '_posts_columns', [ __CLASS__, 'columns' ] );
 		add_action( 'manage_' . self::POST_TYPE . '_posts_custom_column', [ __CLASS__, 'column_content' ], 10, 2 );
 		add_filter( 'manage_edit-' . self::POST_TYPE . '_sortable_columns', [ __CLASS__, 'sortable_columns' ] );
+		add_filter( 'display_post_states', [ __CLASS__, 'post_states' ], 10, 2 );
 		add_filter( 'post_row_actions', [ __CLASS__, 'row_actions' ], 10, 2 );
 		add_filter( 'use_block_editor_for_post_type', [ __CLASS__, 'disable_block_editor' ], 10, 2 );
 		add_action( 'add_meta_boxes_' . self::POST_TYPE, [ __CLASS__, 'register_meta_boxes' ] );
@@ -96,6 +97,22 @@ class Generation_Job {
 		add_action( 'manage_posts_extra_tablenav', [ __CLASS__, 'render_batch_runner' ] );
 		add_action( 'admin_post_worldgraph_run_generation_batch', [ __CLASS__, 'handle_run_batch' ] );
 		add_action( 'admin_notices', [ __CLASS__, 'render_batch_notice' ] );
+	}
+
+	/**
+	 * Hide WordPress's storage status so the generation Status column remains
+	 * the authoritative operational state.
+	 *
+	 * @param array<string, string> $states Native post-state labels.
+	 * @param \WP_Post              $post   Current post.
+	 * @return array<string, string>
+	 */
+	public static function post_states( array $states, \WP_Post $post ): array {
+		if ( self::POST_TYPE === $post->post_type ) {
+			unset( $states['draft'] );
+		}
+
+		return $states;
 	}
 
 	/**
@@ -370,12 +387,33 @@ class Generation_Job {
 	 */
 	public static function column_content( string $column, int $post_id ): void {
 		if ( 'worldgraph_gen_status' === $column ) {
-			$status   = (string) get_post_meta( $post_id, '_worldgraph_gen_status', true );
-			$statuses = self::statuses();
-			$error    = (string) get_post_meta( $post_id, '_worldgraph_gen_error', true );
-			echo esc_html( $statuses[ $status ] ?? ( '' !== $status ? $status : __( 'Unknown', 'worldgraph' ) ) );
+			$status        = (string) get_post_meta( $post_id, '_worldgraph_gen_status', true );
+			$statuses      = self::statuses();
+			$error         = (string) get_post_meta( $post_id, '_worldgraph_gen_error', true );
+			$batch_id      = absint( get_post_meta( $post_id, '_worldgraph_gen_batch_id', true ) );
+			$batch_kind    = sanitize_key( (string) get_post_meta( $post_id, '_worldgraph_gen_batch_kind', true ) );
+			$remote_job_id = trim( (string) get_post_meta( $post_id, '_worldgraph_gen_job_id', true ) );
+			$fallback      = '' !== $status ? ucwords( str_replace( [ '_', '-' ], ' ', $status ) ) : __( 'Unknown', 'worldgraph' );
+			echo esc_html( $statuses[ $status ] ?? $fallback );
 			if ( '' !== $error ) {
 				echo '<br /><span class="description">' . esc_html( $error ) . '</span>';
+			}
+			if ( ! $batch_id && '' !== $batch_kind ) {
+				$batch_id = $post_id;
+			}
+			if ( $batch_id ) {
+				printf(
+					'<br /><span class="description">%1$s #%2$d</span>',
+					esc_html__( 'Batch', 'worldgraph' ),
+					$batch_id
+				);
+			}
+			if ( '' !== $remote_job_id ) {
+				printf(
+					'<br /><span class="description">%1$s %2$s</span>',
+					esc_html__( 'Remote job:', 'worldgraph' ),
+					esc_html( $remote_job_id )
+				);
 			}
 			return;
 		}

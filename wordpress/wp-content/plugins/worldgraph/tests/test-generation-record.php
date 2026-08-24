@@ -40,4 +40,27 @@ class Test_WorldGraph_Generation_Record extends TestCase {
 		$this->assertNotFalse( $migration );
 		$this->assertLessThan( $migration, $registration );
 	}
+
+	/** The Job list should not present WordPress Draft as generation state. */
+	public function test_generation_record_list_hides_native_draft_state(): void {
+		$source = file_get_contents( dirname( __DIR__ ) . '/includes/cpts/class-generation-job.php' );
+
+		$this->assertNotFalse( $source );
+		$this->assertStringContainsString( "add_filter( 'display_post_states', [ __CLASS__, 'post_states' ], 10, 2 );", $source );
+		$this->assertStringContainsString( "if ( self::POST_TYPE === \$post->post_type )", $source );
+		$this->assertStringContainsString( "unset( \$states['draft'] );", $source );
+	}
+
+	/** The operational Status cell should identify its batch and provider job. */
+	public function test_generation_record_status_cell_exposes_job_identity(): void {
+		$source = file_get_contents( dirname( __DIR__ ) . '/includes/cpts/class-generation-job.php' );
+
+		$this->assertNotFalse( $source );
+		$this->assertStringContainsString( "'_worldgraph_gen_status'", $source );
+		$this->assertStringContainsString( "'_worldgraph_gen_batch_id'", $source );
+		$this->assertStringContainsString( "'_worldgraph_gen_batch_kind'", $source );
+		$this->assertStringContainsString( "'_worldgraph_gen_job_id'", $source );
+		$this->assertStringContainsString( "esc_html__( 'Batch', 'worldgraph' )", $source );
+		$this->assertStringContainsString( "esc_html__( 'Remote job:', 'worldgraph' )", $source );
+	}
 }
