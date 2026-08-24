@@ -305,6 +305,15 @@ class Test_Rough_Cut_Assembler extends TestCase {
 		$this->assertSame( '', $method->invoke( null, 'unowned.tmp' ) );
 	}
 
+	/** WordPress receives a variable for the sideload argument it accepts by reference. */
+	public function test_video_import_passes_a_named_file_array_to_wordpress(): void {
+		$source = (string) file_get_contents( dirname( __DIR__ ) . '/includes/utils/class-rough-cut-assembler.php' );
+
+		$this->assertStringContainsString( '$sideload_args = [', $source );
+		$this->assertStringContainsString( 'wp_handle_sideload( $sideload_args,', $source );
+		$this->assertDoesNotMatchRegularExpression( '/wp_handle_sideload\s*\(\s*\[/', $source );
+	}
+
 	/** Orchestration keeps execution shell-free and cleanup scoped to owned files. */
 	public function test_orchestration_has_required_safety_and_provenance_contracts(): void {
 		$source = (string) file_get_contents( dirname( __DIR__ ) . '/includes/utils/class-rough-cut-assembler.php' );

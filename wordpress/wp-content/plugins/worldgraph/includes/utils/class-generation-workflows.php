@@ -335,6 +335,9 @@ class Generation_Workflows {
 			$output     = (array) ( $definition['outputs'][0] ?? [] );
 			$intent     = (string) ( $output['intent'] ?? '' );
 		}
+		if ( 'worldgraph_sound' === $post_type && 'audio' === (string) ( $output['type'] ?? '' ) ) {
+			return self::demonstration_sound_prompt( $post, self::demonstration_sound_role( $post_id ), $base_prompt );
+		}
 
 		$labels = worldgraph_get_all_cpts();
 		$video  = 'video' === (string) ( $output['type'] ?? '' );
@@ -616,17 +619,30 @@ class Generation_Workflows {
 			$definition = self::definition_for_post_type( $source->post_type );
 			foreach ( (array) ( $definition['outputs'] ?? [] ) as $output ) {
 				$intent = (string) ( $output['intent'] ?? '' );
-				$tasks[] = [
+				$type   = (string) ( $output['type'] ?? 'image' );
+				$task   = [
 					'source_id'    => (int) $source->ID,
 					'source_type'  => (string) $source->post_type,
 					'source_title' => (string) $source->post_title,
 					'workflow_id'  => (string) ( $definition['id'] ?? '' ),
 					'intent'       => $intent,
 					'label'        => (string) ( $output['label'] ?? $intent ),
-					'type'         => (string) ( $output['type'] ?? 'image' ),
+					'type'         => $type,
 					'featured'     => ! empty( $output['featured'] ),
 					'prompt'       => Asset_Generator::build_prompt( (int) $source->ID, $intent, $base_prompt ),
 				];
+				if ( 'worldgraph_sound' === $source->post_type && 'audio' === $type ) {
+					$role       = self::demonstration_sound_role( (int) $source->ID );
+					$modalities = self::sound_modalities( $role );
+					// A Silence record is already the requested fallback; it should
+					// never spend provider budget on an arbitrary audio Template.
+					if ( empty( $modalities ) ) {
+						continue;
+					}
+					$task['audio_role']           = $role;
+					$task['preferred_modalities'] = $modalities;
+				}
+				$tasks[] = $task;
 			}
 		}
 
@@ -652,7 +668,11 @@ class Generation_Workflows {
 			'workflow'   => self::definition_for_post_type( $post->post_type ),
 			'sources'    => count( $sources ),
 			'total_jobs' => count( $tasks ),
-			'counts'     => [ 'image' => (int) ( $counts['image'] ?? 0 ), 'video' => (int) ( $counts['video'] ?? 0 ) ],
+			'counts'     => [
+				'image' => (int) ( $counts['image'] ?? 0 ),
+				'video' => (int) ( $counts['video'] ?? 0 ),
+				'audio' => (int) ( $counts['audio'] ?? 0 ),
+			],
 			'tasks'      => $tasks,
 		];
 	}
@@ -1533,9 +1553,20 @@ class Generation_Workflows {
 		if ( '' !== $notes ) {
 			$parts[] = __( 'Production notes', 'worldgraph' ) . ': ' . $notes;
 		}
+		$instructions = self::clean_text( (string) worldgraph_get_field_value( (int) $sound->ID, 'generation_prompt' ), 500 );
+		if ( '' !== $instructions ) {
+			$parts[] = __( 'Generation instructions', 'worldgraph' ) . ': ' . $instructions;
+		}
 		$base_prompt = self::clean_text( $base_prompt, 500 );
 		if ( '' !== $base_prompt ) {
-			$parts[] = __( 'Project request', 'worldgraph' ) . ': ' . $base_prompt;
+			$parts[] = __( 'Additional request instructions', 'worldgraph' ) . ': ' . $base_prompt;
+		}
+		if ( in_array( $role, [ 'narration', 'voiceover', 'adr' ], true ) ) {
+			$parts[] = __( 'Output constraints: speak only the supplied copy, preserve its wording, and produce clean intelligible audio without unrelated music or effects unless requested.', 'worldgraph' );
+		} elseif ( 'music' === $role ) {
+			$parts[] = __( 'Output constraints: produce only the requested music cue, preserve supplied lyrics and mood, and avoid unrelated speech or sound effects.', 'worldgraph' );
+		} else {
+			$parts[] = __( 'Output constraints: render only the described sound source with a clean beginning and ending, and add no unrelated speech or music.', 'worldgraph' );
 		}
 
 		return self::clean_text( implode( "\n\n", $parts ), self::MAX_CONTEXT_WORDS );

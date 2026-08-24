@@ -2145,16 +2145,14 @@ class Rough_Cut_Assembler {
 			wp_delete_file( $sideload_file );
 			return self::error( 'worldgraph_rough_cut_upload_copy_failed', __( 'The assembled rough cut could not be prepared for Media Library import.', 'worldgraph' ), [ 'status' => 500 ] );
 		}
-		$upload = wp_handle_sideload(
-			[
-				'name'     => $filename,
-				'type'     => 'video/mp4',
-				'tmp_name' => $sideload_file,
-				'error'    => 0,
-				'size'     => (int) $size,
-			],
-			[ 'test_form' => false ]
-		);
+		$sideload_args = [
+			'name'     => $filename,
+			'type'     => 'video/mp4',
+			'tmp_name' => $sideload_file,
+			'error'    => 0,
+			'size'     => (int) $size,
+		];
+		$upload = wp_handle_sideload( $sideload_args, [ 'test_form' => false ] );
 		if ( is_file( $sideload_file ) ) {
 			wp_delete_file( $sideload_file );
 		}

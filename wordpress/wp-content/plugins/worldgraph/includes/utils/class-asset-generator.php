@@ -982,13 +982,14 @@ class Asset_Generator {
 
 		if ( ! empty( $image['file'] ) ) {
 			require_once ABSPATH . 'wp-admin/includes/file.php';
-			$upload = wp_handle_sideload( [
+			$sideload_file = [
 				'name'     => $filename,
 				'type'     => $image['mime'],
 				'tmp_name' => $image['file'],
 				'error'    => 0,
 				'size'     => (int) ( $image['size'] ?? 0 ),
-			], [ 'test_form' => false ] );
+			];
+			$upload = wp_handle_sideload( $sideload_file, [ 'test_form' => false ] );
 		} else {
 			$upload = wp_upload_bits( $filename, null, $image['data'] );
 		}

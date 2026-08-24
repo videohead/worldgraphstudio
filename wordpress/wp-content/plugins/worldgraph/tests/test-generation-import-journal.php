@@ -168,6 +168,16 @@ class Test_Generation_Import_Journal extends TestCase {
 		$this->assertTrue( strpos( $stream, 'self::journal_temp_file' ) < strpos( $stream, 'wp_safe_remote_get' ) );
 	}
 
+	/** WordPress receives a variable for the sideload argument it accepts by reference. */
+	public function test_sideload_passes_a_named_file_array_to_wordpress(): void {
+		$source   = $this->asset_generator_source();
+		$sideload = $this->method_source( $source, 'private static function sideload', 'private static function delete_temp_media' );
+
+		$this->assertStringContainsString( '$sideload_file = [', $sideload );
+		$this->assertStringContainsString( 'wp_handle_sideload( $sideload_file,', $sideload );
+		$this->assertStringNotContainsString( 'wp_handle_sideload( [', $sideload );
+	}
+
 	/** Recovery reverses links and owned records before clearing the journal. */
 	public function test_recovery_rolls_back_all_journaled_side_effects(): void {
 		$source   = $this->asset_generator_source();
