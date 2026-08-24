@@ -42,10 +42,10 @@ declares or that its provider schema/workflow exposes safely. Changing the
 Template replaces that control set and resets values that no longer belong to
 the selected Template.
 
-Planning reports the number of image, video, and audio jobs, every source and creative
-intent, prompt fingerprints, Templates runnable across the plan, resolved
-defaults, and the latest batch. It performs no writes and spends no provider
-budget.
+Planning reports the number of image, video, and audio jobs, every source and
+creative intent, prompt fingerprints, Templates runnable across the plan,
+resolved defaults, and the latest batch. It performs no writes and spends no
+provider budget.
 Starting a batch revalidates permissions, Templates, Connections, and bindings
 before any child job is queued.
 
@@ -143,6 +143,8 @@ Controls are conditional, not a universal form:
   declared for the Template;
 - width and height, and video duration or frames per second, appear only when
   the selected Template exposes those inputs; and
+- prompt enhancement appears only when a saved workflow exposes a safely
+  mutable prompt-enhance input; and
 - additional text-conditioning channels, including dual-CLIP channels, appear
   only when their distinct inputs are discovered or explicitly declared. They
   are not inferred merely from a model-family label.
@@ -212,6 +214,23 @@ final Scenes. These composite prompts do not imply that the engine waits for or
 automatically binds newly generated child images. Other generator-supported
 post types retain the generic representative-image fallback.
 
+The Project-only `demonstration` scope is a separate orchestration recipe. It
+orders Story Graph Scenes and Shots and declares stable task keys for:
+
+- one reusable still for each recurring Character and referenced Location;
+- a required representative still for every Shot, or a Scene/Project still
+  when the story has no Shots;
+- optional Sound cues, reusing a linked existing Sound Asset when present; and
+- an optional moving version of each Shot.
+
+A moving-shot task prefers first-frame/last-frame video when a following Shot
+still exists, then character-reference image-to-video, then text-to-video.
+Symbolic `input_refs` make the current Shot still the start frame, the next Shot
+still the end frame, and a recurring Character reference the primary I2V image;
+the current Shot still remains the image fallback. This expresses intent and
+allows task-aware Template selection. A provider receives only the media slots
+required by the modality actually selected.
+
 ## Template resolution and preferences
 
 A Template must be published, have `status = active`, produce the required
@@ -251,10 +270,10 @@ task.
 
 ## Plans and durable batches
 
-The representative REST contract is:
+The story-workflow REST contract is:
 
 ```http
-GET  /wp-json/worldgraph/v1/assets/generate/plan?post_id={id}&scope={item|project}
+GET  /wp-json/worldgraph/v1/assets/generate/plan?post_id={id}&scope={item|project|demonstration}
 POST /wp-json/worldgraph/v1/assets/generate/batches
 GET  /wp-json/worldgraph/v1/assets/generate/batches/{id}
 POST /wp-json/worldgraph/v1/assets/generate/batches/{id}/cancel
@@ -262,14 +281,16 @@ POST /wp-json/worldgraph/v1/assets/generate/batches/{id}/cancel
 
 `scope=item` expands the selected post's recipe. `scope=project` requires a
 Project and walks canonical `contains` and `belongs_to` ownership edges to
-include the Project and each supported descendant once. A plan returns:
+include the Project and each supported descendant once. `scope=demonstration`
+also requires a Project and returns the ordered whole-story dependency and
+assembly plan. A plan returns:
 
-- `workflow`, `sources`, `total_jobs`, and image/video `counts`;
+- `workflow`, `sources`, `total_jobs`, and image/video/audio `counts`;
 - `tasks` with source identity, workflow, intent, label, type, featured flag,
   and `prompt_hash`, while omitting long provider prompts;
 - `ready` and any Template `blockers`;
-- `image_templates` and `video_templates` runnable across that plan, including
-  each Template's sanitized `run_controls` contract;
+- image, video, and audio Templates runnable for applicable work in that plan,
+  including each Template's sanitized `run_controls` contract;
 - resolved `default_template_ids`; and
 - `latest_batch`, when one exists for the same root and scope.
 
@@ -277,7 +298,7 @@ The start payload accepts `post_id`, `scope`, optional additive `base_prompt`,
 optional `image_template_id` and `video_template_id`, optional
 `image_run_values` and `video_run_values` objects, and the required non-empty
 `idempotency_key`. The server refuses to start unless the requester can edit
-every source, every image/video task resolves a runnable Template, and every
+every source, every required task resolves a runnable Template, and every
 submitted run value validates against its explicitly selected per-type
 Template.
 Plans are limited to 5,000 jobs by default;
@@ -290,15 +311,22 @@ overrides, and normalized image/video run values. This protects concurrent
 starts and client retries from duplicate provider spending after a timeout or
 lost response, while rejecting reuse for different settings.
 
-## Batch storage, status, and cancellation
+## Batch storage, dependencies, assembly, and cancellation
 
-A representative batch is a parent `worldgraph_gen` record with:
+A representative or demonstration batch is a parent `worldgraph_gen` record
+with:
 
-- `_worldgraph_gen_batch_kind = representative_media`;
+- `_worldgraph_gen_batch_kind = representative_media` or
+  `demonstration_video`;
 - `_worldgraph_gen_batch_scope`;
 - `_worldgraph_gen_batch_plan`, a versioned frozen task list containing source,
   step, workflow, intent, output type, Template, prompt, prompt hash, and
-  featured behavior, plus the normalized run values for that task;
+  featured behavior, plus the normalized run values for that task. A
+  demonstration snapshot additionally retains its stable task key, phase,
+  required/optional flag, dependencies, symbolic media references, preferred
+  modalities, generation-required flag, fallback, and editorial order;
+- `_worldgraph_gen_assembly_plan`, the frozen demonstration timeline and its
+  still, silence, and subtitle fallback policy;
 - `_worldgraph_gen_batch_cursor`, which tracks bounded materialization;
 - `_worldgraph_gen_workflow_version = 1`;
 - `_worldgraph_gen_idempotency_key`;
@@ -319,18 +347,46 @@ a missing wake-up or return a retryable scheduling error instead of silently
 leaving a committed batch dormant. A child's runnable status is likewise
 written last, after its prompt, Template, requester, intent, and batch
 membership are durable.
-After start freezes the plan, the parent moves through
+For representative-media batches, the parent moves through
 `batch_materializing`, `batch_activating`, and `batch_active`. WP-Cron creates
 up to 20 non-runnable `staged` children per tick. Only after every task exists
 does it promote up to 50 staged children to `queued` per tick, then continue
 submitting and polling bounded numbers of jobs. A large Project batch may
 therefore run for hours or days without one HTTP request remaining open.
+
+Demonstration materialization is dependency-aware. Reference, still, and audio
+children can be queued first; a moving-shot child is released only after the
+completed media needed by its selected modality can be resolved. A missing or
+failed optional video falls back to the Shot still in the assembly plan. A
+missing generated audio cue falls back to silence; dialogue or other story text
+is retained as subtitle/title-card content when usable audio is unavailable.
+Stories without Shots can still be assembled from completed Scene or Project
+stills. Optional work can be represented by a terminal skipped child so the
+batch does not wait forever for an enhancement it cannot execute.
+
+After all child work is terminal, the demonstration enters an assembly phase.
+`Rough_Cut_Assembler` normalizes usable clips and still cards, orders them by
+the frozen editorial timeline, creates subtitle graphics, mixes bounded audio
+cues where available, and imports an H.264 rough cut into the Media Library.
+The status response exposes the assembly state, attachment URL on success, and
+bounded warnings or diagnostics on failure. This is an automatic demonstration
+pass, not a claim that every provider result will be artistically acceptable.
+
+Assembly requires an executable FFmpeg binary and PHP `proc_open`, a writable
+WordPress temporary directory, and adequate storage/runtime limits. The binary
+defaults to `ffmpeg` and can be configured with `WORLDGRAPH_FFMPEG_BINARY` or
+the `worldgraph_ffmpeg_binary` filter. If FFmpeg is missing or cannot start,
+the completed child media remains available and the batch reports an assembly
+error and diagnostic instead of pretending a rough cut exists.
+
 Cancellation prevents remaining planned tasks from being activated, changes
 already materialized `staged`, `queued`, or pre-dispatch `submitting` children
 to `cancelled`, and reports that count in `stopped_queued` plus a human-readable
-`cancel_note`. A job atomically enters `dispatching` immediately before the
-provider call; dispatching, submitted, or terminal provider work retains its
-actual lifecycle state and remains in the aggregate report.
+`cancel_note`. It also prevents a cancelled demonstration from starting a new
+assembly. A job atomically enters `dispatching` immediately before the provider
+call; dispatching, submitted, or terminal provider work retains its actual
+lifecycle state and remains in the aggregate report. Provider-side work that
+has already been dispatched may therefore finish even after cancellation.
 
 Generated files carry the same context outside WordPress through
 `{project_slug|project-wp-slug}-{cpt-type}-{source-slug?}-{intent?}-job-{job_id}.{ext}`.
@@ -346,8 +402,9 @@ intent label, falling back to the media type when no intent exists.
 - Disabled Connections, output mismatches, and unresolved Template bindings
   remain hard blockers.
 - An image-only installation can use Project, World, look-set, Scene, and
-  Episode recipes, but a Shot batch cannot start until its required video
-  output also has a runnable Template.
+  Episode recipes. A representative Shot batch still requires its video
+  output, while a demonstration can fall back from optional Shot motion and
+  audio to its required stills, subtitles, and silence.
 - World Graph Studio remains usable with no generation provider.
 
 ## Implementation references
@@ -359,3 +416,5 @@ intent label, falling back to the media type when no intent exists.
 - [Template bindings](../../wordpress/wp-content/plugins/worldgraph/includes/utils/template_bindings.php)
 - [Modality registry](../../wordpress/wp-content/plugins/worldgraph/includes/utils/generation-modality.php)
 - [Generation Engine](GENERATION_ENGINE.md)
+- [Rough-cut assembler](../../wordpress/wp-content/plugins/worldgraph/includes/utils/class-rough-cut-assembler.php)
+- [Model-aware prompt profiles](../../wordpress/wp-content/plugins/worldgraph/includes/utils/class-generation-prompt-profiles.php)

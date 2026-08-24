@@ -159,7 +159,7 @@ class Asset_Generator_MetaBox {
 				'confirmItem'       => __( 'Queue this item’s complete representative-media set? Provider charges may apply.', 'worldgraph' ),
 				'confirmProject'    => __( 'Queue all representative frames and videos for this Project? This can incur substantial provider charges and run for hours or days.', 'worldgraph' ),
 				'confirmDemonstration' => __( 'Generate the complete story demonstration and assemble it when ready? Provider charges may apply, and this can run for hours or days. Missing optional motion or audio will fall back to stills, subtitles, and silence.', 'worldgraph' ),
-				'batchQueued'       => __( 'Representative-media batch queued.', 'worldgraph' ),
+				'batchQueued'       => __( 'Generation batch queued.', 'worldgraph' ),
 				'batchProgress'     => __( 'Batch progress', 'worldgraph' ),
 				'roughCutReady'     => __( 'Rough-cut demonstration ready.', 'worldgraph' ),
 				'cancelBatch'       => __( 'Stop work that has not reached a provider?', 'worldgraph' ),

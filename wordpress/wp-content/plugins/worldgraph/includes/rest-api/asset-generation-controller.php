@@ -77,8 +77,10 @@ class Asset_Generation_Controller extends Base_Controller {
 				'base_prompt'       => [ 'description' => 'Optional author-edited prompt for an item batch.', 'type' => 'string', 'default' => '' ],
 				'image_template_id' => [ 'description' => 'Optional image Template override applied to every image task.', 'type' => 'integer', 'default' => 0 ],
 				'video_template_id' => [ 'description' => 'Optional video Template override applied to every video task.', 'type' => 'integer', 'default' => 0 ],
+				'audio_template_id' => [ 'description' => 'Optional audio Template override applied to every generated audio cue.', 'type' => 'integer', 'default' => 0 ],
 				'image_run_values'  => [ 'description' => 'Template-declared image overrides; requires one image Template override.', 'type' => 'object', 'default' => [] ],
 				'video_run_values'  => [ 'description' => 'Template-declared video overrides; requires one video Template override.', 'type' => 'object', 'default' => [] ],
+				'audio_run_values'  => [ 'description' => 'Template-declared audio overrides; requires one audio Template override.', 'type' => 'object', 'default' => [] ],
 				'idempotency_key'   => [ 'description' => 'Caller-generated key that makes a repeated start request return the existing batch.', 'type' => 'string', 'required' => true ],
 			],
 		] );
@@ -272,8 +274,10 @@ class Asset_Generation_Controller extends Base_Controller {
 				'base_prompt'       => (string) $request->get_param( 'base_prompt' ),
 				'image_template_id' => absint( $request->get_param( 'image_template_id' ) ),
 				'video_template_id' => absint( $request->get_param( 'video_template_id' ) ),
+				'audio_template_id' => absint( $request->get_param( 'audio_template_id' ) ),
 				'image_run_values'  => (array) $request->get_param( 'image_run_values' ),
 				'video_run_values'  => (array) $request->get_param( 'video_run_values' ),
+				'audio_run_values'  => (array) $request->get_param( 'audio_run_values' ),
 				'idempotency_key'   => (string) $request->get_param( 'idempotency_key' ),
 			]
 		);
@@ -329,10 +333,13 @@ class Asset_Generation_Controller extends Base_Controller {
 		$tasks           = [];
 
 		foreach ( (array) $plan['tasks'] as $task ) {
-			$template_id = Generation_Workflows::resolve_template_id( $task );
+			$generation_required = ! array_key_exists( 'generation_required', $task ) || ! empty( $task['generation_required'] );
+			$template_id = $generation_required ? Generation_Workflows::resolve_template_id( $task ) : 0;
 			$type        = (string) $task['type'];
 			$optional    = array_key_exists( 'required', $task ) ? empty( $task['required'] ) : ! empty( $task['optional'] );
-			if ( $template_id ) {
+			if ( ! $generation_required ) {
+				// Existing linked media is already a valid assembly input.
+			} elseif ( $template_id ) {
 				$defaults[ $type ][ $template_id ] = true;
 			} elseif ( $optional ) {
 				$optional_missing[] = [
@@ -359,6 +366,7 @@ class Asset_Generation_Controller extends Base_Controller {
 				'type'         => $type,
 				'featured'     => ! empty( $task['featured'] ),
 				'optional'     => $optional,
+				'generation_required' => $generation_required,
 				'phase'        => sanitize_key( (string) ( $task['phase'] ?? '' ) ),
 				'depends_on'   => array_values( array_map( 'sanitize_key', (array) ( $task['dependencies'] ?? $task['depends_on'] ?? [] ) ) ),
 				'fallback'     => sanitize_text_field( (string) ( $task['fallback_task_key'] ?? $task['fallback'] ?? '' ) ),

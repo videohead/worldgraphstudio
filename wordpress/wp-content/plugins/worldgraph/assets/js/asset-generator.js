@@ -1318,8 +1318,12 @@
 		var terminal = isTerminal( body.status );
 		progress.hidden = false;
 		progressBar.value = percent;
-		label.textContent = strings.batchProgress + ': ' + percent + '% — ' + ( body.completed || 0 ) + '/' + ( body.total || 0 ) + ' completed, ' + ( body.active || 0 ) + ' active, ' + ( body.failed || 0 ) + ' failed, ' + ( body.cancelled || 0 ) + ' cancelled.';
-		setStatus( panel, strings.batchQueued + ' #' + body.batch_id + ' — ' + body.status, 'failed' === body.status || 'completed_with_errors' === body.status );
+		label.textContent = strings.batchProgress + ': ' + percent + '% — ' + ( body.completed || 0 ) + '/' + ( body.total || 0 ) + ' completed, ' + ( body.active || 0 ) + ' active, ' + ( body.skipped || 0 ) + ' fallback, ' + ( body.failed || 0 ) + ' failed, ' + ( body.cancelled || 0 ) + ' cancelled.';
+		var statusText = strings.batchQueued + ' #' + body.batch_id + ' — ' + body.status;
+		if ( body.error ) {
+			statusText += ': ' + body.error;
+		}
+		setStatus( panel, statusText, 'failed' === body.status || 'completed_with_errors' === body.status );
 		if ( body.assembly && body.assembly.url ) {
 			var result = panel.querySelector( '.worldgraph-generate-asset__result' );
 			clearElement( result );

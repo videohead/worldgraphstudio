@@ -12,7 +12,7 @@ providers. WordPress remains the control plane and source of truth for:
 
 - provider Connections;
 - reusable generation Templates;
-- provider-neutral representative-media recipes and intents;
+- provider-neutral representative-media and demonstration recipes and intents;
 - read-only plans, durable batches, and queued generation records;
 - prompts, parameters, source-post links, and provider provenance;
 - imported WordPress media, retained text results, and linked Asset records; and
@@ -25,7 +25,7 @@ work is submitted and polled by WP-Cron.
 Story Graph item or Project
               |
               v
- representative workflow plan
+ representative or demonstration plan
               |
               v
  active Template + Connection per output
@@ -41,6 +41,9 @@ Story Graph item or Project
               |
               v
  WordPress attachments / text results + provenance
+              |
+              v
+ optional FFmpeg demonstration rough cut
 ```
 
 ## Current generation shapes
@@ -77,6 +80,9 @@ therefore require both an image-output Template and a video-output Template.
 The generic generation REST endpoint accepts `image`,
 `video`, `audio`, or `text` as a requested result type, but the selected active
 Template and provider adapter still determine whether a request can run.
+On a Project, the same editor also exposes **Demonstration**, which previews and
+queues a dependency-aware whole-story pass with image, video, and audio tasks
+and still, subtitle, and silence fallbacks.
 
 ## Story-aware prompts and representative workflows
 
@@ -84,16 +90,18 @@ Project, Story World, Character, Prop, Location, Shot, Scene, and Episode have
 an optional `generation_prompt` SCF textarea for media-specific instructions.
 When no author-edited base prompt is supplied, the prompt composer combines:
 
-1. the content type and title;
-2. non-duplicate excerpt and post content;
-3. labeled, type-appropriate SCF details, including long-form descriptions,
+1. for video, a motion-first direction and the selected output intent's
+   creative objective;
+2. the content type and title, then bounded inherited ancestor context;
+3. non-duplicate excerpt and post content;
+4. labeled, type-appropriate SCF details, including long-form descriptions,
    appearance, world rules, scripts, dialogue, production notes, and camera
    details where applicable;
-4. dependent Story Graph context for Scene and Episode filmstrips;
-5. the selected output intent's creative objective;
-6. `generation_prompt`; and
-7. optional `base_prompt` text labeled **Additional request instructions**; and
-8. common continuity, detail, and no-watermark constraints.
+5. dependent Story Graph context for Scene and Episode filmstrips;
+6. for non-video outputs, the selected output intent's creative objective;
+7. `generation_prompt`;
+8. optional `base_prompt` text labeled **Additional request instructions**; and
+9. output-specific continuity, detail, and no-watermark constraints.
 
 Markup is removed, select values and relationship titles are made readable,
 and the final provider prompt has a global 2,400-word bound. `base_prompt` adds
@@ -101,6 +109,16 @@ author direction without removing saved Story Graph context or
 `generation_prompt`; in Project scope it is appended to every source prompt.
 The `worldgraph_generate_asset_prompt` filter runs last and receives the prompt,
 source post, and intent.
+
+Template selection happens after this base composition. For a video Template,
+`Generation_Prompt_Profiles` then prepends one idempotent family-specific
+positive-prompt opening. Wan uses explicit camera/subject motion, temporal
+progression, a cinematic-lighting anchor, and stable identity. LTX uses one
+continuous chronological action description covering subject, environment,
+camera, lighting, and color through the final frame; audio cues are recommended
+only for workflows that generate audio. Negative-prompt notes remain separate
+guidance. Prompt profiles do not override workflow model files or sampling,
+resolution, frame-rate, CFG, denoise, or motion values.
 
 `WorldGraph\Utils\Generation_Workflows` defines the delivered representative
 recipes:
@@ -121,6 +139,17 @@ plan contains one content item's recipe. Project scope walks canonical ownership
 edges from the Project and plans every supported descendant once. The default
 maximum is 5,000 child tasks, filterable with
 `worldgraph_generation_batch_max_tasks`.
+
+The separate Project-only `demonstration` scope orders Episodes, Scenes, and
+Shots into a frozen editorial timeline. It requires reusable still references
+for recurring Characters and Locations and a durable Shot still (or Scene or
+Project card when there are no Shots). Moving Shots and generated Sound cues
+are optional enhancements. A moving task prefers first-frame/last-frame video,
+then character-reference I2V, then text-to-video. Its symbolic media references
+identify the current Shot still as `start_frame`, the following Shot still as
+`end_frame`, and the recurring Character image as the primary I2V `image`, with
+the Shot still as fallback. Only slots required by the selected modality are
+resolved and sent.
 
 ## Connections and provider adapters
 
@@ -146,6 +175,11 @@ World Graph Studio creates a managed text-to-image Template during local setup.
 That Template can use the built-in text-to-image graph or operator-supplied
 ComfyUI API-format workflow JSON. The readiness panel checks for the graph's
 nodes and checkpoint before a job is queued.
+
+All local HTTP operations use the endpoint resolved from the Template's own
+Connection: workflow submission and conversion, media upload, history polling,
+`/object_info` readiness, and `/view` retrieval do not silently switch to a
+different global ComfyUI server.
 
 A separate Comfy MCP endpoint is optional. A bare ComfyUI HTTP endpoint does
 not speak MCP, so do not append `/mcp` to port `8188`. When an actual MCP
@@ -242,8 +276,9 @@ The conditional field vocabulary covers controls only when the Template's
 workflow or provider schema discovers or declares them: negative conditioning;
 fixed integer seed; bounded sampling steps; classic diffusion CFG or,
 separately, FLUX-style guidance; allowlisted sampler and scheduler; image width
-and height; video duration and frames per second; and distinct extra
-text-conditioning or dual-CLIP channels. The engine does not infer dual
+and height; video duration and frames per second; prompt enhancement when the
+saved workflow exposes it safely; and distinct extra text-conditioning or
+dual-CLIP channels. The engine does not infer dual
 encoders from a model-family label, and it does not expose both CFG and FLUX
 guidance when the workflow has only one of them.
 
@@ -252,18 +287,26 @@ bindings: image-to-video and text-plus-image-to-video continue resolving their
 image or start-frame input through `Template_Bindings`. Checkpoint/model, VAE,
 and CLIP file selection remains part of Template authoring, catalog discovery,
 requirements, and readiness rather than a client-supplied run value.
+The Template Workflow Test projects the exact fixed loader selections from a
+local ComfyUI workflow as bounded filename, models folder, loader-node class,
+and field labels. Operators use that display and the requirements check to
+install the files expected by that saved workflow on the selected Connection;
+the application does not translate prompt keywords into model selections.
 For local ComfyUI, editor graphs are converted to API format before media
 binding. Explicit `{{image}}`, `{{start_frame}}`, and `{{end_frame}}` loader
 markers win; otherwise a single image loader or topology-proven first/last
 frame is bound. Unrelated literal loaders remain Template-owned, while an
 ambiguous required binding fails before upload and submission.
 
-The author first chooses a conditional **Image**, **Sequence**, or **Video**
-mode. Image and video each reveal only their own defined output selector,
+The author first chooses a conditional **Image**, **Sequence**, **Video**, or
+Project-only **Demonstration** mode. Image and video each reveal only their own
+defined output selector,
 matching active runnable Template, applicable featured/linked-Asset choices,
 and contextual action. Sequence reveals the complete item or Project workflow,
 image/video counts, and only the Template controls needed by that plan before
-confirming a durable batch. Modes not defined for the current CPT are disabled.
+confirming a durable batch. Demonstration shows image, video, and audio work,
+fallback behavior, and the latest whole-story batch before confirmation. Modes
+not defined for the current CPT are disabled.
 The complete prompt for a single output remains server-composed and appears in
 a collapsed read-only preview; a Sequence instead previews its distinct jobs.
 Template-conditional fields live in a separate collapsed **Run controls
@@ -331,8 +374,9 @@ Generation records are stored as internal `worldgraph_gen` posts. Submission
 persists the record before external execution and schedules
 `worldgraph_process_generation_batch`.
 
-Representative-media batches are also durable `worldgraph_gen` posts, marked
-with `_worldgraph_gen_batch_kind = representative_media`. The parent stores the
+Representative-media and demonstration batches are also durable
+`worldgraph_gen` posts, marked with `_worldgraph_gen_batch_kind =
+representative_media` or `demonstration_video`. The parent stores the
 root post, `item` or `project` scope, requester, optional idempotency key, a
 versioned frozen task plan, materialization cursor, planned total, and aggregate
 status. Each task snapshot retains its step, source, workflow, intent, output
@@ -343,6 +387,16 @@ sets are frozen before materialization. Child jobs store
 `_worldgraph_gen_intent`. This separation lets a Project batch run for hours or
 days while every child remains independently observable through the ordinary
 worker lifecycle.
+
+A demonstration batch additionally freezes task keys, reference/audio/video
+phases, required versus optional behavior, dependencies, symbolic input
+references, preferred modalities, fallbacks, and `_worldgraph_gen_assembly_plan`.
+Reference and audio work can be queued before moving Shots; a video task waits
+until media required by its selected modality has completed. Missing optional
+motion becomes its still fallback. Missing audio becomes silence, while Scene
+dialogue/captions can become subtitle graphics. A terminal skipped child
+records optional work that could not be generated without holding the batch
+open indefinitely.
 
 Planning performs no writes. Starting validates edit permission for every
 source, resolves all required Templates, and re-derives and validates the run
@@ -356,7 +410,8 @@ counts from the frozen total and persisted child states and report `pending`,
 `active`, `cancelling`, `cancelled`, `failed`, `completed`, or
 `completed_with_errors`.
 
-The preparation phases are durable: `batch_materializing` creates up to 20
+Representative preparation phases are durable: `batch_materializing` creates
+up to 20
 non-runnable `staged` children per tick; after every frozen task exists,
 `batch_activating` promotes up to 50 staged children per tick; only then does the
 parent enter `batch_active`. A renewable coordinator lease and step lookup keep
@@ -366,12 +421,15 @@ published; an idempotent retry safely re-establishes a missing wake-up.
 
 The worker:
 
-1. materializes and activates bounded groups from frozen batch plans;
+1. materializes and activates bounded groups from frozen batch plans, resolving
+   demonstration dependencies before dependent video dispatch;
 2. polls up to ten submitted jobs;
 3. submits up to five queued jobs;
 4. records the provider's remote job identifier;
-5. reschedules itself after 60 seconds while work remains; and
-6. imports completed media before recording success.
+5. reschedules itself after 60 seconds while work remains;
+6. imports completed media before recording success; and
+7. after demonstration children are terminal, invokes bounded FFmpeg assembly
+   and stores the imported rough-cut attachment or an assembly diagnostic.
 
 The durable states are:
 
@@ -389,6 +447,25 @@ Cancelling a representative batch cancels child jobs that remain `staged`,
 `queued`, or `submitting` before dispatch. Jobs already `dispatching`, submitted,
 or terminal retain their real state and continue to contribute to the aggregate
 summary. The response reports how many not-yet-dispatched jobs were stopped.
+The same boundary applies to a demonstration: cancellation stops pending local
+work and prevents a new assembly from starting, but it cannot retract provider
+work already dispatched.
+
+The rough-cut assembler prefers each completed Shot video, normalizes it to the
+Project frame profile, and falls back to its completed still when video is
+missing or cannot be normalized. It preserves the frozen editorial order,
+builds still/title cards for stories without Shots, renders subtitles, mixes
+bounded audio cues where available, concatenates H.264 segments, and imports
+the result into the Media Library. It is deliberately a watchable first pass,
+not an assertion that provider generations need no editorial revision.
+
+Assembly is deployment-dependent. PHP must provide `proc_open`; WordPress needs
+a writable temporary directory; and an executable FFmpeg binary must be on the
+runtime path or configured with `WORLDGRAPH_FFMPEG_BINARY` or the
+`worldgraph_ffmpeg_binary` filter. If those checks fail, child outputs are
+retained and batch status exposes a bounded assembly error/diagnostic. The
+repository does not imply that FFmpeg or provider models are installed on a
+particular host.
 
 ElevenLabs and VideoDraft audio may return completed results synchronously.
 ComfyUI, fal, Suno, and VideoDraft image/video tools can return asynchronous
@@ -448,8 +525,8 @@ The canonical REST base is `/wp-json/worldgraph/v1/`.
 | --- | --- |
 | `GET /assets/generate/prompt?post_id={id}` | Direct image/Shot-video actions, read-only prompts, and runnable Templates with sanitized run controls |
 | `POST /assets/generate` | Queue one story-aware image or Shot video with optional `run_values` |
-| `GET /assets/generate/plan?post_id={id}&scope=item\|project` | Preview representative outputs, prompt hashes, runnable Templates and run controls, defaults, and the latest batch |
-| `POST /assets/generate/batches` | Validate and start a durable item or Project representative-media batch with optional image/video run values |
+| `GET /assets/generate/plan?post_id={id}&scope=item\|project\|demonstration` | Preview representative or whole-story outputs, prompt hashes, runnable Templates and run controls, defaults, fallbacks, and the latest batch |
+| `POST /assets/generate/batches` | Validate and start a durable item, Project representative-media, or Project demonstration batch with optional image/video run values |
 | `GET /assets/generate/batches/{id}` | Read aggregate batch progress and child jobs |
 | `POST /assets/generate/batches/{id}/cancel` | Cancel not-yet-dispatched children and return refreshed batch status |
 | `POST /generation` | Create a Template-backed generation record |
@@ -502,6 +579,9 @@ abilities; their current LLM requests use `tool_choice: none`. See
   normalize only scalar, typed, bounded, allowlisted values before persistence
   or provider dispatch.
 - WP-Cron must be triggered reliably in production.
+- Demonstration assembly additionally requires FFmpeg, `proc_open`, temporary
+  storage, and suitable runtime limits; failure is surfaced diagnostically and
+  does not erase completed child outputs.
 - World Graph Studio remains useful for writing, planning, analysis, and asset
   management with no generation Connection.
 
@@ -511,6 +591,8 @@ abilities; their current LLM requests use `tool_choice: none`. See
 - [Generation modalities](../../wordpress/wp-content/plugins/worldgraph/includes/utils/generation-modality.php)
 - [Generation worker](../../wordpress/wp-content/plugins/worldgraph/includes/utils/generation-batch.php)
 - [Representative workflows and batches](../../wordpress/wp-content/plugins/worldgraph/includes/utils/class-generation-workflows.php)
+- [Model-aware prompt profiles](../../wordpress/wp-content/plugins/worldgraph/includes/utils/class-generation-prompt-profiles.php)
+- [FFmpeg rough-cut assembler](../../wordpress/wp-content/plugins/worldgraph/includes/utils/class-rough-cut-assembler.php)
 - [Generation REST controller](../../wordpress/wp-content/plugins/worldgraph/includes/rest-api/generation-controller.php)
 - [Assets metabox controller](../../wordpress/wp-content/plugins/worldgraph/includes/rest-api/asset-generation-controller.php)
 - [Asset import and provenance](../../wordpress/wp-content/plugins/worldgraph/includes/utils/class-asset-generator.php)
