@@ -14,6 +14,46 @@
 	font-weight: 600;
 }
 
+.worldgraph-template-test__guidance,
+.worldgraph-template-test__fixed-selections {
+	margin: 12px 0;
+	padding: 10px 12px;
+	border-left: 3px solid #72aee6;
+	background: #f6f7f7;
+}
+
+.worldgraph-template-test__guidance p,
+.worldgraph-template-test__fixed-selections p {
+	margin: 4px 0 0;
+}
+
+.worldgraph-template-test__fixed-selections ul {
+	margin-bottom: 0;
+}
+
+.worldgraph-template-test__run-controls {
+	margin: 16px 0;
+	padding: 12px;
+	border: 1px solid #c3c4c7;
+}
+
+.worldgraph-template-test__run-controls legend {
+	padding: 0 4px;
+	font-weight: 600;
+}
+
+.worldgraph-template-test__control {
+	margin: 12px 0;
+}
+
+.worldgraph-template-test__control > label {
+	font-weight: 600;
+}
+
+.worldgraph-template-test__control .description {
+	margin: 3px 0 0;
+}
+
 .worldgraph-template-test__media-preview {
 	display: inline-block;
 	margin-right: 8px;

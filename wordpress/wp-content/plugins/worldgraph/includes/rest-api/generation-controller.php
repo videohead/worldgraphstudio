@@ -332,6 +332,12 @@ class Generation_Controller extends Base_Controller {
 		if ( $template_modality && $type !== \WorldGraph\Utils\Generation_Modality::output_type( $template_modality ) ) {
 			return new WP_Error( 'generation_type_mismatch', 'The requested type must match the selected Template output type.', [ 'status' => 400 ] );
 		}
+		$prompt = \WorldGraph\Utils\Generation_Prompt_Profiles::apply(
+			trim( wp_strip_all_tags( (string) $prompt ) ),
+			absint( $asset_id ),
+			'',
+			(int) $template->ID
+		);
 		$modality = \WorldGraph\Utils\Generation_Modality::sanitize( $template_modality );
 		$inputs   = self::resolve_template_media_inputs( (int) $template->ID, absint( $asset_id ), $inputs );
 		$authorization = Generation_Authorization::authorize_submission( $type, absint( $asset_id ), $inputs, $requester_id );

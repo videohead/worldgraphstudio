@@ -14,7 +14,10 @@
 namespace WorldGraph\Admin;
 
 use WorldGraph\Utils\Connection_Repository;
+use WorldGraph\Utils\Comfy_Manifest;
 use WorldGraph\Utils\Generation_Modality;
+use WorldGraph\Utils\Generation_Prompt_Profiles;
+use WorldGraph\Utils\Template_Run_Controls;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
@@ -92,32 +95,38 @@ class Template_Workflow_Test {
 			'capability'      => $capability,
 			'assetEditUrlBase' => admin_url( 'post.php?action=edit&post=' ),
 			'i18n'            => [
-				'queueing'      => __( 'Queueing test run…', 'worldgraph' ),
-				'queued'        => __( 'Queued. Waiting for the provider…', 'worldgraph' ),
-				'running'       => __( 'Running…', 'worldgraph' ),
-				'importing'     => __( 'Importing generated media…', 'worldgraph' ),
-				'completed'     => __( 'Test run completed.', 'worldgraph' ),
-				'failed'        => __( 'Test run failed.', 'worldgraph' ),
-				'cancelled'     => __( 'Test run cancelled.', 'worldgraph' ),
-				'timedOut'      => __( 'Still running. Reopen this Template later to see the result.', 'worldgraph' ),
-				'promptMissing' => __( 'Enter a prompt before running the test.', 'worldgraph' ),
-				'mediaMissing'  => __( 'This Template needs a reference file for every required media input.', 'worldgraph' ),
-				'assetNumber'   => __( 'Asset', 'worldgraph' ),
-				'attachment'    => __( 'Attachment', 'worldgraph' ),
-				'openAsset'     => __( 'Open Asset', 'worldgraph' ),
-				'openJob'       => __( 'Open Job record', 'worldgraph' ),
-				'openMedia'     => __( 'Open media file', 'worldgraph' ),
-				'selectMedia'   => __( 'Select', 'worldgraph' ),
-				'clearMedia'    => __( 'Clear', 'worldgraph' ),
-				'chooseMedia'   => __( 'Choose a reference file', 'worldgraph' ),
-				'useMedia'      => __( 'Use this file', 'worldgraph' ),
-				'noMedia'       => __( 'No file selected.', 'worldgraph' ),
-				'thinking'      => __( 'Thinking…', 'worldgraph' ),
-				'chatError'     => __( 'The prompt assistant could not answer.', 'worldgraph' ),
-				'usePrompt'     => __( 'Use as prompt', 'worldgraph' ),
-				'you'           => __( 'You', 'worldgraph' ),
-				'assistant'     => __( 'Prompt assistant', 'worldgraph' ),
-				'requestFailed' => __( 'The request could not be completed.', 'worldgraph' ),
+				'queueing'            => __( 'Queueing test run…', 'worldgraph' ),
+				'queued'              => __( 'Queued. Waiting for the provider…', 'worldgraph' ),
+				'running'             => __( 'Running…', 'worldgraph' ),
+				'importing'           => __( 'Importing generated media…', 'worldgraph' ),
+				'completed'           => __( 'Test run completed.', 'worldgraph' ),
+				'failed'              => __( 'Test run failed.', 'worldgraph' ),
+				'cancelled'           => __( 'Test run cancelled.', 'worldgraph' ),
+				'timedOut'            => __( 'Still running. Reopen this Template later to see the result.', 'worldgraph' ),
+				'promptMissing'       => __( 'Enter a prompt before running the test.', 'worldgraph' ),
+				'mediaMissing'        => __( 'This Template needs a reference file for every required media input.', 'worldgraph' ),
+				'assetNumber'         => __( 'Asset', 'worldgraph' ),
+				'attachment'          => __( 'Attachment', 'worldgraph' ),
+				'openAsset'           => __( 'Open Asset', 'worldgraph' ),
+				'openJob'             => __( 'Open Job record', 'worldgraph' ),
+				'openMedia'           => __( 'Open media file', 'worldgraph' ),
+				'selectMedia'         => __( 'Select', 'worldgraph' ),
+				'clearMedia'          => __( 'Clear', 'worldgraph' ),
+				'chooseMedia'         => __( 'Choose a reference file', 'worldgraph' ),
+				'useMedia'            => __( 'Use this file', 'worldgraph' ),
+				'noMedia'             => __( 'No file selected.', 'worldgraph' ),
+				'runSettings'         => __( 'Run settings', 'worldgraph' ),
+				'runSettingsHelp'     => __( 'Only settings you change here are sent. Untouched settings keep the values saved in the workflow.', 'worldgraph' ),
+				'promptGuidance'      => __( 'Prompt guidance', 'worldgraph' ),
+				'negativeGuidance'    => __( 'Negative prompt note', 'worldgraph' ),
+				'fixedSelections'     => __( 'Workflow model selections', 'worldgraph' ),
+				'fixedSelectionsHelp' => __( 'The saved workflow asks ComfyUI to load these exact files. Install each file in the shown models folder.', 'worldgraph' ),
+				'thinking'            => __( 'Thinking…', 'worldgraph' ),
+				'chatError'           => __( 'The prompt assistant could not answer.', 'worldgraph' ),
+				'usePrompt'           => __( 'Use as prompt', 'worldgraph' ),
+				'you'                 => __( 'You', 'worldgraph' ),
+				'assistant'           => __( 'Prompt assistant', 'worldgraph' ),
+				'requestFailed'       => __( 'The request could not be completed.', 'worldgraph' ),
 			],
 		] );
 	}
@@ -136,12 +145,19 @@ class Template_Workflow_Test {
 	 * @return array<string, mixed>
 	 */
 	private static function capability( int $template_id ): array {
-		$modality   = Generation_Modality::sanitize( (string) \WorldGraph\Utils\worldgraph_get_field_value( $template_id, 'modality' ) );
-		$definition = Generation_Modality::get( $modality );
-		$inputs     = Generation_Modality::inputs( $modality );
+		$modality             = Generation_Modality::sanitize( (string) \WorldGraph\Utils\worldgraph_get_field_value( $template_id, 'modality' ) );
+		$definition           = Generation_Modality::get( $modality );
+		$inputs               = Generation_Modality::inputs( $modality );
+		$run_controls         = Template_Run_Controls::describe( $template_id );
+		$has_negative_control = self::has_negative_prompt_control( $run_controls );
 
 		$slots = [];
 		foreach ( $inputs as $slot => $input ) {
+			// Negative conditioning is a Template run control when the saved
+			// workflow exposes it. Do not render a second, competing text slot.
+			if ( 'negative_prompt' === (string) $slot && $has_negative_control ) {
+				continue;
+			}
 			$slots[] = [
 				'slot'     => (string) $slot,
 				'label'    => (string) ( $input['label'] ?? $slot ),
@@ -151,13 +167,79 @@ class Template_Workflow_Test {
 		}
 
 		return [
-			'modality'    => $modality,
-			'label'       => (string) ( $definition['label'] ?? $modality ),
-			'description' => (string) ( $definition['description'] ?? '' ),
-			'outputType'  => Generation_Modality::output_type( $modality ),
-			'inputs'      => $slots,
-			'blockers'    => self::blockers( $template_id ),
+			'modality'        => $modality,
+			'label'           => (string) ( $definition['label'] ?? $modality ),
+			'description'     => (string) ( $definition['description'] ?? '' ),
+			'outputType'      => Generation_Modality::output_type( $modality ),
+			'inputs'          => $slots,
+			'runControls'     => $run_controls,
+			'promptProfile'   => Generation_Prompt_Profiles::for_template( $template_id ),
+			'fixedSelections' => self::fixed_selections( $template_id ),
+			'blockers'        => self::blockers( $template_id ),
 		];
+	}
+
+	/** Whether the safe run-control description owns negative conditioning. */
+	private static function has_negative_prompt_control( array $description ): bool {
+		foreach ( (array) ( $description['fields'] ?? [] ) as $field ) {
+			$key = strtolower( str_replace( '-', '_', (string) ( is_array( $field ) ? ( $field['key'] ?? '' ) : '' ) ) );
+			if ( in_array( $key, [ 'negative_prompt', 'negative_text' ], true ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Exact model-loader choices baked into a local ComfyUI workflow.
+	 *
+	 * The manifest is server-derived; only bounded plain scalar metadata is
+	 * projected into the browser. Workflow JSON and loader node IDs stay private.
+	 *
+	 * @param int $template_id Template post ID.
+	 * @return array<int, array<string, string>>
+	 */
+	private static function fixed_selections( int $template_id ): array {
+		$provider = sanitize_key( (string) \WorldGraph\Utils\worldgraph_get_field_value( $template_id, 'provider_type' ) );
+		if ( 'comfyui' !== $provider ) {
+			return [];
+		}
+
+		$manifest = Comfy_Manifest::for_template( $template_id );
+		if ( is_wp_error( $manifest ) ) {
+			return [];
+		}
+
+		$selections = [];
+		foreach ( array_slice( (array) ( $manifest['models'] ?? [] ), 0, 64 ) as $model ) {
+			if ( ! is_array( $model ) ) {
+				continue;
+			}
+			$selection = [
+				'filename'  => self::fixed_selection_text( $model['filename'] ?? '', 255 ),
+				'folder'    => self::fixed_selection_text( $model['folder'] ?? '', 80 ),
+				'nodeClass' => self::fixed_selection_text( $model['node_class'] ?? '', 120 ),
+				'field'     => self::fixed_selection_text( $model['field'] ?? '', 80 ),
+			];
+			if ( '' !== $selection['filename'] && '' !== $selection['nodeClass'] && '' !== $selection['field'] ) {
+				$selections[] = $selection;
+			}
+		}
+
+		return $selections;
+	}
+
+	/**
+	 * Sanitize and bound one model-loader label sent to the browser.
+	 *
+	 * @param mixed $value   Raw manifest value.
+	 * @param int   $maximum Maximum character count.
+	 * @return string
+	 */
+	private static function fixed_selection_text( $value, int $maximum ): string {
+		$value = sanitize_text_field( (string) $value );
+		return function_exists( 'mb_substr' ) ? mb_substr( $value, 0, $maximum, 'UTF-8' ) : substr( $value, 0, $maximum );
 	}
 
 	/**

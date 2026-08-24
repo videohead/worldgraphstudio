@@ -926,6 +926,9 @@ class Template_Run_Controls {
 		$aliases = [
 			'negative_prompt'     => 'negative_prompt',
 			'negative_text'       => 'negative_prompt',
+			'prompt_enhance'      => 'prompt_enhance',
+			'enable_prompt_enhance' => 'prompt_enhance',
+			'enhance_prompt'      => 'prompt_enhance',
 			'seed'                => 'seed',
 			'noise_seed'          => 'seed',
 			'steps'               => 'steps',
@@ -964,6 +967,7 @@ class Template_Run_Controls {
 	private static function semantic_spec( string $semantic ): array {
 		$specs = [
 			'negative_prompt' => [ 'type' => 'string', 'maxLength' => self::MAX_PROMPT_LENGTH ],
+			'prompt_enhance'  => [ 'type' => 'boolean' ],
 			'seed'            => [ 'type' => 'integer', 'minimum' => 0, 'maximum' => 9007199254740991, 'step' => 1 ],
 			'steps'           => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 200, 'step' => 1 ],
 			'cfg'             => [ 'type' => 'number', 'minimum' => 0, 'maximum' => 100, 'step' => 0.1 ],
@@ -989,6 +993,7 @@ class Template_Run_Controls {
 	/** Workflow input aliases for each mutable semantic. */
 	private static function workflow_input_names( string $semantic ): array {
 		$inputs = [
+			'prompt_enhance' => [ 'prompt_enhance', 'enable_prompt_enhance', 'enhance_prompt' ],
 			'seed'         => [ 'seed', 'noise_seed' ],
 			'steps'        => [ 'steps', 'num_inference_steps', 'inference_steps' ],
 			'cfg'          => [ 'cfg', 'cfg_scale' ],
@@ -1123,7 +1128,7 @@ class Template_Run_Controls {
 	/** Constrain Comfy sampler/scheduler strings to known values plus the stored value. */
 	private static function constrain_workflow_choice( array $field, string $semantic, $current ): array {
 		$values = 'sampler' === $semantic
-			? [ 'euler', 'euler_ancestral', 'heun', 'dpm_2', 'dpm_2_ancestral', 'dpmpp_2m', 'dpmpp_sde', 'ddim', 'uni_pc' ]
+			? [ 'euler', 'euler_ancestral', 'heun', 'dpm_2', 'dpm_2_ancestral', 'dpmpp_2m', 'dpmpp_3m_sde', 'dpmpp_sde', 'ddim', 'uni_pc' ]
 			: [ 'normal', 'karras', 'exponential', 'sgm_uniform', 'simple', 'ddim_uniform', 'beta' ];
 		if ( is_string( $current ) && '' !== trim( $current ) && self::text_length( trim( $current ) ) <= 80 && ! self::looks_like_url( $current ) && ! in_array( trim( $current ), $values, true ) ) {
 			$values[] = trim( $current );
@@ -1210,7 +1215,7 @@ class Template_Run_Controls {
 
 	/** Deterministic presentation order independent of provider property order. */
 	private static function compare_fields( array $left, array $right ): int {
-		$order = [ 'negative_prompt', 'seed', 'steps', 'cfg', 'guidance', 'sampler', 'scheduler', 'denoise', 'width', 'height', 'aspect_ratio', 'length', 'duration', 'fps', 'text_g', 'text_l', 'clip_l', 't5xxl' ];
+		$order = [ 'negative_prompt', 'prompt_enhance', 'seed', 'steps', 'cfg', 'guidance', 'sampler', 'scheduler', 'denoise', 'width', 'height', 'aspect_ratio', 'length', 'duration', 'fps', 'text_g', 'text_l', 'clip_l', 't5xxl' ];
 		$left_semantic  = self::semantic_key( (string) ( $left['key'] ?? '' ) );
 		$right_semantic = self::semantic_key( (string) ( $right['key'] ?? '' ) );
 		$left_rank      = false === array_search( $left_semantic, $order, true ) ? count( $order ) : (int) array_search( $left_semantic, $order, true );
@@ -1528,6 +1533,9 @@ class Template_Run_Controls {
 	private static function semantic_from_title( string $title ) {
 		$title = self::snake_key( $title );
 		$aliases = [
+			'prompt_enhance'        => 'prompt_enhance',
+			'enable_prompt_enhance' => 'prompt_enhance',
+			'enhance_prompt'        => 'prompt_enhance',
 			'fixed_seed'      => 'seed',
 			'random_seed'     => 'seed',
 			'seed'            => 'seed',

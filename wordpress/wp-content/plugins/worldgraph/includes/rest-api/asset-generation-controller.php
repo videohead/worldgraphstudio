@@ -63,7 +63,7 @@ class Asset_Generation_Controller extends Base_Controller {
 			'permission_callback' => [ $this, 'check_generate_permission' ],
 			'args'                => [
 				'post_id' => [ 'description' => 'Story element or Project post ID.', 'type' => 'integer', 'required' => true ],
-				'scope'   => [ 'description' => 'Plan one item or every owned item in a Project.', 'type' => 'string', 'enum' => [ 'item', 'project' ], 'default' => 'item' ],
+				'scope'   => [ 'description' => 'Plan one item, representative Project media, or an end-to-end Project demonstration.', 'type' => 'string', 'enum' => [ 'item', 'project', 'demonstration' ], 'default' => 'item' ],
 			],
 		] );
 
@@ -73,7 +73,7 @@ class Asset_Generation_Controller extends Base_Controller {
 			'permission_callback' => [ $this, 'check_generate_permission' ],
 			'args'                => [
 				'post_id'           => [ 'description' => 'Story element or Project post ID.', 'type' => 'integer', 'required' => true ],
-				'scope'             => [ 'description' => 'Generate one item or every owned item in a Project.', 'type' => 'string', 'enum' => [ 'item', 'project' ], 'default' => 'item' ],
+				'scope'             => [ 'description' => 'Generate one item, representative Project media, or an end-to-end Project demonstration.', 'type' => 'string', 'enum' => [ 'item', 'project', 'demonstration' ], 'default' => 'item' ],
 				'base_prompt'       => [ 'description' => 'Optional author-edited prompt for an item batch.', 'type' => 'string', 'default' => '' ],
 				'image_template_id' => [ 'description' => 'Optional image Template override applied to every image task.', 'type' => 'integer', 'default' => 0 ],
 				'video_template_id' => [ 'description' => 'Optional video Template override applied to every video task.', 'type' => 'integer', 'default' => 0 ],
@@ -124,7 +124,7 @@ class Asset_Generation_Controller extends Base_Controller {
 	public static function check_batch_permission( WP_REST_Request $request ) {
 		$batch_id = absint( $request->get_param( 'id' ) );
 		$batch    = get_post( $batch_id );
-		if ( ! $batch instanceof \WP_Post || 'worldgraph_gen' !== $batch->post_type || Generation_Workflows::REPRESENTATIVE_BATCH !== get_post_meta( $batch_id, Generation_Workflows::BATCH_KIND_META, true ) ) {
+		if ( ! $batch instanceof \WP_Post || 'worldgraph_gen' !== $batch->post_type || ! in_array( get_post_meta( $batch_id, Generation_Workflows::BATCH_KIND_META, true ), [ Generation_Workflows::REPRESENTATIVE_BATCH, Generation_Workflows::DEMONSTRATION_BATCH ], true ) ) {
 			return new WP_Error( 'worldgraph_generation_batch_not_found', __( 'That representative-media batch does not exist.', 'worldgraph' ), [ 'status' => 404 ] );
 		}
 
@@ -230,6 +230,7 @@ class Asset_Generation_Controller extends Base_Controller {
 			'default_template_ids' => $default_ids,
 			'latest_batch'         => Generation_Workflows::latest_batch( $post_id, 'item' ),
 			'latest_project_batch' => 'worldgraph_project' === get_post_type( $post_id ) ? Generation_Workflows::latest_batch( $post_id, 'project' ) : [],
+			'latest_demonstration_batch' => 'worldgraph_project' === get_post_type( $post_id ) ? Generation_Workflows::latest_batch( $post_id, 'demonstration' ) : [],
 		] );
 	}
 
@@ -247,7 +248,8 @@ class Asset_Generation_Controller extends Base_Controller {
 	/** Dry-run an item or project representative-media plan. */
 	public static function get_plan( WP_REST_Request $request ) {
 		$post_id = absint( $request->get_param( 'post_id' ) );
-		$scope   = 'project' === sanitize_key( (string) $request->get_param( 'scope' ) ) ? 'project' : 'item';
+		$scope   = sanitize_key( (string) $request->get_param( 'scope' ) );
+		$scope   = in_array( $scope, [ 'item', 'project', 'demonstration' ], true ) ? $scope : 'item';
 		$plan    = Generation_Workflows::plan( $post_id, $scope );
 		if ( is_wp_error( $plan ) ) {
 			return $plan;
@@ -320,15 +322,25 @@ class Asset_Generation_Controller extends Base_Controller {
 	private static function prepare_plan_response( array $plan ): array {
 		$image_templates = Generation_Workflows::common_templates( (array) $plan['tasks'], 'image' );
 		$video_templates = Generation_Workflows::common_templates( (array) $plan['tasks'], 'video' );
+		$audio_templates = Generation_Workflows::common_templates( (array) $plan['tasks'], 'audio' );
 		$blockers        = [];
-		$defaults        = [ 'image' => [], 'video' => [] ];
+		$optional_missing = [];
+		$defaults        = [ 'image' => [], 'video' => [], 'audio' => [] ];
 		$tasks           = [];
 
 		foreach ( (array) $plan['tasks'] as $task ) {
 			$template_id = Generation_Workflows::resolve_template_id( $task );
 			$type        = (string) $task['type'];
+			$optional    = array_key_exists( 'required', $task ) ? empty( $task['required'] ) : ! empty( $task['optional'] );
 			if ( $template_id ) {
 				$defaults[ $type ][ $template_id ] = true;
+			} elseif ( $optional ) {
+				$optional_missing[] = [
+					'source_id'    => (int) $task['source_id'],
+					'source_title' => (string) $task['source_title'],
+					'intent'       => (string) $task['intent'],
+					'type'         => $type,
+				];
 			} else {
 				$blockers[] = [
 					'source_id'    => (int) $task['source_id'],
@@ -346,6 +358,10 @@ class Asset_Generation_Controller extends Base_Controller {
 				'label'        => (string) $task['label'],
 				'type'         => $type,
 				'featured'     => ! empty( $task['featured'] ),
+				'optional'     => $optional,
+				'phase'        => sanitize_key( (string) ( $task['phase'] ?? '' ) ),
+				'depends_on'   => array_values( array_map( 'sanitize_key', (array) ( $task['dependencies'] ?? $task['depends_on'] ?? [] ) ) ),
+				'fallback'     => sanitize_text_field( (string) ( $task['fallback_task_key'] ?? $task['fallback'] ?? '' ) ),
 				'prompt_hash'  => hash( 'sha256', (string) $task['prompt'] ),
 			];
 		}
@@ -366,8 +382,10 @@ class Asset_Generation_Controller extends Base_Controller {
 			'tasks'                => $tasks,
 			'ready'                => empty( $blockers ),
 			'blockers'             => $blockers,
+			'optional_unavailable' => $optional_missing,
 			'image_templates'      => $image_templates,
 			'video_templates'      => $video_templates,
+			'audio_templates'      => $audio_templates,
 			'default_template_ids' => $default_ids,
 			'latest_batch'         => Generation_Workflows::latest_batch( (int) $plan['post_id'], (string) $plan['scope'] ),
 		];

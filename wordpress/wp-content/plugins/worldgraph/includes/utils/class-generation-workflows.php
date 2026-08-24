@@ -35,6 +35,7 @@ class Generation_Workflows {
 	const INTENT_META           = '_worldgraph_gen_intent';
 	const STEP_META             = '_worldgraph_gen_batch_step';
 	const REPRESENTATIVE_BATCH = 'representative_media';
+	const DEMONSTRATION_BATCH  = 'demonstration_video';
 	const WORKFLOW_VERSION      = 2;
 	const MATERIALIZE_PER_TICK  = 20;
 	const ACTIVATE_PER_TICK     = 50;
@@ -107,6 +108,21 @@ class Generation_Workflows {
 	/** Register the bounded parent-batch coordinator before the job worker. */
 	public static function init(): void {
 		add_action( Generation_Batch::HOOK, [ __CLASS__, 'process_batches' ], 5 );
+	}
+
+	/** Supported planning scopes accepted by plan(). */
+	public static function supported_scopes(): array {
+		return [ 'item', 'project', 'demonstration' ];
+	}
+
+	/** Durable parent-batch kinds owned by this workflow coordinator. */
+	public static function supported_batch_kinds(): array {
+		return [ self::REPRESENTATIVE_BATCH, self::DEMONSTRATION_BATCH ];
+	}
+
+	/** Resolve the durable batch kind represented by a planning scope. */
+	public static function batch_kind_for_scope( string $scope ): string {
+		return 'demonstration' === sanitize_key( $scope ) ? self::DEMONSTRATION_BATCH : self::REPRESENTATIVE_BATCH;
 	}
 
 	/**
@@ -306,8 +322,16 @@ class Generation_Workflows {
 			$intent     = (string) ( $output['intent'] ?? '' );
 		}
 
-		$labels  = worldgraph_get_all_cpts();
-		$parts   = [ sprintf( '%s: %s', (string) ( $labels[ $post_type ] ?? __( 'Story element', 'worldgraph' ) ), self::clean_text( $post->post_title, 80 ) ) ];
+		$labels = worldgraph_get_all_cpts();
+		$video  = 'video' === (string) ( $output['type'] ?? '' );
+		$parts  = [];
+		if ( $video ) {
+			$parts[] = __( 'Motion-first direction: begin with visible subject action and camera movement, then describe temporal progression from the opening frame through the closing frame. Preserve identity, wardrobe, geography, lighting, and screen direction; use no unintended cuts.', 'worldgraph' );
+			if ( ! empty( $output['instruction'] ) ) {
+				$parts[] = __( 'Creative objective', 'worldgraph' ) . ': ' . self::clean_text( (string) $output['instruction'], 240 );
+			}
+		}
+		$parts[] = sprintf( '%s: %s', (string) ( $labels[ $post_type ] ?? __( 'Story element', 'worldgraph' ) ), self::clean_text( $post->post_title, 80 ) );
 		$inherited_context = self::inherited_context( $post_id );
 		if ( '' !== $inherited_context ) {
 			$parts[] = $inherited_context;
@@ -343,7 +367,7 @@ class Generation_Workflows {
 			$parts[] = $dependent_context;
 		}
 
-		if ( ! empty( $output['instruction'] ) ) {
+		if ( ! $video && ! empty( $output['instruction'] ) ) {
 			$parts[] = __( 'Creative objective', 'worldgraph' ) . ': ' . self::clean_text( (string) $output['instruction'], 240 );
 		}
 
@@ -356,7 +380,9 @@ class Generation_Workflows {
 			$parts[] = __( 'Additional request instructions', 'worldgraph' ) . ': ' . $base_prompt;
 		}
 
-		$parts[] = __( 'Output constraints: cinematic production design, coherent lighting and continuity, high detail, no watermarks, logos, interface chrome, or unrelated text.', 'worldgraph' );
+		$parts[] = $video
+			? __( 'Output constraints: one coherent cinematic shot, intentional motion, stable subjects, coherent lighting and temporal continuity, high detail, no watermarks, logos, interface chrome, or unrelated text.', 'worldgraph' )
+			: __( 'Output constraints: cinematic production design, coherent lighting and continuity, high detail, no watermarks, logos, interface chrome, or unrelated text.', 'worldgraph' );
 		$prompt  = self::clean_text( implode( "\n\n", array_filter( $parts ) ), self::MAX_CONTEXT_WORDS );
 
 		return $prompt;
@@ -561,9 +587,13 @@ class Generation_Workflows {
 			return new WP_Error( 'worldgraph_generation_source_invalid', __( 'Select a supported Story Graph item first.', 'worldgraph' ), [ 'status' => 404 ] );
 		}
 
-		$scope = 'project' === sanitize_key( $scope ) ? 'project' : 'item';
-		if ( 'project' === $scope && 'worldgraph_project' !== $post->post_type ) {
+		$requested_scope = sanitize_key( $scope );
+		$scope           = in_array( $requested_scope, self::supported_scopes(), true ) ? $requested_scope : 'item';
+		if ( in_array( $scope, [ 'project', 'demonstration' ], true ) && 'worldgraph_project' !== $post->post_type ) {
 			return new WP_Error( 'worldgraph_generation_project_required', __( 'Project-wide generation requires a Project post.', 'worldgraph' ), [ 'status' => 400 ] );
+		}
+		if ( 'demonstration' === $scope ) {
+			return self::demonstration_plan( $post_id, $base_prompt );
 		}
 
 		$sources = 'project' === $scope ? self::project_sources( $post_id ) : [ $post ];
@@ -604,12 +634,943 @@ class Generation_Workflows {
 		return [
 			'post_id'    => $post_id,
 			'scope'      => $scope,
+			'batch_kind' => self::batch_kind_for_scope( $scope ),
 			'workflow'   => self::definition_for_post_type( $post->post_type ),
 			'sources'    => count( $sources ),
 			'total_jobs' => count( $tasks ),
 			'counts'     => [ 'image' => (int) ( $counts['image'] ?? 0 ), 'video' => (int) ( $counts['video'] ?? 0 ) ],
 			'tasks'      => $tasks,
 		];
+	}
+
+	/**
+	 * Build a Project-only, dependency-aware rough-cut plan.
+	 *
+	 * Image tasks are the durable visual fallback. Video and Sound tasks are
+	 * optional enhancements: a coordinator may skip them when no suitable
+	 * Template exists and still hand the declared timeline to the assembler.
+	 * Task references are symbolic until a completed child job resolves them to
+	 * attachment IDs.
+	 *
+	 * @return array<string, mixed>|WP_Error
+	 */
+	public static function demonstration_plan( int $project_id, string $base_prompt = '' ) {
+		$project = get_post( $project_id );
+		if ( ! $project instanceof \WP_Post || 'worldgraph_project' !== $project->post_type ) {
+			return new WP_Error( 'worldgraph_generation_project_required', __( 'Demonstration-video generation requires a Project post.', 'worldgraph' ), [ 'status' => 400 ] );
+		}
+
+		$sources          = self::project_sources( $project_id );
+		$story            = self::demonstration_story_order( $sources );
+		$scenes           = $story['scenes'];
+		$character_usage  = self::demonstration_character_usage( $sources, $scenes );
+		$scene_locations  = [];
+		$location_order   = [];
+		$tasks            = [];
+		$timeline         = [];
+		$character_tasks  = [];
+		$location_tasks   = [];
+		$still_tasks      = [];
+		$video_tasks      = [];
+		$sound_tasks      = [];
+		$sounds_by_scene  = [];
+		$sounds_by_shot   = [];
+		$all_scene_sounds = [];
+		$source_ids       = array_fill_keys( array_map( static fn( \WP_Post $source ): int => (int) $source->ID, $sources ), true );
+
+		foreach ( $scenes as $scene_index => $scene_item ) {
+			$scene    = $scene_item['post'];
+			$location = self::demonstration_scene_location( $scene );
+			if ( $location instanceof \WP_Post ) {
+				$scene_locations[ $scene->ID ] = (int) $location->ID;
+				if ( ! isset( $location_order[ $location->ID ] ) ) {
+					$location_order[ $location->ID ] = $scene_index;
+				}
+				$source_ids[ $location->ID ] = true;
+			}
+		}
+
+		$recurring = array_filter(
+			$character_usage['occurrences'],
+			static fn( array $occurrence ): bool => count( $occurrence['segment_keys'] ) > 1
+		);
+		uasort(
+			$recurring,
+			static function ( array $left, array $right ): int {
+				$first = (int) $left['first_order'] <=> (int) $right['first_order'];
+				return 0 !== $first ? $first : (int) $left['character_id'] <=> (int) $right['character_id'];
+			}
+		);
+		foreach ( $recurring as $character_id => $occurrence ) {
+			$character = $character_usage['characters'][ $character_id ] ?? null;
+			if ( ! $character instanceof \WP_Post ) {
+				continue;
+			}
+			$task_key = 'demo-character-' . $character->ID . '-reference';
+			$tasks[]  = self::demonstration_task(
+				$task_key,
+				$character,
+				'character-look-set',
+				'character-full-view',
+				__( 'Recurring character reference', 'worldgraph' ),
+				'image',
+				'references',
+				true,
+				Asset_Generator::build_prompt( (int) $character->ID, 'character-full-view', $base_prompt ),
+				[
+					'character_id'       => (int) $character->ID,
+					'used_in_scene_ids'  => array_values( array_map( 'intval', array_keys( $occurrence['scene_ids'] ) ) ),
+					'used_in_shot_ids'   => array_values( array_map( 'intval', array_keys( $occurrence['shot_ids'] ) ) ),
+					'dependencies'       => [],
+					'input_refs'         => [],
+					'generation_required'=> true,
+				]
+			);
+			$character_tasks[ $character->ID ] = $task_key;
+			$source_ids[ $character->ID ]      = true;
+		}
+
+		asort( $location_order, SORT_NUMERIC );
+		foreach ( array_keys( $location_order ) as $location_id ) {
+			$location = get_post( (int) $location_id );
+			if ( ! $location instanceof \WP_Post || 'worldgraph_location' !== $location->post_type ) {
+				continue;
+			}
+			$task_key = 'demo-location-' . $location->ID . '-reference';
+			$tasks[]  = self::demonstration_task(
+				$task_key,
+				$location,
+				'location-look-set',
+				'location-full-view',
+				__( 'Story location reference', 'worldgraph' ),
+				'image',
+				'references',
+				true,
+				Asset_Generator::build_prompt( (int) $location->ID, 'location-full-view', $base_prompt ),
+				[
+					'location_id'        => (int) $location->ID,
+					'dependencies'       => [],
+					'input_refs'         => [],
+					'generation_required'=> true,
+				]
+			);
+			$location_tasks[ $location->ID ] = $task_key;
+		}
+
+		$timeline_order = 0;
+		foreach ( $scenes as $scene_index => $scene_item ) {
+			$scene         = $scene_item['post'];
+			$shots         = $scene_item['shots'];
+			$scene_task    = '';
+			$location_id   = (int) ( $scene_locations[ $scene->ID ] ?? 0 );
+			$location_ref  = (string) ( $location_tasks[ $location_id ] ?? '' );
+
+			if ( empty( $shots ) ) {
+				$scene_task = 'demo-scene-' . $scene->ID . '-still';
+				$references = array_values( array_filter( [ $location_ref ] ) );
+				$tasks[]    = self::demonstration_task(
+					$scene_task,
+					$scene,
+					'scene-filmstrip',
+					'scene-filmstrip',
+					__( 'Scene fallback still', 'worldgraph' ),
+					'image',
+					'references',
+					true,
+					Asset_Generator::build_prompt( (int) $scene->ID, 'scene-filmstrip', $base_prompt ),
+					[
+						'scene_id'           => (int) $scene->ID,
+						'scene_order'        => $scene_index,
+						'timeline_order'     => $timeline_order,
+						'dependencies'       => $references,
+						'input_refs'         => self::reference_image_refs( $references ),
+						'generation_required'=> true,
+					]
+				);
+				$still_tasks[ 'scene:' . $scene->ID ] = $scene_task;
+				++$timeline_order;
+			}
+
+			foreach ( $shots as $shot_index => $shot ) {
+				$task_key       = 'demo-shot-' . $shot->ID . '-still';
+				$character_ids  = (array) ( $character_usage['shot_characters'][ $shot->ID ] ?? [] );
+				$reference_keys = [];
+				foreach ( $character_ids as $character_id ) {
+					if ( isset( $character_tasks[ $character_id ] ) ) {
+						$reference_keys[] = $character_tasks[ $character_id ];
+					}
+				}
+				if ( '' !== $location_ref ) {
+					$reference_keys[] = $location_ref;
+				}
+				$reference_keys = array_values( array_unique( $reference_keys ) );
+				$tasks[]        = self::demonstration_task(
+					$task_key,
+					$shot,
+					'shot-still-and-video',
+					'shot-representative-still',
+					__( 'Rough-cut shot still', 'worldgraph' ),
+					'image',
+					'references',
+					true,
+					Asset_Generator::build_prompt( (int) $shot->ID, 'shot-representative-still', $base_prompt ),
+					[
+						'scene_id'            => (int) $scene->ID,
+						'shot_id'             => (int) $shot->ID,
+						'scene_order'         => $scene_index,
+						'shot_order'          => $shot_index,
+						'timeline_order'      => $timeline_order,
+						'character_ids'       => array_values( array_map( 'intval', $character_ids ) ),
+						'location_id'         => $location_id,
+						'dependencies'        => $reference_keys,
+						'input_refs'          => self::reference_image_refs( $reference_keys ),
+						'generation_required' => true,
+					]
+				);
+				$still_tasks[ 'shot:' . $shot->ID ] = $task_key;
+				++$timeline_order;
+			}
+		}
+
+		if ( empty( $scenes ) ) {
+			$task_key = 'demo-project-' . $project_id . '-still';
+			$tasks[]  = self::demonstration_task(
+				$task_key,
+				$project,
+				'project-key-art',
+				'project-key-art',
+				__( 'Project fallback still', 'worldgraph' ),
+				'image',
+				'references',
+				true,
+				Asset_Generator::build_prompt( $project_id, 'project-key-art', $base_prompt ),
+				[
+					'timeline_order'      => 0,
+					'dependencies'        => [],
+					'input_refs'          => [],
+					'generation_required' => true,
+				]
+			);
+			$still_tasks[ 'project:' . $project_id ] = $task_key;
+		}
+
+		foreach ( $scenes as $scene_index => $scene_item ) {
+			$scene = $scene_item['post'];
+			foreach ( self::demonstration_scene_sounds( $scene ) as $sound ) {
+				if ( isset( $sound_tasks[ $sound->ID ] ) ) {
+					continue;
+				}
+				$role              = self::demonstration_sound_role( (int) $sound->ID );
+				$shot_id           = self::related_field_id( (int) $sound->ID, 'worldgraph_sound', 'shot', 'worldgraph_shot' );
+				$character_id      = self::related_field_id( (int) $sound->ID, 'worldgraph_sound', 'character', 'worldgraph_character' );
+				$existing_asset_id = self::related_field_id( (int) $sound->ID, 'worldgraph_sound', 'asset', 'worldgraph_asset' );
+				$task_key          = 'demo-sound-' . $sound->ID . '-audio';
+				$generation_needed = 0 === $existing_asset_id && 'silence' !== $role;
+				$task              = self::demonstration_task(
+					$task_key,
+					$sound,
+					'demonstration-sound',
+					'sound-' . ( $role ?: 'effect' ),
+					__( 'Soundtrack cue', 'worldgraph' ),
+					'audio',
+					'audio',
+					false,
+					self::demonstration_sound_prompt( $sound, $role, $base_prompt ),
+					[
+						'scene_id'            => (int) $scene->ID,
+						'shot_id'             => $shot_id,
+						'scene_order'         => $scene_index,
+						'audio_role'          => $role,
+						'character_id'        => $character_id,
+						'existing_asset_id'   => $existing_asset_id,
+						'start_timecode'      => self::clean_text( (string) worldgraph_get_field_value( (int) $sound->ID, 'start_timecode' ), 12 ),
+						'duration'            => self::clean_text( (string) worldgraph_get_field_value( (int) $sound->ID, 'duration' ), 12 ),
+						'diegetic'            => sanitize_key( (string) worldgraph_get_field_value( (int) $sound->ID, 'diegetic' ) ),
+						'preferred_modalities'=> self::sound_modalities( $role ),
+						'dependencies'        => [],
+						'input_refs'          => [],
+						'generation_required' => $generation_needed,
+					]
+				);
+				$tasks[]            = $task;
+				$sound_tasks[ $sound->ID ] = $task_key;
+				$all_scene_sounds[ $scene->ID ][] = $task_key;
+				if ( $shot_id ) {
+					$sounds_by_shot[ $shot_id ][] = $task_key;
+				} else {
+					$sounds_by_scene[ $scene->ID ][] = $task_key;
+				}
+				$source_ids[ $sound->ID ] = true;
+			}
+		}
+
+		foreach ( $scenes as $scene_index => $scene_item ) {
+			$scene = $scene_item['post'];
+			$shots = $scene_item['shots'];
+			foreach ( $shots as $shot_index => $shot ) {
+				$still_key       = (string) ( $still_tasks[ 'shot:' . $shot->ID ] ?? '' );
+				$next_shot       = $shots[ $shot_index + 1 ] ?? null;
+				$next_still_key  = $next_shot instanceof \WP_Post ? (string) ( $still_tasks[ 'shot:' . $next_shot->ID ] ?? '' ) : '';
+				$character_ids   = (array) ( $character_usage['shot_characters'][ $shot->ID ] ?? [] );
+				$character_refs  = array_values( array_filter( array_map( static fn( int $character_id ): string => (string) ( $character_tasks[ $character_id ] ?? '' ), $character_ids ) ) );
+				$location_id     = (int) ( $scene_locations[ $scene->ID ] ?? 0 );
+				$location_ref    = (string) ( $location_tasks[ $location_id ] ?? '' );
+				$primary_image   = (string) ( $character_refs[0] ?? $still_key );
+				$reference_keys  = array_values( array_unique( array_filter( array_merge( $character_refs, [ $location_ref ] ) ) ) );
+				$dependencies    = array_values( array_unique( array_filter( array_merge( [ $still_key, $next_still_key, $primary_image ], $reference_keys ) ) ) );
+				$input_refs      = [
+					'image'            => [ 'task_key' => $primary_image, 'fallback_task_key' => $still_key ],
+					'start_frame'      => [ 'task_key' => $still_key ],
+					'reference_images' => array_map( static fn( string $key ): array => [ 'task_key' => $key ], $reference_keys ),
+				];
+				if ( '' !== $next_still_key ) {
+					$input_refs['end_frame'] = [ 'task_key' => $next_still_key ];
+				}
+				$task_key = 'demo-shot-' . $shot->ID . '-video';
+				$tasks[]  = self::demonstration_task(
+					$task_key,
+					$shot,
+					'shot-still-and-video',
+					'shot-video',
+					__( 'Rough-cut moving shot', 'worldgraph' ),
+					'video',
+					'video',
+					false,
+					Asset_Generator::build_prompt( (int) $shot->ID, 'shot-video', $base_prompt ),
+					[
+						'scene_id'             => (int) $scene->ID,
+						'shot_id'              => (int) $shot->ID,
+						'scene_order'          => $scene_index,
+						'shot_order'           => $shot_index,
+						'timeline_order'       => self::shot_timeline_order( $scenes, (int) $shot->ID ),
+						'character_ids'        => array_values( array_map( 'intval', $character_ids ) ),
+						'location_id'          => $location_id,
+						'preferred_modalities' => '' !== $next_still_key ? [ 'video_to_video', 'text_image_to_video', 'text_to_video' ] : [ 'text_image_to_video', 'text_to_video' ],
+						'dependencies'         => $dependencies,
+						'input_refs'           => $input_refs,
+						'fallback_task_key'    => $still_key,
+						'generation_required'  => true,
+					]
+				);
+				$video_tasks[ $shot->ID ] = $task_key;
+			}
+		}
+
+		foreach ( $scenes as $scene_index => $scene_item ) {
+			$scene          = $scene_item['post'];
+			$scene_segments = [];
+			foreach ( $scene_item['shots'] as $shot_index => $shot ) {
+				$scene_segments[] = [
+					'scene_id'                => (int) $scene->ID,
+					'shot_id'                 => (int) $shot->ID,
+					'scene_order'             => $scene_index,
+					'shot_order'              => $shot_index,
+					'video_task_key'          => (string) ( $video_tasks[ $shot->ID ] ?? '' ),
+					'fallback_still_task_key' => (string) ( $still_tasks[ 'shot:' . $shot->ID ] ?? '' ),
+					'duration'                => self::clean_text( (string) worldgraph_get_field_value( (int) $shot->ID, 'duration' ), 12 ),
+					'subtitle_text'           => self::demonstration_segment_caption( $shot, $scene ),
+					'audio_task_keys'         => array_values( array_unique( array_merge( (array) ( $sounds_by_scene[ $scene->ID ] ?? [] ), (array) ( $sounds_by_shot[ $shot->ID ] ?? [] ) ) ) ),
+				];
+			}
+			if ( empty( $scene_segments ) ) {
+				$scene_segments[] = [
+					'scene_id'                => (int) $scene->ID,
+					'shot_id'                 => 0,
+					'scene_order'             => $scene_index,
+					'shot_order'              => 0,
+					'video_task_key'          => '',
+					'fallback_still_task_key' => (string) ( $still_tasks[ 'scene:' . $scene->ID ] ?? '' ),
+					'duration'                => '',
+					'subtitle_text'           => self::demonstration_segment_caption( null, $scene ),
+					'audio_task_keys'         => array_values( array_unique( (array) ( $sounds_by_scene[ $scene->ID ] ?? [] ) ) ),
+				];
+			}
+			$timeline[] = [
+				'episode_id'      => (int) $scene_item['episode_id'],
+				'scene_id'        => (int) $scene->ID,
+				'scene_order'     => $scene_index,
+				'scene_title'     => (string) $scene->post_title,
+				'sound_task_keys' => array_values( array_unique( (array) ( $all_scene_sounds[ $scene->ID ] ?? [] ) ) ),
+				'segments'        => $scene_segments,
+			];
+		}
+
+		if ( empty( $timeline ) ) {
+			$timeline[] = [
+				'episode_id'      => 0,
+				'scene_id'        => 0,
+				'scene_order'     => 0,
+				'scene_title'     => (string) $project->post_title,
+				'sound_task_keys' => [],
+				'segments'        => [
+					[
+						'scene_id'                => 0,
+						'shot_id'                 => 0,
+						'scene_order'             => 0,
+						'shot_order'              => 0,
+						'video_task_key'          => '',
+						'fallback_still_task_key' => (string) ( $still_tasks[ 'project:' . $project_id ] ?? '' ),
+						'duration'                => '',
+						'subtitle_text'           => self::clean_text( (string) ( $project->post_excerpt ?: $project->post_content ?: $project->post_title ), 100 ),
+						'audio_task_keys'         => [],
+					],
+				],
+			];
+		}
+
+		$maximum = max( 1, (int) apply_filters( 'worldgraph_generation_batch_max_tasks', self::MAX_BATCH_TASKS, $project_id, 'demonstration' ) );
+		if ( count( $tasks ) > $maximum ) {
+			return new WP_Error(
+				'worldgraph_generation_batch_too_large',
+				sprintf(
+					/* translators: 1: number of jobs in the generation plan, 2: maximum number of jobs allowed. */
+					__( 'This plan contains %1$d jobs; the current limit is %2$d.', 'worldgraph' ),
+					count( $tasks ),
+					$maximum
+				),
+				[ 'status' => 400 ]
+			);
+		}
+
+		$counts = array_count_values( array_column( $tasks, 'type' ) );
+		return [
+			'post_id'            => $project_id,
+			'scope'              => 'demonstration',
+			'batch_kind'         => self::DEMONSTRATION_BATCH,
+			'workflow'           => [
+				'id'          => 'project-demonstration-video',
+				'label'       => __( 'End-to-end demonstration video', 'worldgraph' ),
+				'description' => __( 'Ordered Story Graph shots with still, subtitle, silence, and title-card fallbacks.', 'worldgraph' ),
+			],
+			'sources'            => count( $source_ids ),
+			'total_jobs'         => count( $tasks ),
+			'counts'             => [
+				'image' => (int) ( $counts['image'] ?? 0 ),
+				'video' => (int) ( $counts['video'] ?? 0 ),
+				'audio' => (int) ( $counts['audio'] ?? 0 ),
+			],
+			'required_task_keys' => array_values( array_column( array_filter( $tasks, static fn( array $task ): bool => ! empty( $task['required'] ) ), 'task_key' ) ),
+			'optional_task_keys' => array_values( array_column( array_filter( $tasks, static fn( array $task ): bool => empty( $task['required'] ) ), 'task_key' ) ),
+			'assembly'           => [
+				'strategy'          => 'ffmpeg_rough_cut',
+				'title'             => (string) $project->post_title,
+				'video_fallback'    => 'still',
+				'audio_fallback'    => 'silence',
+				'subtitle_fallback' => true,
+				'timeline'          => $timeline,
+			],
+			'tasks'              => $tasks,
+		];
+	}
+
+	/** Construct the shared, frozen demonstration task shape. */
+	private static function demonstration_task( string $task_key, \WP_Post $source, string $workflow_id, string $intent, string $label, string $type, string $phase, bool $required, string $prompt, array $metadata = [] ): array {
+		return array_merge(
+			[
+				'task_key'     => $task_key,
+				'source_id'    => (int) $source->ID,
+				'source_type'  => (string) $source->post_type,
+				'source_title' => (string) $source->post_title,
+				'workflow_id'  => $workflow_id,
+				'intent'       => $intent,
+				'label'        => $label,
+				'type'         => $type,
+				'phase'        => $phase,
+				'required'     => $required,
+				'featured'     => 'image' === $type,
+				'prompt'       => $prompt,
+			],
+			$metadata
+		);
+	}
+
+	/** Convert symbolic reference task keys into the common multi-image shape. */
+	private static function reference_image_refs( array $task_keys ): array {
+		return empty( $task_keys )
+			? []
+			: [ 'reference_images' => array_map( static fn( string $task_key ): array => [ 'task_key' => $task_key ], array_values( $task_keys ) ) ];
+	}
+
+	/** Resolve Episodes, Scenes, and Shots into deterministic editorial order. */
+	private static function demonstration_story_order( array $sources ): array {
+		$episodes = array_values( array_filter( $sources, static fn( \WP_Post $post ): bool => 'worldgraph_episode' === $post->post_type ) );
+		$scenes   = [];
+		foreach ( $sources as $source ) {
+			if ( 'worldgraph_scene' === $source->post_type ) {
+				$scenes[ $source->ID ] = $source;
+			}
+			if ( in_array( $source->post_type, [ 'worldgraph_character', 'worldgraph_location' ], true ) ) {
+				foreach ( self::related_posts_by_type( (int) $source->ID, (string) $source->post_type, 'worldgraph_scene' ) as $scene ) {
+					$scenes[ $scene->ID ] = $scene;
+				}
+			}
+		}
+		$scenes = array_values( $scenes );
+		self::sort_numbered_posts( $episodes, 'episode_number' );
+
+		$by_episode = [];
+		$orphans    = [];
+		foreach ( $scenes as $scene ) {
+			$episode_id = self::related_field_id( (int) $scene->ID, 'worldgraph_scene', 'episode', 'worldgraph_episode' );
+			if ( $episode_id ) {
+				$by_episode[ $episode_id ][] = $scene;
+				if ( ! array_filter( $episodes, static fn( \WP_Post $episode ): bool => (int) $episode->ID === $episode_id ) ) {
+					$episode = get_post( $episode_id );
+					if ( $episode instanceof \WP_Post && 'worldgraph_episode' === $episode->post_type ) {
+						$episodes[] = $episode;
+					}
+				}
+			} else {
+				$orphans[] = $scene;
+			}
+		}
+		self::sort_numbered_posts( $episodes, 'episode_number' );
+		foreach ( $by_episode as &$episode_scenes ) {
+			self::sort_numbered_posts( $episode_scenes, 'scene_number' );
+		}
+		unset( $episode_scenes );
+		self::sort_numbered_posts( $orphans, 'scene_number' );
+
+		$ordered_scenes = [];
+		$seen           = [];
+		foreach ( $episodes as $episode ) {
+			foreach ( $by_episode[ $episode->ID ] ?? [] as $scene ) {
+				if ( isset( $seen[ $scene->ID ] ) ) {
+					continue;
+				}
+				$seen[ $scene->ID ] = true;
+				$ordered_scenes[]   = self::demonstration_scene_item( $scene, (int) $episode->ID );
+			}
+		}
+		foreach ( $orphans as $scene ) {
+			if ( isset( $seen[ $scene->ID ] ) ) {
+				continue;
+			}
+			$seen[ $scene->ID ] = true;
+			$ordered_scenes[]   = self::demonstration_scene_item( $scene, 0 );
+		}
+
+		return [ 'episodes' => $episodes, 'scenes' => $ordered_scenes ];
+	}
+
+	/** Build one ordered Scene item and prefer the canonical reorder service. */
+	private static function demonstration_scene_item( \WP_Post $scene, int $episode_id ): array {
+		if ( function_exists( __NAMESPACE__ . '\\worldgraph_get_scene_shots_for_reorder' ) ) {
+			$shots = worldgraph_get_scene_shots_for_reorder( (int) $scene->ID );
+		} else {
+			$shots = array_values( array_filter( self::ownership_children( (int) $scene->ID, 'worldgraph_scene' ), static fn( \WP_Post $post ): bool => 'worldgraph_shot' === $post->post_type ) );
+			self::sort_numbered_posts( $shots, 'shot_number' );
+		}
+
+		return [ 'post' => $scene, 'episode_id' => $episode_id, 'shots' => $shots ];
+	}
+
+	/** Apply menu order, numeric story order, title, then ID tie breakers. */
+	private static function sort_numbered_posts( array &$posts, string $number_field ): void {
+		usort(
+			$posts,
+			static function ( \WP_Post $left, \WP_Post $right ) use ( $number_field ): int {
+				$left_number  = (float) worldgraph_get_field_value( (int) $left->ID, $number_field );
+				$right_number = (float) worldgraph_get_field_value( (int) $right->ID, $number_field );
+				$left_order   = (int) $left->menu_order > 0 ? (int) $left->menu_order : ( $left_number > 0 ? $left_number : PHP_INT_MAX );
+				$right_order  = (int) $right->menu_order > 0 ? (int) $right->menu_order : ( $right_number > 0 ? $right_number : PHP_INT_MAX );
+				if ( $left_order !== $right_order ) {
+					return $left_order <=> $right_order;
+				}
+				if ( $left_number !== $right_number ) {
+					return $left_number <=> $right_number;
+				}
+				$title_order = strcasecmp( (string) $left->post_title, (string) $right->post_title );
+				return 0 !== $title_order ? $title_order : (int) $left->ID <=> (int) $right->ID;
+			}
+		);
+	}
+
+	/** Infer recurring characters and each Shot's strongest continuity subjects. */
+	private static function demonstration_character_usage( array $sources, array $scenes ): array {
+		$characters = [];
+		foreach ( $sources as $source ) {
+			if ( 'worldgraph_character' === $source->post_type ) {
+				$characters[ $source->ID ] = $source;
+			}
+		}
+		foreach ( $scenes as $scene_item ) {
+			$scene = $scene_item['post'];
+			foreach ( self::related_posts_by_type( (int) $scene->ID, 'worldgraph_scene', 'worldgraph_character' ) as $character ) {
+				$characters[ $character->ID ] = $character;
+			}
+			foreach ( $scene_item['shots'] as $shot ) {
+				foreach ( self::related_posts_by_type( (int) $shot->ID, 'worldgraph_shot', 'worldgraph_character' ) as $character ) {
+					$characters[ $character->ID ] = $character;
+				}
+			}
+		}
+		ksort( $characters, SORT_NUMERIC );
+
+		$aliases = [];
+		foreach ( $characters as $character ) {
+			$names = [ (string) $character->post_title, (string) worldgraph_get_field_value( (int) $character->ID, 'display_name' ) ];
+			$names = array_values( array_unique( array_filter( array_map( 'trim', $names ) ) ) );
+			foreach ( $names as $name ) {
+				$aliases[ $character->ID ][] = $name;
+			}
+		}
+
+		$occurrences    = [];
+		$shot_characters = [];
+		$order          = 0;
+		foreach ( $scenes as $scene_item ) {
+			$scene          = $scene_item['post'];
+			$scene_ids      = array_map( static fn( \WP_Post $post ): int => (int) $post->ID, self::related_posts_by_type( (int) $scene->ID, 'worldgraph_scene', 'worldgraph_character' ) );
+			$scene_text     = implode( ' ', [ (string) $scene->post_title, (string) $scene->post_content, (string) worldgraph_get_field_value( (int) $scene->ID, 'summary' ), (string) worldgraph_get_field_value( (int) $scene->ID, 'script_content' ) ] );
+			$scene_ids      = array_merge( $scene_ids, self::character_ids_mentioned( $scene_text, $aliases ), self::dialogue_character_ids( (int) $scene->ID, $aliases ) );
+			$scene_ids      = array_values( array_unique( array_filter( array_map( 'absint', $scene_ids ) ) ) );
+			if ( empty( $scene_item['shots'] ) ) {
+				foreach ( $scene_ids as $character_id ) {
+					self::record_character_occurrence( $occurrences, $character_id, (int) $scene->ID, 0, 'scene:' . $scene->ID, $order );
+				}
+				++$order;
+			}
+
+			foreach ( $scene_item['shots'] as $shot ) {
+				$shot_ids  = array_map( static fn( \WP_Post $post ): int => (int) $post->ID, self::related_posts_by_type( (int) $shot->ID, 'worldgraph_shot', 'worldgraph_character' ) );
+				$shot_text = implode( ' ', [ (string) $shot->post_title, (string) $shot->post_content, (string) worldgraph_get_field_value( (int) $shot->ID, 'shot_description' ), (string) worldgraph_get_field_value( (int) $shot->ID, 'editorial_notes' ) ] );
+				$shot_ids  = array_merge( $shot_ids, self::character_ids_mentioned( $shot_text, $aliases ) );
+				$shot_ids  = array_values( array_unique( array_filter( array_map( 'absint', $shot_ids ) ) ) );
+				if ( empty( $shot_ids ) ) {
+					$shot_ids = $scene_ids;
+				}
+				foreach ( $shot_ids as $character_id ) {
+					self::record_character_occurrence( $occurrences, $character_id, (int) $scene->ID, (int) $shot->ID, 'shot:' . $shot->ID, $order );
+				}
+				$shot_characters[ $shot->ID ] = $shot_ids;
+				++$order;
+			}
+		}
+
+		foreach ( $shot_characters as &$character_ids ) {
+			usort(
+				$character_ids,
+				static function ( int $left, int $right ) use ( $occurrences ): int {
+					$left_count  = count( $occurrences[ $left ]['segment_keys'] ?? [] );
+					$right_count = count( $occurrences[ $right ]['segment_keys'] ?? [] );
+					if ( $left_count !== $right_count ) {
+						return $right_count <=> $left_count;
+					}
+					$first = (int) ( $occurrences[ $left ]['first_order'] ?? PHP_INT_MAX ) <=> (int) ( $occurrences[ $right ]['first_order'] ?? PHP_INT_MAX );
+					return 0 !== $first ? $first : $left <=> $right;
+				}
+			);
+		}
+		unset( $character_ids );
+
+		return [ 'characters' => $characters, 'occurrences' => $occurrences, 'shot_characters' => $shot_characters ];
+	}
+
+	/** Add one distinct visual-segment occurrence to a character usage map. */
+	private static function record_character_occurrence( array &$occurrences, int $character_id, int $scene_id, int $shot_id, string $segment_key, int $order ): void {
+		if ( ! isset( $occurrences[ $character_id ] ) ) {
+			$occurrences[ $character_id ] = [
+				'character_id' => $character_id,
+				'first_order'  => $order,
+				'scene_ids'    => [],
+				'shot_ids'     => [],
+				'segment_keys' => [],
+			];
+		}
+		$occurrences[ $character_id ]['scene_ids'][ $scene_id ]       = true;
+		$occurrences[ $character_id ]['segment_keys'][ $segment_key ] = true;
+		if ( $shot_id ) {
+			$occurrences[ $character_id ]['shot_ids'][ $shot_id ] = true;
+		}
+	}
+
+	/** Match candidate character aliases in natural-language story text. */
+	private static function character_ids_mentioned( string $text, array $aliases ): array {
+		if ( '' === trim( $text ) ) {
+			return [];
+		}
+		$ids = [];
+		foreach ( $aliases as $character_id => $names ) {
+			foreach ( $names as $name ) {
+				$pattern = '/(?<![\p{L}\p{N}_])' . preg_quote( $name, '/' ) . '(?![\p{L}\p{N}_])/iu';
+				if ( 1 === @preg_match( $pattern, $text ) ) { // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- malformed imported encodings are treated as no match.
+					$ids[] = (int) $character_id;
+					break;
+				}
+			}
+		}
+
+		return $ids;
+	}
+
+	/** Match structured dialogue speakers to Character IDs. */
+	private static function dialogue_character_ids( int $scene_id, array $aliases ): array {
+		$dialogue = worldgraph_get_field_value( $scene_id, 'dialogue' );
+		if ( is_string( $dialogue ) ) {
+			$decoded  = json_decode( $dialogue, true );
+			$dialogue = is_array( $decoded ) ? $decoded : [];
+		}
+		if ( ! is_array( $dialogue ) ) {
+			return [];
+		}
+		if ( isset( $dialogue['speaker'] ) || isset( $dialogue['line'] ) ) {
+			$dialogue = [ $dialogue ];
+		}
+
+		$ids = [];
+		foreach ( $dialogue as $row ) {
+			if ( ! is_array( $row ) ) {
+				continue;
+			}
+			$speaker = trim( (string) ( $row['speaker'] ?? $row['character'] ?? '' ) );
+			if ( ctype_digit( $speaker ) && isset( $aliases[ (int) $speaker ] ) ) {
+				$ids[] = (int) $speaker;
+				continue;
+			}
+			foreach ( $aliases as $character_id => $names ) {
+				foreach ( $names as $name ) {
+					if ( 0 === strcasecmp( $speaker, $name ) ) {
+						$ids[] = (int) $character_id;
+						break 2;
+					}
+				}
+			}
+		}
+
+		return array_values( array_unique( $ids ) );
+	}
+
+	/** Return directly adjacent posts of one requested type in either direction. */
+	private static function related_posts_by_type( int $post_id, string $post_type, string $related_type ): array {
+		$posts = [];
+		foreach ( [ 'outgoing', 'incoming' ] as $direction ) {
+			foreach ( get_relationships( $post_id, $post_type, $direction ) as $relationship ) {
+				$type       = 'outgoing' === $direction ? (string) ( $relationship['to_type'] ?? '' ) : (string) ( $relationship['from_type'] ?? '' );
+				$related_id = 'outgoing' === $direction ? absint( $relationship['to_id'] ?? 0 ) : absint( $relationship['from_id'] ?? 0 );
+				if ( $related_type !== $type ) {
+					continue;
+				}
+				$post = get_post( $related_id );
+				if ( $post instanceof \WP_Post && $related_type === $post->post_type && ! in_array( $post->post_status, [ 'trash', 'auto-draft' ], true ) ) {
+					$posts[ $post->ID ] = $post;
+				}
+			}
+		}
+		ksort( $posts, SORT_NUMERIC );
+
+		return array_values( $posts );
+	}
+
+	/** Resolve one relationship field without assuming its storage representation. */
+	private static function related_field_id( int $post_id, string $post_type, string $field_name, string $related_type ): int {
+		$value = worldgraph_get_field_value( $post_id, $field_name );
+		foreach ( is_array( $value ) ? $value : [ $value ] as $candidate ) {
+			$candidate_id = $candidate instanceof \WP_Post ? (int) $candidate->ID : absint( $candidate );
+			if ( $candidate_id && $related_type === get_post_type( $candidate_id ) ) {
+				return $candidate_id;
+			}
+		}
+
+		$fallback = 0;
+		foreach ( [ 'outgoing', 'incoming' ] as $direction ) {
+			foreach ( get_relationships( $post_id, $post_type, $direction ) as $relationship ) {
+				$type       = 'outgoing' === $direction ? (string) ( $relationship['to_type'] ?? '' ) : (string) ( $relationship['from_type'] ?? '' );
+				$related_id = 'outgoing' === $direction ? absint( $relationship['to_id'] ?? 0 ) : absint( $relationship['from_id'] ?? 0 );
+				if ( $related_type !== $type ) {
+					continue;
+				}
+				$relationship_field = sanitize_key( (string) ( $relationship['metadata']['field'] ?? '' ) );
+				if ( sanitize_key( $field_name ) === $relationship_field ) {
+					return $related_id;
+				}
+				$fallback = $fallback ?: $related_id;
+			}
+		}
+
+		return $fallback;
+	}
+
+	/** Resolve the one visual Location selected by a Scene. */
+	private static function demonstration_scene_location( \WP_Post $scene ): ?\WP_Post {
+		$location_id = self::related_field_id( (int) $scene->ID, 'worldgraph_scene', 'location', 'worldgraph_location' );
+		$location    = $location_id ? get_post( $location_id ) : null;
+
+		return $location instanceof \WP_Post && 'worldgraph_location' === $location->post_type ? $location : null;
+	}
+
+	/** Sound cues configured for a Scene, including legacy named-meta storage. */
+	private static function demonstration_scene_sounds( \WP_Post $scene ): array {
+		$sounds = [];
+		foreach ( self::related_posts_by_type( (int) $scene->ID, 'worldgraph_scene', 'worldgraph_sound' ) as $sound ) {
+			$sounds[ $sound->ID ] = $sound;
+		}
+		$legacy = get_posts(
+			[
+				'post_type'      => 'worldgraph_sound',
+				'post_status'    => 'any',
+				'posts_per_page' => -1,
+				'meta_query'     => [
+					[
+						'key'     => 'scene',
+						'value'   => (int) $scene->ID,
+						'compare' => '=',
+						'type'    => 'NUMERIC',
+					],
+				],
+			]
+		);
+		foreach ( $legacy as $sound ) {
+			if ( $sound instanceof \WP_Post && ! in_array( $sound->post_status, [ 'trash', 'auto-draft' ], true ) ) {
+				$sounds[ $sound->ID ] = $sound;
+			}
+		}
+		$sounds = array_values( $sounds );
+		usort(
+			$sounds,
+			static function ( \WP_Post $left, \WP_Post $right ): int {
+				$left_time  = (string) worldgraph_get_field_value( (int) $left->ID, 'start_timecode' );
+				$right_time = (string) worldgraph_get_field_value( (int) $right->ID, 'start_timecode' );
+				$time_order = strnatcasecmp( $left_time, $right_time );
+				if ( 0 !== $time_order ) {
+					return $time_order;
+				}
+				$menu_order = (int) $left->menu_order <=> (int) $right->menu_order;
+				return 0 !== $menu_order ? $menu_order : (int) $left->ID <=> (int) $right->ID;
+			}
+		);
+
+		return $sounds;
+	}
+
+	/** Resolve the canonical Sound Type slug with content-aware legacy fallbacks. */
+	private static function demonstration_sound_role( int $sound_id ): string {
+		$terms = get_the_terms( $sound_id, 'worldgraph_sound_type' );
+		if ( is_array( $terms ) && ! empty( $terms ) ) {
+			return sanitize_key( (string) $terms[0]->slug );
+		}
+		$value = worldgraph_get_field_value( $sound_id, 'sound_type' );
+		if ( is_object( $value ) && isset( $value->slug ) ) {
+			return sanitize_key( (string) $value->slug );
+		}
+		if ( is_scalar( $value ) && ! is_numeric( $value ) ) {
+			return sanitize_key( (string) $value );
+		}
+		if ( '' !== trim( (string) worldgraph_get_field_value( $sound_id, 'spoken_text' ) ) ) {
+			return 'voiceover';
+		}
+		if ( '' !== trim( (string) worldgraph_get_field_value( $sound_id, 'lyrics' ) ) ) {
+			return 'music';
+		}
+
+		return 'sound-effect';
+	}
+
+	/** Preferred provider-neutral Template modalities for a soundtrack role. */
+	private static function sound_modalities( string $role ): array {
+		if ( in_array( $role, [ 'narration', 'voiceover', 'adr' ], true ) ) {
+			return [ 'text_to_speech', 'text_to_dialogue' ];
+		}
+		if ( 'music' === $role ) {
+			return [ 'text_to_music' ];
+		}
+		if ( 'silence' === $role ) {
+			return [];
+		}
+
+		return [ 'text_to_sound_effect' ];
+	}
+
+	/** Compose one bounded prompt from the canonical Sound fields. */
+	private static function demonstration_sound_prompt( \WP_Post $sound, string $role, string $base_prompt ): string {
+		$parts = [
+			__( 'Soundtrack role', 'worldgraph' ) . ': ' . ( $role ?: 'sound-effect' ),
+			__( 'Cue', 'worldgraph' ) . ': ' . self::clean_text( (string) $sound->post_title, 80 ),
+		];
+		$spoken = self::clean_text( (string) worldgraph_get_field_value( (int) $sound->ID, 'spoken_text' ), 700 );
+		$lyrics = self::clean_text( (string) worldgraph_get_field_value( (int) $sound->ID, 'lyrics' ), 700 );
+		$notes  = self::clean_text( (string) worldgraph_get_field_value( (int) $sound->ID, 'production_notes' ), 300 );
+		if ( '' !== $spoken ) {
+			$parts[] = __( 'Speak this text exactly', 'worldgraph' ) . ': ' . $spoken;
+		}
+		if ( '' !== $lyrics ) {
+			$parts[] = __( 'Lyrics', 'worldgraph' ) . ': ' . $lyrics;
+		}
+		foreach ( [ $sound->post_excerpt, $sound->post_content ] as $description ) {
+			$description = self::clean_text( (string) $description, 300 );
+			if ( '' !== $description ) {
+				$parts[] = __( 'Description', 'worldgraph' ) . ': ' . $description;
+			}
+		}
+		if ( '' !== $notes ) {
+			$parts[] = __( 'Production notes', 'worldgraph' ) . ': ' . $notes;
+		}
+		$base_prompt = self::clean_text( $base_prompt, 500 );
+		if ( '' !== $base_prompt ) {
+			$parts[] = __( 'Project request', 'worldgraph' ) . ': ' . $base_prompt;
+		}
+
+		return self::clean_text( implode( "\n\n", $parts ), self::MAX_CONTEXT_WORDS );
+	}
+
+	/** Stable zero-based order for a Shot among all demonstration Shots. */
+	private static function shot_timeline_order( array $scenes, int $shot_id ): int {
+		$order = 0;
+		foreach ( $scenes as $scene_item ) {
+			foreach ( $scene_item['shots'] as $shot ) {
+				if ( (int) $shot->ID === $shot_id ) {
+					return $order;
+				}
+				++$order;
+			}
+		}
+
+		return $order;
+	}
+
+	/** Human-readable subtitle/title fallback for one visual timeline segment. */
+	private static function demonstration_segment_caption( ?\WP_Post $shot, \WP_Post $scene ): string {
+		if ( $shot instanceof \WP_Post ) {
+			$description = (string) worldgraph_get_field_value( (int) $shot->ID, 'shot_description' );
+			if ( '' !== trim( $description ) ) {
+				return self::clean_text( $description, 100 );
+			}
+		}
+		$dialogue = self::demonstration_dialogue_text( (int) $scene->ID );
+		if ( '' !== $dialogue ) {
+			return $dialogue;
+		}
+		$summary = (string) worldgraph_get_field_value( (int) $scene->ID, 'summary' );
+
+		return self::clean_text( $summary ?: (string) $scene->post_excerpt ?: (string) $scene->post_content ?: (string) $scene->post_title, 100 );
+	}
+
+	/** Flatten structured Scene dialogue for subtitle fallback. */
+	private static function demonstration_dialogue_text( int $scene_id ): string {
+		$dialogue = worldgraph_get_field_value( $scene_id, 'dialogue' );
+		if ( is_string( $dialogue ) ) {
+			$decoded  = json_decode( $dialogue, true );
+			$dialogue = is_array( $decoded ) ? $decoded : [];
+		}
+		if ( ! is_array( $dialogue ) ) {
+			return '';
+		}
+		if ( isset( $dialogue['speaker'] ) || isset( $dialogue['line'] ) ) {
+			$dialogue = [ $dialogue ];
+		}
+		$lines = [];
+		foreach ( $dialogue as $row ) {
+			if ( ! is_array( $row ) ) {
+				continue;
+			}
+			$speaker = self::clean_text( (string) ( $row['speaker'] ?? $row['character'] ?? '' ), 20 );
+			$line    = self::clean_text( (string) ( $row['line'] ?? $row['text'] ?? '' ), 80 );
+			if ( '' !== $line ) {
+				$lines[] = ( '' !== $speaker ? $speaker . ': ' : '' ) . $line;
+			}
+		}
+
+		return self::clean_text( implode( "\n", $lines ), 160 );
 	}
 
 	/** Project root plus descendants connected by canonical ownership edges. */
@@ -912,6 +1873,12 @@ class Generation_Workflows {
 				continue;
 			}
 			$task['template_id'] = $template_id;
+			$task['prompt']      = Generation_Prompt_Profiles::apply(
+				(string) $task['prompt'],
+				(int) $task['source_id'],
+				(string) $task['intent'],
+				$template_id
+			);
 			$task['run_values']  = $run_values[ (string) $task['type'] ];
 			$description         = Template_Run_Controls::describe( $template_id );
 			$task['profile_values'] = Asset_Generator::project_template_defaults(
@@ -1272,8 +2239,9 @@ class Generation_Workflows {
 
 			$result = Asset_Generator::queue_for_post( (int) $task['source_id'], [
 				'type'               => (string) $task['type'],
-				'prompt'             => (string) $task['prompt'],
-				'prompt_is_composed' => true,
+					'prompt'             => (string) $task['prompt'],
+					'prompt_is_composed' => true,
+					'prompt_profiled'    => true,
 				'set_featured'       => 'image' === $task['type'] && ! empty( $task['featured'] ),
 				'create_asset'       => true,
 				'template_id'        => (int) $task['template_id'],

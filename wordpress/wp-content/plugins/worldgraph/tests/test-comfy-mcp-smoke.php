@@ -24,6 +24,22 @@ class Test_Comfy_MCP_Smoke extends TestCase {
 		$this->assertStringNotContainsString( 'SDXL-class', $wizard . $readiness );
 	}
 
+	/** Bootstrap cleanup must never retire operator or catalog video Templates. */
+	public function test_bootstrap_retires_only_the_obsolete_managed_slot(): void {
+		require_once dirname( __DIR__ ) . '/includes/utils/comfy-bootstrap.php';
+
+		$source = (string) file_get_contents( dirname( __DIR__ ) . '/includes/utils/comfy-bootstrap.php' );
+		$start  = strpos( $source, 'private static function retire_legacy_templates' );
+		$end    = false !== $start ? strpos( $source, "\n\t/**", $start ) : false;
+		$method = false !== $start && false !== $end ? substr( $source, $start, $end - $start ) : '';
+
+		$this->assertSame( 'local_comfyui_default', \WorldGraph\Utils\Comfy_Bootstrap::LEGACY_TEMPLATE_SLOT );
+		$this->assertStringContainsString( "'key'   => 'worldgraph_wizard_slot'", $method );
+		$this->assertStringContainsString( "'value' => self::LEGACY_TEMPLATE_SLOT", $method );
+		$this->assertStringNotContainsString( 'Generation_Modality::TEXT_TO_VIDEO', $method );
+		$this->assertStringNotContainsString( '$is_video_template', $method );
+	}
+
 	/**
 	 * MCP tool payloads with isError=true must be normalized into WP_Error so
 	 * Generation_Batch can trigger local fallback when available.

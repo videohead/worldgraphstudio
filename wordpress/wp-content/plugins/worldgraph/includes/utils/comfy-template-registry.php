@@ -554,7 +554,7 @@ class Comfy_Template_Registry {
 	 */
 	private static function family_for( array $models ): string {
 		foreach ( $models as $model ) {
-			$family = Model_Family::sanitize( strtolower( preg_replace( '/[^a-z0-9]+/i', '_', $model ) ) );
+			$family = Model_Family::sanitize( (string) $model );
 			if ( '' !== $family ) {
 				return $family;
 			}
@@ -606,13 +606,14 @@ class Comfy_Template_Registry {
 			}
 
 			foreach ( self::named_widgets( $class, $node, $object_info ) as $field => $value ) {
-				if ( ! isset( Comfy_Manifest::MODEL_FIELDS[ $field ] ) || ! is_string( $value ) || '' === trim( $value ) ) {
+				$folder = Comfy_Manifest::model_folder( $class, (string) $field );
+				if ( '' === $folder || ! is_string( $value ) || '' === trim( $value ) ) {
 					continue;
 				}
 
 				$files[ $field . '|' . $value ] = [
 					'filename'   => trim( $value ),
-					'folder'     => Comfy_Manifest::MODEL_FIELDS[ $field ],
+					'folder'     => $folder,
 					'node_class' => $class,
 					'field'      => (string) $field,
 				];
@@ -781,10 +782,10 @@ class Comfy_Template_Registry {
 	 */
 	private static function installed_files( array $object_info ): array {
 		$installed = [];
-		foreach ( $object_info as $spec ) {
+		foreach ( $object_info as $class => $spec ) {
 			foreach ( [ 'required', 'optional' ] as $group ) {
 				foreach ( (array) ( $spec['input'][ $group ] ?? [] ) as $field => $definition ) {
-					$folder = Comfy_Manifest::MODEL_FIELDS[ $field ] ?? '';
+					$folder = Comfy_Manifest::model_folder( (string) $class, (string) $field );
 					if ( '' === $folder || ! is_array( $definition ) || ! is_array( $definition[0] ?? null ) ) {
 						continue;
 					}

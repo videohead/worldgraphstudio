@@ -72,6 +72,29 @@ class Comfy_Manifest {
 	];
 
 	/**
+	 * Loader-specific model sockets whose generic field name is otherwise too
+	 * ambiguous to classify safely.
+	 *
+	 * @var array<string, array<string, string>>
+	 */
+	const NODE_MODEL_FIELDS = [
+		'LatentUpscaleModelLoader' => [
+			'model_name' => 'latent_upscale_models',
+		],
+	];
+
+	/**
+	 * Resolve the ComfyUI models sub-directory for one loader socket.
+	 *
+	 * @param string $node_class ComfyUI node class.
+	 * @param string $field      Loader input field.
+	 * @return string Empty when the socket is not a known model selector.
+	 */
+	public static function model_folder( string $node_class, string $field ): string {
+		return (string) ( self::NODE_MODEL_FIELDS[ $node_class ][ $field ] ?? self::MODEL_FIELDS[ $field ] ?? '' );
+	}
+
+	/**
 	 * Build the requirement manifest for a Template.
 	 *
 	 * @param int $template_id Template post ID.
@@ -172,7 +195,8 @@ class Comfy_Manifest {
 	 * @return true|WP_Error
 	 */
 	public static function ensure_ready( int $template_id, int $connection_id = 0 ) {
-		$report = self::validate( $template_id );
+		$endpoint = Local_ComfyUI::endpoint( $connection_id );
+		$report   = self::validate( $template_id, $endpoint );
 		if ( is_wp_error( $report ) ) {
 			return $report;
 		}
@@ -181,10 +205,10 @@ class Comfy_Manifest {
 		}
 
 		if ( ! empty( $report['missing_models'] ) && Comfy_Cloud_MCP::supports_tool( 'download_models', $connection_id ) ) {
-			$download = self::request_downloads( $template_id );
+			$download = self::request_downloads( $template_id, $endpoint );
 			if ( ! is_wp_error( $download ) ) {
-				self::flush_catalog();
-				$report = self::validate( $template_id );
+				self::flush_catalog( $endpoint );
+				$report = self::validate( $template_id, $endpoint );
 				if ( is_wp_error( $report ) ) {
 					return $report;
 				}
@@ -542,12 +566,13 @@ class Comfy_Manifest {
 	/**
 	 * Ask Comfy MCP to fetch the models a Template is missing.
 	 *
-	 * @param int $template_id Template post ID.
+	 * @param int    $template_id Template post ID.
+	 * @param string $endpoint    Optional ComfyUI base URL for the Template's Connection.
 	 * @return array|WP_Error Result payload, or an error describing the manual install plan.
 	 */
-	public static function request_downloads( int $template_id ) {
+	public static function request_downloads( int $template_id, string $endpoint = '' ) {
 		$connection_id = self::template_connection_id( $template_id );
-		$report        = self::validate( $template_id );
+		$report        = self::validate( $template_id, $endpoint );
 		if ( is_wp_error( $report ) ) {
 			return $report;
 		}
@@ -659,7 +684,8 @@ class Comfy_Manifest {
 			}
 
 			foreach ( $node['inputs'] as $field => $value ) {
-				if ( ! isset( self::MODEL_FIELDS[ $field ] ) || ! is_string( $value ) || '' === trim( $value ) ) {
+				$folder = self::model_folder( (string) $node['class_type'], (string) $field );
+				if ( '' === $folder || ! is_string( $value ) || '' === trim( $value ) ) {
 					continue;
 				}
 
@@ -667,7 +693,7 @@ class Comfy_Manifest {
 					'node_class' => (string) $node['class_type'],
 					'field'      => (string) $field,
 					'filename'   => trim( $value ),
-					'folder'     => self::MODEL_FIELDS[ $field ],
+					'folder'     => $folder,
 				];
 			}
 		}

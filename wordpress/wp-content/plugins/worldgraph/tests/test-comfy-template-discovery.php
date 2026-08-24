@@ -209,6 +209,16 @@ namespace {
 			$this->assertSame( [ 11, 12 ], array_column( Comfy_Cloud_MCP::$get_calls, 'connection_id' ) );
 		}
 
+		/** LTX 2.5's latent upscaler uses a class-specific generic model_name socket. */
+		public function test_ltx_latent_upscaler_model_folder_is_class_scoped(): void {
+			$this->assertSame(
+				'latent_upscale_models',
+				Comfy_Manifest::model_folder( 'LatentUpscaleModelLoader', 'model_name' )
+			);
+			$this->assertSame( '', Comfy_Manifest::model_folder( 'UnrelatedNode', 'model_name' ) );
+			$this->assertSame( 'vae', Comfy_Manifest::model_folder( 'VAELoader', 'vae_name' ) );
+		}
+
 		/** Invoke the private catalog discovery seam without involving post storage. */
 		private function discover_catalog( int $connection_id ): array {
 			$method = new ReflectionMethod( Comfy_Catalog::class, 'discover_via_mcp' );

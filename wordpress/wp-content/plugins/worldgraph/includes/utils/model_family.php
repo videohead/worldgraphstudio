@@ -53,7 +53,7 @@ class Model_Family {
 				],
 			],
 			self::WAN     => [
-				'label'             => 'Wan2.1',
+				'label'             => 'Wan',
 				// ComfyUI's native Wan* nodes (WanImageToVideo, Wan22FunControlToVideo, …)
 				// and the Comfy Cloud Wan API nodes (WanTextToVideoApi, Wan2TextToVideoApi).
 				'node_prefixes'     => [ 'Wan' ],
@@ -141,9 +141,20 @@ class Model_Family {
 	 * @return string
 	 */
 	public static function sanitize( string $slug ): string {
-		$slug = sanitize_key( $slug );
+		$key = sanitize_key( $slug );
+		if ( array_key_exists( $key, self::all() ) ) {
+			return $key;
+		}
 
-		return array_key_exists( $slug, self::all() ) ? $slug : '';
+		$name = strtolower( (string) preg_replace( '/[^a-z0-9]+/i', '', $slug ) );
+		if ( 1 === preg_match( '/^wan(?:video)?(?:v?\d.*)?$/', $name ) ) {
+			return self::WAN;
+		}
+		if ( 1 === preg_match( '/^ltx(?:v|video)?(?:v?\d.*)?$/', $name ) ) {
+			return self::LTXV;
+		}
+
+		return '';
 	}
 
 	/**

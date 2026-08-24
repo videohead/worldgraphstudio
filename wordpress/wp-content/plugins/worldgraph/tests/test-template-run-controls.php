@@ -471,6 +471,33 @@ class Test_Template_Run_Controls extends TestCase {
 	}
 
 	/**
+	 * Official LTX workflows expose prompt enhancement as a titled Boolean node.
+	 */
+	public function test_ltx_prompt_enhance_primitive_is_discovered_and_mutated(): void {
+		$workflow = [
+			'1' => [
+				'class_type' => 'PrimitiveBoolean',
+				'inputs'     => [ 'value' => true ],
+				'_meta'      => [ 'title' => 'Boolean (Enable Prompt Enhance)' ],
+			],
+			'2' => [
+				'class_type' => 'LTXVPromptEnhancer',
+				'inputs'     => [ 'enabled' => [ '1', 0 ], 'prompt' => 'A subject moves.' ],
+			],
+		];
+
+		$description = Template_Run_Controls::describe_configuration( [], [ 'workflow' => $workflow ] );
+		$field       = $this->field( $description, 'prompt_enhance' );
+		$this->assertSame( 'boolean', $field['type'] );
+		$this->assertSame( 'advanced', $field['group'] );
+		$this->assertTrue( $field['default'] );
+
+		$applied = Template_Run_Controls::apply_values_to_workflow( $workflow, [ 'enable_prompt_enhance' => false ] );
+		$this->assertFalse( $applied['1']['inputs']['value'] );
+		$this->assertSame( [ '1', 0 ], $applied['2']['inputs']['enabled'] );
+	}
+
+	/**
 	 * One public control never collapses intentionally different stage values.
 	 */
 	public function test_differing_multi_target_values_are_not_advertised(): void {
@@ -562,6 +589,7 @@ class Test_Template_Run_Controls extends TestCase {
 		$this->assertSame( 'select', $sampler['type'] );
 		$this->assertSame( 'select', $scheduler['type'] );
 		$this->assertContains( 'euler', array_column( $sampler['options'], 'value' ) );
+		$this->assertContains( 'dpmpp_3m_sde', array_column( $sampler['options'], 'value' ) );
 		$this->assertSame( 28, $this->field( $workflow_description, 'steps' )['default'] );
 
 		$explicit = Template_Run_Controls::describe_configuration(

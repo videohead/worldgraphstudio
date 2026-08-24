@@ -197,6 +197,14 @@ job state, and available provenance. Supported output depends on the selected
 adapter and template. You can also upload media made elsewhere and link it to
 the same Story Graph records.
 
+For local WAN 2.2 or LTX 2.5 video, begin with the official task-specific
+ComfyUI workflow, select its model files in ComfyUI, test it, and export API
+format before materializing the World Graph Studio Template. Model loaders are
+stored in the workflow, while only safely discovered scalar inputs become
+per-run controls. See [Text to Video with Local ComfyUI](../how-to-text-to-video.md)
+for model matrices, prompt patterns, tuning boundaries, and end-to-end
+verification.
+
 The Assets metabox currently lists image-output Templates. Suno prompt music,
 custom music, and `text_to_lyrics` use the generic Template-backed generation
 API. A Suno Connection requires a SunoAPI.org REST key and a separate AceData

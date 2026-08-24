@@ -115,6 +115,9 @@
 		if ( 'workflow:project' === value ) {
 			return { kind: 'workflow', scope: 'project' };
 		}
+		if ( 'workflow:demonstration' === value ) {
+			return { kind: 'workflow', scope: 'demonstration' };
+		}
 		return { kind: '' };
 	}
 
@@ -745,7 +748,8 @@
 		var availability = {
 			image: actions.some( function ( action ) { return 'image' === action.type; } ),
 			sequence: ( parseInt( body.total_jobs, 10 ) || 0 ) > 1 || '1' === panel.dataset.isProject,
-			video: actions.some( function ( action ) { return 'video' === action.type; } )
+			video: actions.some( function ( action ) { return 'video' === action.type; } ),
+			demonstration: '1' === panel.dataset.isProject
 		};
 		var firstAvailable = '';
 		Array.prototype.forEach.call( panel.querySelectorAll( '.worldgraph-generate-asset__modes input' ), function ( input ) {
@@ -788,6 +792,9 @@
 			if ( '1' === panel.dataset.isProject ) {
 				appendOption( select, 'workflow:project', strings.allProjectMedia );
 			}
+		} else if ( 'demonstration' === mode && '1' === panel.dataset.isProject ) {
+			label.textContent = strings.demonstrationSelection;
+			appendOption( select, 'workflow:demonstration', strings.wholeStoryDemo );
 		}
 
 		if ( ! select.options.length ) {
@@ -824,10 +831,10 @@
 		var counts = body.counts || {};
 		clearElement( workflow );
 		var strong = document.createElement( 'strong' );
-		strong.textContent = 'project' === body.scope ? strings.allProjectMedia : ( body.workflow.label || strings.workflow );
+		strong.textContent = 'demonstration' === body.scope ? strings.wholeStoryDemo : ( 'project' === body.scope ? strings.allProjectMedia : ( body.workflow.label || strings.workflow ) );
 		workflow.appendChild( strong );
 		var detail = document.createElement( 'span' );
-		detail.textContent = ' — ' + countedLabel( body.total_jobs, strings.jobSingular, strings.jobs ) + ': ' + countedLabel( counts.image || 0, strings.image, strings.images ) + ', ' + countedLabel( counts.video || 0, strings.video, strings.videos ) + ( 'project' === body.scope ? '; ' + body.sources + ' ' + strings.sources : '' );
+		detail.textContent = ' — ' + countedLabel( body.total_jobs, strings.jobSingular, strings.jobs ) + ': ' + countedLabel( counts.image || 0, strings.image, strings.images ) + ', ' + countedLabel( counts.video || 0, strings.video, strings.videos ) + ( ( parseInt( counts.audio, 10 ) || 0 ) > 0 ? ', ' + countedLabel( counts.audio || 0, strings.audio, strings.audios ) : '' ) + ( 'item' !== body.scope ? '; ' + body.sources + ' ' + strings.sources : '' );
 		workflow.appendChild( detail );
 	}
 
@@ -835,8 +842,9 @@
 		var lines = [ strings.workflowPrompts ];
 		var tasks = body.tasks || [];
 		tasks.slice( 0, 24 ).forEach( function ( task ) {
-			var source = 'project' === body.scope ? task.source_title + ' — ' : '';
-			lines.push( '• ' + source + task.label + ' (' + ( 'video' === task.type ? strings.video : strings.stillImage ) + ')' );
+			var source = 'item' !== body.scope ? task.source_title + ' — ' : '';
+			var typeLabel = 'video' === task.type ? strings.video : ( 'audio' === task.type ? strings.audio : strings.stillImage );
+			lines.push( '• ' + source + task.label + ' (' + typeLabel + ( task.optional ? '; optional fallback available' : '' ) + ')' );
 		} );
 		if ( tasks.length > 24 ) {
 			lines.push( '… ' + ( tasks.length - 24 ) + ' ' + strings.moreOutputs );
@@ -962,9 +970,9 @@
 		renderRunControls( panel, [], currentTarget( panel ) );
 		panel.querySelector( '.worldgraph-generate-asset__direct-options' ).hidden = true;
 		panel.querySelector( '.worldgraph-generate-asset__prompt-help' ).textContent = strings.batchPromptHelp;
-		panel.querySelector( '.worldgraph-generate-asset__choice-description' ).textContent = 'project' === scope ? strings.projectChoiceHelp : strings.itemChoiceHelp;
+		panel.querySelector( '.worldgraph-generate-asset__choice-description' ).textContent = 'demonstration' === scope ? strings.demoChoiceHelp : ( 'project' === scope ? strings.projectChoiceHelp : strings.itemChoiceHelp );
 		panel.querySelector( '.worldgraph-generate-asset__context-preview' ).textContent = strings.planning;
-		panel.querySelector( '.worldgraph-generate-asset__run' ).textContent = 'project' === scope ? strings.reviewProject : strings.reviewQueue;
+		panel.querySelector( '.worldgraph-generate-asset__run' ).textContent = 'demonstration' === scope ? strings.reviewDemonstration : ( 'project' === scope ? strings.reviewProject : strings.reviewQueue );
 		selectionStatus( panel, strings.planning );
 		updatePrimaryState( panel );
 	}
@@ -989,10 +997,12 @@
 
 		panel.querySelector( '.worldgraph-generate-asset__direct-options' ).hidden = true;
 		panel.querySelector( '.worldgraph-generate-asset__prompt-help' ).textContent = strings.batchPromptHelp;
-		panel.querySelector( '.worldgraph-generate-asset__choice-description' ).textContent = 'project' === body.scope ? strings.projectChoiceHelp : strings.itemChoiceHelp;
-		panel.querySelector( '.worldgraph-generate-asset__run' ).textContent = 'project' === body.scope
-			? strings.reviewProject + ' (' + body.total_jobs + ' ' + strings.jobs + ')'
-			: strings.reviewQueue + ' ' + body.workflow.label + ' (' + body.total_jobs + ' ' + strings.jobs + ')';
+		panel.querySelector( '.worldgraph-generate-asset__choice-description' ).textContent = 'demonstration' === body.scope ? strings.demoChoiceHelp : ( 'project' === body.scope ? strings.projectChoiceHelp : strings.itemChoiceHelp );
+		panel.querySelector( '.worldgraph-generate-asset__run' ).textContent = 'demonstration' === body.scope
+			? strings.reviewDemonstration + ' (' + body.total_jobs + ' ' + strings.jobs + ')'
+			: ( 'project' === body.scope
+				? strings.reviewProject + ' (' + body.total_jobs + ' ' + strings.jobs + ')'
+				: strings.reviewQueue + ' ' + body.workflow.label + ' (' + body.total_jobs + ' ' + strings.jobs + ')' );
 		renderPlanSummary( panel, body );
 		renderPlanPreview( panel, body );
 		if ( body.ready ) {
@@ -1099,7 +1109,7 @@
 	}
 
 	function activeBatchesFromPrompt( body ) {
-		return [ body.latest_batch, body.latest_project_batch ].filter( function ( batch ) {
+		return [ body.latest_batch, body.latest_project_batch, body.latest_demonstration_batch ].filter( function ( batch ) {
 			return batch && batch.batch_id && ! isTerminal( batch.status );
 		} ).sort( function ( left, right ) {
 			return parseInt( right.batch_id, 10 ) - parseInt( left.batch_id, 10 );
@@ -1243,12 +1253,13 @@
 			updatePrimaryState( panel );
 			return;
 		}
-		var summary = countedLabel( body.total_jobs, strings.jobSingular, strings.jobs ) + ' (' + countedLabel( body.counts.image || 0, strings.image, strings.images ) + ', ' + countedLabel( body.counts.video || 0, strings.video, strings.videos ) + ').\n\n';
-		if ( ! window.confirm( summary + ( 'project' === scope ? strings.confirmProject : strings.confirmItem ) ) ) {
+		var summary = countedLabel( body.total_jobs, strings.jobSingular, strings.jobs ) + ' (' + countedLabel( body.counts.image || 0, strings.image, strings.images ) + ', ' + countedLabel( body.counts.video || 0, strings.video, strings.videos ) + ( ( parseInt( body.counts.audio, 10 ) || 0 ) > 0 ? ', ' + countedLabel( body.counts.audio || 0, strings.audio, strings.audios ) : '' ) + ').\n\n';
+		var confirmation = 'demonstration' === scope ? strings.confirmDemonstration : ( 'project' === scope ? strings.confirmProject : strings.confirmItem );
+		if ( ! window.confirm( summary + confirmation ) ) {
 			return;
 		}
 
-		var idempotencyProperty = 'project' === scope ? '_worldgraphProjectBatchKey' : '_worldgraphItemBatchKey';
+		var idempotencyProperty = 'demonstration' === scope ? '_worldgraphDemonstrationBatchKey' : ( 'project' === scope ? '_worldgraphProjectBatchKey' : '_worldgraphItemBatchKey' );
 		panel[ idempotencyProperty ] = panel[ idempotencyProperty ] || uuid();
 		var payload = {
 			post_id: parseInt( panel.dataset.postId, 10 ),
@@ -1309,6 +1320,20 @@
 		progressBar.value = percent;
 		label.textContent = strings.batchProgress + ': ' + percent + '% — ' + ( body.completed || 0 ) + '/' + ( body.total || 0 ) + ' completed, ' + ( body.active || 0 ) + ' active, ' + ( body.failed || 0 ) + ' failed, ' + ( body.cancelled || 0 ) + ' cancelled.';
 		setStatus( panel, strings.batchQueued + ' #' + body.batch_id + ' — ' + body.status, 'failed' === body.status || 'completed_with_errors' === body.status );
+		if ( body.assembly && body.assembly.url ) {
+			var result = panel.querySelector( '.worldgraph-generate-asset__result' );
+			clearElement( result );
+			var video = document.createElement( 'video' );
+			video.controls = true;
+			video.preload = 'metadata';
+			video.src = body.assembly.url;
+			result.appendChild( video );
+			var caption = document.createElement( 'p' );
+			caption.className = 'description';
+			caption.textContent = strings.roughCutReady;
+			result.appendChild( caption );
+			result.hidden = false;
+		}
 		panel.querySelector( '.worldgraph-generate-asset__cancel' ).hidden = terminal || 'cancelling' === body.status;
 		if ( terminal ) {
 			forgetBatch( panel, body.batch_id );

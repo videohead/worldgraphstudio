@@ -1,0 +1,7 @@
+Project-level Generate should queue a complete rough cut, reuse identity/reference assets, maintain shot continuity, generate or graphically substitute soundtrack/title elements, then assemble a watchable deliverable while preserving per-item rerender controls and cancellation.
+
+"I want to be able to import a story and be able to generate the whole story as a single demonstration video with complementary stills for the characters, audio, voiceover, music, sound etc where possible in the model, on screen titles or subtitle graphics where not possible.
+Individual scenes and shots can be modified, updated, new text input and then re-rendered once there is an existing pass, but that first Generate pass should at least be able to be watched by a human end to end (even if there are flaws and obvious problems). If a character is re-used then the generated image for that character should at least be provided i2v, and first frame last frame should be used for shot sequences so it can be stitched together automatically.
+An automatic stitching tool using ffmpeg would be great to have as a feature.
+Getting at these settings and Generate option should be in the "Project" editor screen.
+It's fine if this video takes hours and hours (or even days) to generate the whole story, we can put them in a queue and then stitch when complete. Stop items using the Generate queue if it's way off base from the user's intent."

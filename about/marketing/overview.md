@@ -1,128 +1,160 @@
 # World Graph Studio
 
-> Your ideas. Your assets. No credits needed.
+> **Your ideas. Your assets. Your creative world. No credits needed.**
 
-**The open-source, extensible studio for connected storytelling, portable
-production data, and AI-powered creative production.**
+**An open-source, self-hosted studio for worldbuilding, connected storytelling, and AI-powered creative production.**
 
-World Graph Studio is a free, open-source, self-hosted creative production
-platform for filmmakers, game creators, scriptwriters, video producers, and
-anyone building a connected fictional world.
+World Graph Studio brings the entire creative process into one connected workspace. Import and develop stories, build worlds, generate media, plan productions, and manage your assets—without scattering your work across disconnected prompts, proprietary project files, and competing platforms. Export your work any time to use  in other creative tools including video, image, and audio editors.
 
-Built on WordPress and designed for open AI workflows, it brings worldbuilding,
-story analysis, asset generation, and production planning into one system.
-Characters, places, scenes, shots, sounds, storyboards, media, and editorial
-decisions remain connected through a Story Graph instead of being scattered
-across prompts and proprietary project files.
+Built on WordPress and designed for open AI workflows, World Graph Studio helps filmmakers, game creators, writers, video producers, and creative teams turn ideas into production-ready projects.
 
-That connected model also makes World Graph Studio unusually adaptable. New
-script formats can feed the same importer, new services can register as
-Connection adapters, and new production specialists can join a profile-driven
-agent roster without replacing the core application.
+## One creative world. Everything connected.
 
-## Your creative work stays connected
+At the heart of World Graph Studio is the **story graph**: a living network that connects the people, places, scenes, shots, sounds, storyboards, media, and creative decisions that make up your project.
 
-World Graph Studio gives you a durable home for both ideas and assets:
+Instead of treating every prompt or asset as an isolated file, World Graph Studio analyzes your story and preserves the relationships between dicrete elements. Your generated character image remains connected to the character it represents. A storyboard remains connected to its scene and shots. Editorial decisions remain connected to the story behind them. Add decisive exploratory and expository information without disrupting the story graph.
 
-- Build rich Story Graphs and connected worlds.
-- Develop projects, characters, locations, props, scenes, shots, sounds, and
-  storyboards as structured content.
-- Analyze stories with a Story Graph-aware AI Editor and 50+ specialist agents
-  defined in extensible profiles.
-- Check continuity, search across story entities, and explore relationship
-  analytics.
-- Configure template-backed image, video, and audio generation workflows and
-  retain returned media with provenance in WordPress.
-- Manage video, editorial, and other production assets alongside the story
-  records that give them meaning.
-- Create shot lists, storyboard sequences, and editorial handoffs.
-- Import World Graph Studio project JSON or Final Draft FDX and export Markdown
-  screenplays or storyboards.
-- Reuse the included EDL parsing, timecode, and format-generation code when
-  building an editorial adapter.
-- Generate through VideoDraft and optionally push or pull the shared
-  structural Project subset with preview and conflict checks.
-- Inspect experimental Descript exchange source for separate transcript-import
-  and bound-media-export directions; it is not yet a marketed release workflow.
-- Connect ComfyUI, Comfy Cloud, VideoDraft, and supported AI providers without
-  making one provider the owner of your project.
+The result is a creative workspace that understands not only what your assets are, but what they mean.
 
-The former blanket hold on additional script formats is closed for the current
-release. Final Draft FDX import now joins JSON import, Markdown export, and
-VideoDraft structural sync; formats that were not accepted into this scope are
-extension opportunities rather than missing release work. Fountain, Celtx,
-EDL admin, Descript, and Google Web Stories sources remain cataloged with their
-current scaffold or prototype status rather than marketed as operational.
+## From your first idea to the final edit
 
-## Built for an expanding creative toolchain
+World Graph Studio gives your stories and production assets a durable home.
 
-World Graph Studio turns extensibility into a product advantage:
+* Build or import detailed worlds using connected projects, characters, locations, props, scenes, shots, sounds, and storyboards.
+* Import and analyze scripts and stories with a Story Graph-aware AI Editor.
+* Work with the more than 50 specialist AI agents for writing, continuity, production, story development, and creative analysis.
+* Search across your entire fictional world and explore the relationships between story elements, use dramaturgical tools and find plot and continuity weaknesses to detect issues before they become production problems.
+* Create shot lists, storyboard sequences, production plans, and editorial handoffs.
+* Generate images, video, audio, dialogue, and music through configurable AI workflows, including no-cost local generation on your existing GPU hardware.
+* Store generated media in WordPress alongside its prompts, provenance, and related story records.
+* Manage footage, editorial files, reference material, and production assets in the context of the story they support.
+* Export to other tools or roundtrip with trusted creative tools. Your assets and story remain yours throughout the workflow.
 
-- **One interchange foundation.** Import adapters translate external files or
-  services into the canonical Story Graph and reuse its validation, identity,
-  relationship, and persistence rules; exporters derive portable projections
-  from live Story Graph records. That is why FDX was added quickly and why a
-  hardened Fountain adapter can reuse the same pipeline without creating a
-  parallel project model.
-- **Replaceable Connection types.** Provider integrations register their
-  metadata, conditional loader, and optional guided setup through a
-  filterable adapter manifest. Each integration supplies its provider-specific
-  behavior while the Story Graph and Connection records stay stable.
-- **A growing specialist team.** The 50+ bundled agents are portable
-  `.agent.md` profiles discovered by WordPress. New focused roles are directly
-  selectable and reuse the same context, permissions, and LLM layer; automatic
-  routing can be added when router keywords are configured.
+## Bring your existing work with you
 
-For creators, that means more ways to bring work in, move it forward, and take
-it out. For developers and integration partners, it means a stable core with
-small, focused surfaces for adding formats, providers, and expertise. The
-[Integration Catalog](../Integration_Catalog.md) provides a table view of every
-bundled plugin, executable Connection adapter, AI backend, and registered
-extension placeholder.
+You do not have to start over to start using World Graph Studio.
 
-## Creative control without a platform meter
+Import existing stories, scripts, images, storyboards, and production data from the tools you already use. Supported workflows include:
 
-When you use local or open models, World Graph Studio lets you generate and
-iterate without buying World Graph Studio credits, accepting a platform-level
-quota, or moving your project into a proprietary creative suite.
+* Plain text and structured story content
+* PDF, ePub, Doc or any compatible text format
+* Final Draft and Fountain screenplays
+* Character and reference images
+* Descript storyboards
+* VideoDraft projects
+* Google Web Stories
+* Celtx projects
+* Edit decision lists and editorial data from tools such as Adobe Premiere Pro, Final Cut Pro, Avid Media Composer, and DaVinci Resolve
+* Production data used in game and real-time workflows, including Unity
 
-Your creativity is not metered by World Graph Studio.
+Export and synchronization tools help move your work back into writing, editing, visualization, and production applications when you are ready for the next stage.
 
-Your content is not trapped in a World Graph Studio cloud.
+## Use the best creative tool for every job
 
-Your workflow is not limited to a single model provider.
+World Graph Studio is not tied to a single AI company, model, or generation platform.
 
-You decide where WordPress runs, which services it can reach, which work stays
-private, and which work gets published. Optional hosted providers can still
-have their own prices, quotas, licenses, moderation rules, and terms.
+Connect to thousands of generative models and creative workflows through ComfyUI, Comfy Cloud, VideoDraft, and supported AI providers. Use different models for different parts of your production while keeping the project itself connected.
 
-## Core principles
+For example:
 
-- **Free and open source.** The project's default license is GNU GPL
-  v2-or-later; components with their own notices retain those terms.
-- **Self-hosted.** Run the application and Story Graph in an environment you
-  control.
-- **No World Graph Studio credits.** Local and open-model workflows do not
-  require a commercial credit balance from this project.
-- **Model agnostic.** Use supported local or hosted connections and change
-  providers without rebuilding the Story Graph.
-- **Extensible by design.** Add focused format adapters, register provider
-  Connection adapters through WordPress hooks, and grow the specialist team
-  through profile files around one stable Story Graph.
-- **No project lock-in.** WordPress data, REST endpoints, JSON and FDX import,
-  Markdown export, and VideoDraft structural Project sync provide practical
-  paths into and out of the system. Experimental and scaffold integrations
-  remain visible for contributors without being presented as operational.
-- **Privacy under your control.** Keep a site private or publish from it by
-  configuring WordPress and its hosting appropriately.
-- **Creator ownership.** World Graph Studio does not claim ownership of your
-  source material or generated assets; model and provider licenses still
-  apply.
-- **Human-directed creativity.** Specialist agents propose, analyze, and
-  generate; creators decide what becomes part of the project.
+* Send character work to LTX
+* Generate action sequences with WAN
+* Send location and background images to another API
+* Produce dialogue with ElevenLabs
+* Create music with Suno
+* Run private and uncensored workflows using local models
+* Add hosted services when they are useful and manage your costs
 
-World Graph Studio combines story development, worldbuilding, AI-assisted
-production, and asset management without turning the creative process into a
-metered subscription.
+Connections can send work to specialized tools and bring the results back into your Story Graph. The provider may change; your project structure does not.
+
+## Your creativity should not be metered
+
+When you use local or open models, World Graph Studio does not require credits, impose a platform quota, or charge you each time you experiment.
+
+**Your creativity is not metered.**
+
+**Your content is not trapped.**
+
+**Your workflow is not limited.**
+
+You decide where WordPress runs, which services it can access, what stays private, and what might get published or made public.
+
+Optional third-party providers may still have their own prices, quotas, licenses, moderation policies, and terms—but World Graph Studio does not add a credit system between you and your creative tools.
+
+## Built to grow with your workflow
+
+Creative technology changes quickly. World Graph Studio is designed to evolve with it.
+
+### One foundation for exchanging creative data
+
+Import adapters translate external files and services into the shared Story Graph. Exporters create portable versions of that live production data for other tools.
+
+This gives every integration the same foundation for identity, relationships, validation, and persistence—without forcing every tool to understand every other tool.
+
+### Connections you can add or replace
+
+Provider integrations register as modular Connection adapters. New AI services and production tools can be added without rebuilding the core application or restructuring your projects.
+
+Each adapter handles the requirements of its provider while your Story Graph and Connection records remain stable.
+
+### A specialist team that can keep expanding
+
+The bundled AI team includes more than 50 focused creative and production roles. Each specialist is defined through a portable `.agent.md` profile discovered by WordPress.
+
+Developers and creators can add new specialists, customize existing roles, and give them access to the same project context, permissions, and language-model layer. Specialists can be selected directly or routed automatically when matching keywords are configured.
+
+For creators, this means more ways to bring work in, develop it, and send it forward.
+
+For developers and integration partners, it means a stable foundation with focused extension points for adding new formats, providers, and creative expertise.
+
+Explore the [Integration Catalog](../Integration_Catalog.md) for the current collection of plugins, Connection adapters, AI backends, and planned integrations.
+
+## Open by design
+
+### Free and open source
+
+World Graph Studio is released under the GNU GPL v2-or-later. Components carrying their own notices retain their respective terms.
+
+### Self-hosted
+
+Run the application and its Story Graph in an environment you control.
+
+### No World Graph Studio credits
+
+Local and open-model workflows do not require a commercial credit balance from World Graph Studio.
+
+### Model agnostic
+
+Use supported local or hosted models—and change providers without rebuilding your project.
+
+### Extensible
+
+Add import and export formats, register new Connection adapters through WordPress hooks, and expand the specialist-agent team around one stable Story Graph.
+
+### No project lock-in
+
+WordPress data, REST endpoints, JSON and FDX import, Markdown export, and VideoDraft project synchronization provide practical ways to move information into and out of the platform.
+
+Experimental and scaffolded integrations are clearly identified so contributors can help develop them without presenting them as production-ready features.
+
+### Privacy under your control
+
+Keep your workspace private, share it with a team, or publish from it by configuring WordPress and your hosting environment appropriately.
+
+### Your work remains yours
+
+World Graph Studio does not claim ownership of your source material or generated assets. The licenses and terms of any models or external providers you choose still apply.
+
+### Human-directed creativity
+
+AI specialists can propose, analyze, organize, and generate. You decide what belongs in the project.
+
+## One studio for the world behind your work
+
+World Graph Studio combines worldbuilding, story development, AI-assisted production, and asset management in a platform you can control and extend.
+
+No proprietary creative suite.
+No platform-level generation meter.
+No disconnected collection of prompts and files.
 
 **Build worlds. Connect ideas. Generate anything. No credits needed.**

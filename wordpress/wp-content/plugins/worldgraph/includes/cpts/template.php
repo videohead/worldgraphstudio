@@ -260,7 +260,7 @@ class Template {
 				'label'       => 'Model Family',
 				'required'    => false,
 				'options'     => \WorldGraph\Utils\Model_Family::labels(),
-				'description' => 'The generative model this Template runs, e.g. LTX 2.3, MiniMax, SCAIL, or Wan 2.1. Used to group Templates and cross-check against the Connection\'s allowed models.',
+				'description' => 'The generative model this Template runs, e.g. LTX 2.5, MiniMax, SCAIL, or Wan 2.2. Used to group Templates and cross-check against the Connection\'s allowed models.',
 			],
 			'workflow_json'       => [
 				'type'        => 'textarea',
@@ -465,7 +465,17 @@ class Template {
 			<span class="description"><?php echo esc_html__( 'None detected. Set a checkpoint above.', 'worldgraph' ); ?></span>
 		<?php else : ?>
 			<?php foreach ( $manifest['models'] as $model ) : ?>
-				<code><?php echo esc_html( $model['filename'] ); ?></code> &rarr; <code>models/<?php echo esc_html( $model['folder'] ); ?></code><br />
+				<code><?php echo esc_html( $model['filename'] ); ?></code> &rarr; <code>models/<?php echo esc_html( $model['folder'] ); ?></code>
+				<span class="description">
+					<?php
+					printf(
+						/* translators: 1: ComfyUI loader node class, 2: loader input field. */
+						esc_html__( '(loader: %1$s.%2$s)', 'worldgraph' ),
+						esc_html( (string) ( $model['node_class'] ?? '' ) ),
+						esc_html( (string) ( $model['field'] ?? '' ) )
+					);
+					?>
+				</span><br />
 			<?php endforeach; ?>
 		<?php endif; ?>
 		</p>

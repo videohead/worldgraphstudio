@@ -104,6 +104,7 @@ class Asset_Generator_MetaBox {
 				'imageSelection'    => __( 'Image to create', 'worldgraph' ),
 				'sequenceSelection' => __( 'Sequence to create', 'worldgraph' ),
 				'videoSelection'    => __( 'Video to create', 'worldgraph' ),
+				'demonstrationSelection' => __( 'Demonstration to create', 'worldgraph' ),
 				'notAvailable'      => __( 'Not defined for this item', 'worldgraph' ),
 				'stillImage'        => __( 'still image', 'worldgraph' ),
 				'video'             => __( 'video', 'worldgraph' ),
@@ -112,6 +113,7 @@ class Asset_Generator_MetaBox {
 				'createVideo'       => __( 'Create video:', 'worldgraph' ),
 				'reviewQueue'       => __( 'Review and queue', 'worldgraph' ),
 				'reviewProject'     => __( 'Review and queue all Project media', 'worldgraph' ),
+				'reviewDemonstration' => __( 'Review and generate demonstration video', 'worldgraph' ),
 				'chooseImage'       => __( 'Choose an image Template…', 'worldgraph' ),
 				'chooseVideo'       => __( 'Choose a video Template…', 'worldgraph' ),
 				'configuredPerItem' => __( 'Use each output’s configured Template', 'worldgraph' ),
@@ -131,10 +133,12 @@ class Asset_Generator_MetaBox {
 				'workflowPrompts'   => __( 'This workflow composes a separate detailed prompt for every output:', 'worldgraph' ),
 				'moreOutputs'       => __( 'more outputs', 'worldgraph' ),
 				'allProjectMedia'   => __( 'All Project representative media', 'worldgraph' ),
+				'wholeStoryDemo'    => __( 'Whole-story demonstration video', 'worldgraph' ),
 				'sources'           => __( 'Story Graph items', 'worldgraph' ),
 				'singleChoiceHelp'  => __( 'Choose the exact output and Template. The prompt preview below updates with your choice.', 'worldgraph' ),
 				'itemChoiceHelp'    => __( 'Queue every output in this item’s defined sequence as one tracked background batch.', 'worldgraph' ),
 				'projectChoiceHelp' => __( 'Queue representative frames and videos for the Project and its owned Story Graph items. Review the plan before starting.', 'worldgraph' ),
+				'demoChoiceHelp'    => __( 'Generate an ordered first pass of the complete story, reuse character and Shot stills for video conditioning, add available audio, then assemble a watchable H.264 rough cut with subtitles and still-frame fallbacks.', 'worldgraph' ),
 				'missingTemplates'  => __( 'required outputs have no runnable Template.', 'worldgraph' ),
 				'generatingImage'   => __( 'Queueing image…', 'worldgraph' ),
 				'generatingVideo'   => __( 'Queueing video…', 'worldgraph' ),
@@ -150,10 +154,14 @@ class Asset_Generator_MetaBox {
 				'jobs'              => __( 'jobs', 'worldgraph' ),
 				'images'            => __( 'images', 'worldgraph' ),
 				'videos'            => __( 'videos', 'worldgraph' ),
+				'audio'             => __( 'audio cue', 'worldgraph' ),
+				'audios'            => __( 'audio cues', 'worldgraph' ),
 				'confirmItem'       => __( 'Queue this item’s complete representative-media set? Provider charges may apply.', 'worldgraph' ),
 				'confirmProject'    => __( 'Queue all representative frames and videos for this Project? This can incur substantial provider charges and run for hours or days.', 'worldgraph' ),
+				'confirmDemonstration' => __( 'Generate the complete story demonstration and assemble it when ready? Provider charges may apply, and this can run for hours or days. Missing optional motion or audio will fall back to stills, subtitles, and silence.', 'worldgraph' ),
 				'batchQueued'       => __( 'Representative-media batch queued.', 'worldgraph' ),
 				'batchProgress'     => __( 'Batch progress', 'worldgraph' ),
+				'roughCutReady'     => __( 'Rough-cut demonstration ready.', 'worldgraph' ),
 				'cancelBatch'       => __( 'Stop work that has not reached a provider?', 'worldgraph' ),
 				'cancelled'         => __( 'Not-yet-dispatched work was stopped. Already-dispatched jobs will finish and import.', 'worldgraph' ),
 				'done'              => __( 'Image generated and attached.', 'worldgraph' ),
@@ -234,6 +242,10 @@ class Asset_Generator_MetaBox {
 					<label class="worldgraph-generate-asset__mode">
 						<input type="radio" name="worldgraph-generation-mode-<?php echo esc_attr( $post->ID ); ?>" value="video" disabled />
 						<span><strong><?php esc_html_e( 'Video', 'worldgraph' ); ?></strong><small><?php esc_html_e( 'Create one selected moving shot', 'worldgraph' ); ?></small></span>
+					</label>
+					<label class="worldgraph-generate-asset__mode">
+						<input type="radio" name="worldgraph-generation-mode-<?php echo esc_attr( $post->ID ); ?>" value="demonstration" disabled />
+						<span><strong><?php esc_html_e( 'Demonstration', 'worldgraph' ); ?></strong><small><?php esc_html_e( 'Generate and stitch the complete Project story', 'worldgraph' ); ?></small></span>
 					</label>
 				</div>
 			</fieldset>

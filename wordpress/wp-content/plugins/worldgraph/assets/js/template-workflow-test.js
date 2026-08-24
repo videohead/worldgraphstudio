@@ -14,11 +14,29 @@
 	var i18n = config.i18n || {};
 	var capability = config.capability || {};
 	var inputs = capability.inputs || [];
+	var promptProfile = capability.promptProfile || {};
+	var fixedSelections = Array.isArray( capability.fixedSelections ) ? capability.fixedSelections.slice( 0, 64 ) : [];
 	var TERMINAL = [ 'completed', 'failed', 'cancelled' ];
 	var mediaValues = {};
 	var mediaFrames = {};
+	var touchedRunValues = {};
 	var history = [];
 	var pollTimer = null;
+
+	function safeRunControlKey( key ) {
+		return 'string' === typeof key && /^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test( key );
+	}
+
+	function safeRunControlFields() {
+		var allowedTypes = [ 'string', 'textarea', 'integer', 'number', 'boolean', 'select' ];
+		var fields = capability.runControls && Array.isArray( capability.runControls.fields ) ? capability.runControls.fields : [];
+
+		return fields.slice( 0, 32 ).filter( function ( field ) {
+			return field && safeRunControlKey( field.key ) && allowedTypes.indexOf( field.type ) !== -1;
+		} );
+	}
+
+	var runControlFields = safeRunControlFields();
 
 	function text( tag, className, value ) {
 		var node = document.createElement( tag );
@@ -66,6 +84,40 @@
 			notice.append( text( 'p', '', blocker ) );
 			host.append( notice );
 		} );
+
+		if ( promptProfile.label || promptProfile.assistant_guidance || promptProfile.positive_prefix ) {
+			var guidance = text( 'div', 'worldgraph-template-test__guidance' );
+			var guidanceTitle = text( 'strong', '', i18n.promptGuidance + ( promptProfile.label ? ': ' + promptProfile.label : '' ) );
+			guidance.append( guidanceTitle );
+			if ( promptProfile.assistant_guidance || promptProfile.positive_prefix ) {
+				guidance.append( text( 'p', 'description', promptProfile.assistant_guidance || promptProfile.positive_prefix ) );
+			}
+			if ( promptProfile.negative_suggestion ) {
+				var negative = text( 'p', 'description' );
+				negative.append( text( 'strong', '', i18n.negativeGuidance + ': ' ) );
+				negative.append( document.createTextNode( promptProfile.negative_suggestion ) );
+				guidance.append( negative );
+			}
+			host.append( guidance );
+		}
+
+		if ( fixedSelections.length ) {
+			var selectionBox = text( 'div', 'worldgraph-template-test__fixed-selections' );
+			selectionBox.append( text( 'strong', '', i18n.fixedSelections ) );
+			selectionBox.append( text( 'p', 'description', i18n.fixedSelectionsHelp ) );
+			var list = document.createElement( 'ul' );
+			fixedSelections.forEach( function ( selection ) {
+				if ( ! selection || ! selection.filename || ! selection.nodeClass || ! selection.field ) {
+					return;
+				}
+				var installPath = selection.folder ? ' — models/' + selection.folder : '';
+				list.append( text( 'li', '', selection.nodeClass + '.' + selection.field + ' = ' + selection.filename + installPath ) );
+			} );
+			if ( list.children.length ) {
+				selectionBox.append( list );
+				host.append( selectionBox );
+			}
+		}
 	}
 
 	function renderMediaField( wrapper, slot ) {
@@ -124,6 +176,125 @@
 
 			host.append( wrapper );
 		} );
+
+		renderRunControls( host );
+	}
+
+	function applyRunControlAttributes( control, field ) {
+		control.id = 'worldgraph-template-test-control-' + field.key;
+		control.dataset.worldgraphRunControl = field.key;
+		control.dataset.runControlType = field.type;
+
+		[ 'min', 'max', 'step' ].forEach( function ( attribute ) {
+			if ( Object.prototype.hasOwnProperty.call( field, attribute ) && Number.isFinite( Number( field[ attribute ] ) ) ) {
+				control.setAttribute( attribute, String( field[ attribute ] ) );
+			}
+		} );
+
+		control.addEventListener( 'input', function () {
+			touchedRunValues[ field.key ] = true;
+		} );
+		control.addEventListener( 'change', function () {
+			touchedRunValues[ field.key ] = true;
+		} );
+	}
+
+	function renderRunControl( host, field ) {
+		var wrapper = text( 'div', 'worldgraph-template-test__control' );
+		var label = text( 'label', '', field.label || field.key );
+		var control;
+
+		if ( 'textarea' === field.type ) {
+			control = document.createElement( 'textarea' );
+			control.className = 'large-text';
+			control.rows = 3;
+		} else if ( 'select' === field.type ) {
+			control = document.createElement( 'select' );
+			( Array.isArray( field.options ) ? field.options.slice( 0, 64 ) : [] ).forEach( function ( option ) {
+				if ( ! option || ! Object.prototype.hasOwnProperty.call( option, 'value' ) || ! [ 'string', 'number', 'boolean' ].includes( typeof option.value ) ) {
+					return;
+				}
+				var choice = document.createElement( 'option' );
+				choice.value = String( option.value );
+				choice.textContent = String( Object.prototype.hasOwnProperty.call( option, 'label' ) ? option.label : option.value );
+				control.append( choice );
+			} );
+		} else {
+			control = document.createElement( 'input' );
+			control.type = 'boolean' === field.type ? 'checkbox' : ( [ 'integer', 'number' ].includes( field.type ) ? 'number' : 'text' );
+			if ( 'text' === control.type ) {
+				control.className = 'regular-text';
+			}
+		}
+
+		applyRunControlAttributes( control, field );
+		label.htmlFor = control.id;
+		wrapper.append( label );
+		if ( 'checkbox' !== control.type ) {
+			wrapper.append( document.createElement( 'br' ) );
+		}
+		wrapper.append( 'checkbox' === control.type ? document.createTextNode( ' ' ) : document.createTextNode( '' ), control );
+
+		if ( Object.prototype.hasOwnProperty.call( field, 'default' ) ) {
+			if ( 'checkbox' === control.type ) {
+				control.checked = true === field.default || 1 === field.default || '1' === field.default || 'true' === field.default;
+			} else {
+				control.value = String( field.default );
+			}
+		}
+		if ( field.description ) {
+			wrapper.append( text( 'p', 'description', String( field.description ) ) );
+		}
+		host.append( wrapper );
+	}
+
+	function renderRunControls( host ) {
+		if ( ! runControlFields.length ) {
+			return;
+		}
+
+		var fieldset = text( 'fieldset', 'worldgraph-template-test__run-controls' );
+		fieldset.append( text( 'legend', '', i18n.runSettings ) );
+		fieldset.append( text( 'p', 'description', i18n.runSettingsHelp ) );
+		runControlFields.forEach( function ( field ) {
+			renderRunControl( fieldset, field );
+		} );
+		host.append( fieldset );
+	}
+
+	function collectRunValues() {
+		var values = {};
+		runControlFields.forEach( function ( field ) {
+			if ( ! touchedRunValues[ field.key ] ) {
+				return;
+			}
+			var control = document.getElementById( 'worldgraph-template-test-control-' + field.key );
+			if ( ! control ) {
+				return;
+			}
+			if ( 'boolean' === field.type ) {
+				values[ field.key ] = control.checked;
+			} else if ( [ 'integer', 'number' ].includes( field.type ) ) {
+				if ( '' !== control.value ) {
+					values[ field.key ] = control.value;
+				}
+			} else {
+				values[ field.key ] = control.value;
+			}
+		} );
+
+		return values;
+	}
+
+	function runControlsAreValid() {
+		var invalid = root.querySelector( '[data-worldgraph-run-control]:invalid' );
+		if ( ! invalid ) {
+			return true;
+		}
+		if ( 'function' === typeof invalid.reportValidity ) {
+			invalid.reportValidity();
+		}
+		return false;
 	}
 
 	function collectInputs() {
@@ -269,19 +440,28 @@
 			setStatus( i18n.mediaMissing, 'error' );
 			return;
 		}
+		if ( ! runControlsAreValid() ) {
+			return;
+		}
 
 		toggleRun( false );
 		document.getElementById( 'worldgraph-template-test-result' ).replaceChildren();
 		setStatus( i18n.queueing, 'info' );
 
+		var requestBody = {
+			type: capability.outputType,
+			workflow: String( config.templateId ),
+			prompt: collected.inputs.prompt || '',
+			inputs: collected.inputs
+		};
+		var runValues = collectRunValues();
+		if ( Object.keys( runValues ).length ) {
+			requestBody.run_values = runValues;
+		}
+
 		request( config.generationUrl, {
 			method: 'POST',
-			body: JSON.stringify( {
-				type: capability.outputType,
-				workflow: String( config.templateId ),
-				prompt: collected.inputs.prompt || '',
-				inputs: collected.inputs
-			} )
+			body: JSON.stringify( requestBody )
 		} ).then( function ( generation ) {
 			setStatus( statusMessage( generation.status ), 'info' );
 			poll( generation.id, Date.now() + config.pollTimeoutMs );
@@ -296,13 +476,27 @@
 			return slot.slot + ( slot.required ? ' (required)' : ' (optional)' );
 		} ).join( ', ' );
 
-		return [
+		var brief = [
 			'You are helping test a generation Template inside World Graph Studio.',
 			'Template modality: ' + ( capability.label || capability.modality ) + '.',
 			'Output type: ' + capability.outputType + '.',
 			'Available input slots: ' + slots + '.',
 			'Write generation prompts that suit this modality. When you propose a prompt, return it on its own inside a fenced code block so it can be used directly.'
-		].join( ' ' );
+		];
+
+		if ( promptProfile.assistant_guidance ) {
+			brief.push( 'Model-aware prompt guidance: ' + promptProfile.assistant_guidance );
+		}
+		if ( promptProfile.negative_suggestion ) {
+			brief.push( 'Negative prompt guidance: ' + promptProfile.negative_suggestion );
+		}
+		if ( fixedSelections.length ) {
+			brief.push( 'The workflow has fixed loader selections (these are workflow settings, not prompt keywords): ' + fixedSelections.map( function ( selection ) {
+				return selection.nodeClass + '.' + selection.field + '=' + selection.filename;
+			} ).join( ', ' ) + '.' );
+		}
+
+		return brief.join( ' ' );
 	}
 
 	function extractPrompt( content ) {

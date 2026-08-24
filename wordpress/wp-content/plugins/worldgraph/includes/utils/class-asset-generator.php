@@ -132,7 +132,7 @@ class Asset_Generator {
 	}
 
 	/**
-	 * Queue an image or video generation job for a story element.
+	 * Queue an image, video, or audio generation job for a story element.
 	 *
 	 * @param int   $post_id Source post ID.
 	 * @param array $args Optional output, additional prompt, Template, and linking settings.
@@ -148,9 +148,11 @@ class Asset_Generator {
 			'type'               => 'image',
 			'prompt'             => '',
 			'prompt_is_composed' => false,
+			'prompt_profiled'    => false,
 			'set_featured'       => true,
 			'create_asset'       => true,
 			'template_id'        => 0,
+			'inputs'             => [],
 			'run_values'         => [],
 			'profile_values'     => [],
 			'profile_values_frozen' => false,
@@ -163,10 +165,12 @@ class Asset_Generator {
 			'schedule'           => true,
 		] );
 		$type = sanitize_key( (string) $args['type'] );
-		if ( ! in_array( $type, [ 'image', 'video' ], true ) ) {
-			return new WP_Error( 'worldgraph_asset_invalid_type', __( 'Representative media must be an image or video.', 'worldgraph' ), [ 'status' => 400 ] );
+		if ( ! in_array( $type, [ 'image', 'video', 'audio' ], true ) ) {
+			return new WP_Error( 'worldgraph_asset_invalid_type', __( 'Generated story media must be an image, video, or audio file.', 'worldgraph' ), [ 'status' => 400 ] );
 		}
 		$requester_id = absint( $args['requester_id'] ) ?: get_current_user_id();
+		$batch_id     = absint( $args['batch_id'] );
+		$batch_step   = (int) $args['batch_step'];
 		$authorization = Generation_Authorization::authorize_submission( $type, $post_id, [], $requester_id );
 		if ( is_wp_error( $authorization ) ) {
 			return $authorization;
@@ -175,7 +179,7 @@ class Asset_Generator {
 		$intent = sanitize_key( (string) $args['intent'] );
 		if ( '' !== $intent ) {
 			$intent_definition = Generation_Workflows::intent( $post->post_type, $intent );
-			if ( empty( $intent_definition ) || $type !== ( $intent_definition['type'] ?? '' ) ) {
+			if ( ( empty( $intent_definition ) || $type !== ( $intent_definition['type'] ?? '' ) ) && ! self::batch_declares_task( $batch_id, $batch_step, $post_id, $type, $intent ) ) {
 				return new WP_Error( 'worldgraph_asset_intent_invalid', __( 'That representative-media intent does not apply to this item and output type.', 'worldgraph' ), [ 'status' => 400 ] );
 			}
 		}
@@ -209,14 +213,14 @@ class Asset_Generator {
 			$provider_template_id = sanitize_text_field( (string) ( $connection['model'] ?? '' ) );
 		}
 		$use_local_template = 'comfyui' === $provider && 'local' === ( $connection['environment'] ?? '' );
-		if ( ! in_array( $provider, [ 'comfyui', 'fal', 'videodraft', 'openrouter' ], true ) ) {
+		if ( ! in_array( $provider, [ 'comfyui', 'fal', 'elevenlabs', 'suno', 'videodraft', 'openrouter' ], true ) ) {
 			return new WP_Error( 'worldgraph_asset_provider_unsupported', __( 'This provider has no World Graph Studio asset generation adapter yet.', 'worldgraph' ), [ 'status' => 501 ] );
 		}
 		if ( '' === $provider_template_id && ! $use_local_template ) {
 			return new WP_Error( 'worldgraph_asset_missing_provider_template', __( 'That Template has no provider MCP Template selected.', 'worldgraph' ), [ 'status' => 400 ] );
 		}
 
-		if ( $use_local_template && ! Local_ComfyUI::is_configured() ) {
+		if ( $use_local_template && ! Local_ComfyUI::is_configured( $connection_id ) ) {
 			return new WP_Error( 'worldgraph_local_comfyui_unconfigured', __( 'The Template Connection has no configured local ComfyUI API endpoint.', 'worldgraph' ), [ 'status' => 400 ] );
 		}
 		if ( 'comfyui' === $provider && 'local' !== $connection['environment'] && ! Comfy_Cloud_MCP::is_configured( $connection_id ) ) {
@@ -241,7 +245,16 @@ class Asset_Generator {
 
 		$bound_inputs = [];
 		if ( $template_id ) {
-			$missing = Template_Bindings::missing_required( $template_id, $post_id );
+			$bound_inputs = array_merge(
+				Template_Bindings::resolve( $template_id, $post_id ),
+				self::sanitize_media_inputs( $args['inputs'] )
+			);
+			$missing = array_values( array_filter(
+				array_intersect( Generation_Modality::required_inputs( $template_modality ), Generation_Modality::MEDIA_SLOTS ),
+				static function ( string $slot ) use ( $bound_inputs ): bool {
+					return ! isset( $bound_inputs[ $slot ] ) || '' === trim( (string) $bound_inputs[ $slot ] );
+				}
+			) );
 			if ( ! empty( $missing ) ) {
 				return new WP_Error(
 					'worldgraph_asset_missing_template_input',
@@ -253,8 +266,6 @@ class Asset_Generator {
 					[ 'status' => 400 ]
 				);
 			}
-
-			$bound_inputs = Template_Bindings::resolve( $template_id, $post_id );
 		}
 
 		$authorization = Generation_Authorization::authorize_submission( $type, $post_id, $bound_inputs, $requester_id );
@@ -267,9 +278,10 @@ class Asset_Generator {
 				return $requirements;
 			}
 		}
+		if ( ! rest_sanitize_boolean( $args['prompt_profiled'] ) ) {
+			$prompt = Generation_Prompt_Profiles::apply( $prompt, $post_id, $intent, $template_id );
+		}
 
-		$batch_id             = absint( $args['batch_id'] );
-		$batch_step           = (int) $args['batch_step'];
 		$trusted_batch_values = $batch_id && rest_sanitize_boolean( $args['run_values_validated'] );
 		$description          = Template_Run_Controls::describe( $template_id );
 		$run_values           = is_array( $args['run_values'] ) ? $args['run_values'] : [];
@@ -283,7 +295,7 @@ class Asset_Generator {
 			? $args['profile_values']
 			: self::project_template_defaults( $template_id, $profile, $description );
 		if ( $batch_id ) {
-			$batch_validation = self::validate_batch_task( $batch_id, $batch_step, $post_id, $type, $intent, $template_id, $requester_id, $run_values, $profile_values );
+			$batch_validation = self::validate_batch_task( $batch_id, $batch_step, $post_id, $type, $intent, $template_id, $requester_id, $run_values, $profile_values, $bound_inputs );
 			if ( is_wp_error( $batch_validation ) ) {
 				return $batch_validation;
 			}
@@ -308,7 +320,7 @@ class Asset_Generator {
 		// A user-selected Template wins; otherwise keep the legacy per-CPT
 		// workflow name so existing jobs without a Template keep working.
 		$template       = $use_local_template ? (string) $template_id : $provider_template_id;
-		$adapter        = 'fal' === $provider ? 'fal_mcp' : ( in_array( $provider, [ 'videodraft', 'openrouter' ], true ) ? $provider : ( $use_local_template ? 'local_comfyui' : 'comfy_mcp' ) );
+		$adapter        = 'fal' === $provider ? 'fal_mcp' : ( in_array( $provider, [ 'elevenlabs', 'suno', 'videodraft', 'openrouter' ], true ) ? $provider : ( $use_local_template ? 'local_comfyui' : 'comfy_mcp' ) );
 		$template_input = array_merge( self::fal_template_input( $template_id ), Template_Run_Controls::defaults( $template_id ) );
 		$params         = $profile_values;
 		$params         = array_merge( $params, $run_values );
@@ -371,7 +383,7 @@ class Asset_Generator {
 	}
 
 	/** Validate that a staged child exactly matches its frozen parent task. */
-	private static function validate_batch_task( int $batch_id, int $step, int $post_id, string $type, string $intent, int $template_id, int $requester_id, array $run_values = [], array $profile_values = [] ) {
+	private static function validate_batch_task( int $batch_id, int $step, int $post_id, string $type, string $intent, int $template_id, int $requester_id, array $run_values = [], array $profile_values = [], array $inputs = [] ) {
 		$batch = get_post( $batch_id );
 		$plan  = get_post_meta( $batch_id, Generation_Workflows::BATCH_PLAN_META, true );
 		$task  = is_array( $plan ) && isset( $plan[ $step ] ) && is_array( $plan[ $step ] ) ? $plan[ $step ] : [];
@@ -381,7 +393,7 @@ class Asset_Generator {
 		if (
 			! $batch instanceof \WP_Post
 			|| 'worldgraph_gen' !== $batch->post_type
-			|| Generation_Workflows::REPRESENTATIVE_BATCH !== get_post_meta( $batch_id, Generation_Workflows::BATCH_KIND_META, true )
+			|| ! in_array( get_post_meta( $batch_id, Generation_Workflows::BATCH_KIND_META, true ), [ Generation_Workflows::REPRESENTATIVE_BATCH, Generation_Workflows::DEMONSTRATION_BATCH ], true )
 			|| $requester_id !== absint( get_post_meta( $batch_id, '_worldgraph_gen_requested_by', true ) )
 			|| $post_id !== absint( $task['source_id'] ?? 0 )
 			|| $type !== ( $task['type'] ?? '' )
@@ -389,12 +401,44 @@ class Asset_Generator {
 			|| $template_id !== absint( $task['template_id'] ?? 0 )
 			|| $run_values !== (array) ( $task['run_values'] ?? [] )
 			|| ( array_key_exists( 'profile_values', $task ) && $profile_values !== (array) $task['profile_values'] )
+			|| ( array_key_exists( 'resolved_inputs', $task ) && $inputs !== (array) $task['resolved_inputs'] )
 			|| ( '' !== $expected_fingerprint && ! hash_equals( $expected_fingerprint, $current_fingerprint ) )
 		) {
 			return new WP_Error( 'worldgraph_asset_batch_task_invalid', __( 'The generation job does not match its frozen representative-media batch task.', 'worldgraph' ), [ 'status' => 409 ] );
 		}
 
 		return true;
+	}
+
+	/** Whether a frozen batch task authorizes a non-representative intent. */
+	private static function batch_declares_task( int $batch_id, int $step, int $post_id, string $type, string $intent ): bool {
+		if ( $batch_id < 1 || $step < 0 ) {
+			return false;
+		}
+		$plan = get_post_meta( $batch_id, Generation_Workflows::BATCH_PLAN_META, true );
+		$task = is_array( $plan ) && isset( $plan[ $step ] ) && is_array( $plan[ $step ] ) ? $plan[ $step ] : [];
+
+		return $post_id === absint( $task['source_id'] ?? 0 )
+			&& $type === (string) ( $task['type'] ?? '' )
+			&& $intent === (string) ( $task['intent'] ?? '' );
+	}
+
+	/** Keep unattended media inputs to the provider-neutral allowlisted slots. */
+	private static function sanitize_media_inputs( $inputs ): array {
+		if ( ! is_array( $inputs ) ) {
+			return [];
+		}
+		$sanitized = [];
+		foreach ( Generation_Modality::MEDIA_SLOTS as $slot ) {
+			if ( ! array_key_exists( $slot, $inputs ) || ! is_scalar( $inputs[ $slot ] ) ) {
+				continue;
+			}
+			$value = trim( (string) $inputs[ $slot ] );
+			if ( '' !== $value ) {
+				$sanitized[ $slot ] = $value;
+			}
+		}
+		return $sanitized;
 	}
 
 	/** Persist critical job metadata and verify it before a worker can claim it. */

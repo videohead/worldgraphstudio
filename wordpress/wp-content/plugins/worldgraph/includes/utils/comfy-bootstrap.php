@@ -29,6 +29,11 @@ class Comfy_Bootstrap {
 	const TEMPLATE_SLOT = 'local_comfyui_text_to_image';
 
 	/**
+	 * Obsolete wizard slot used by the original local ComfyUI bootstrap.
+	 */
+	const LEGACY_TEMPLATE_SLOT = 'local_comfyui_default';
+
+	/**
 	 * Transient holding the last readiness report.
 	 */
 	const STATUS_TRANSIENT = 'worldgraph_comfy_readiness';
@@ -292,8 +297,9 @@ class Comfy_Bootstrap {
 	}
 
 	/**
-	 * Keep one active local ComfyUI text-to-image Template and retire legacy
-	 * managed Templates oriented around text-to-video and frame-guided flows.
+	 * Retire only the obsolete Template previously managed by the bootstrap.
+	 * Operator-created and catalog-materialized Templates must never be treated
+	 * as migration debris based on their modality.
 	 *
 	 * @param int $keep_id       Template post ID to keep active.
 	 * @param int $connection_id Optional parent worldgraph_conn post ID.
@@ -310,15 +316,12 @@ class Comfy_Bootstrap {
 					'key'   => 'provider_type',
 					'value' => 'comfyui',
 				],
+				[
+					'key'   => 'worldgraph_wizard_slot',
+					'value' => self::LEGACY_TEMPLATE_SLOT,
+				],
 			],
 		] );
-
-		$legacy_modalities = [
-			Generation_Modality::TEXT_TO_VIDEO,
-			Generation_Modality::TEXT_IMAGE_TO_VIDEO,
-			Generation_Modality::VIDEO_TO_VIDEO,
-			Generation_Modality::VIDEO_WITH_AUDIO,
-		];
 
 		foreach ( $templates as $template_id ) {
 			$template_id = (int) $template_id;
@@ -326,18 +329,9 @@ class Comfy_Bootstrap {
 				continue;
 			}
 
-			$slot          = (string) get_post_meta( $template_id, 'worldgraph_wizard_slot', true );
-			$modality      = (string) worldgraph_get_field_value( $template_id, 'modality' );
 			$template_conn = (int) worldgraph_get_field_value( $template_id, 'connection_id' );
 
-			$is_legacy_managed = 'local_comfyui_default' === $slot;
-			$is_video_template = in_array( $modality, $legacy_modalities, true );
-
-			if ( ! $is_legacy_managed && ! $is_video_template ) {
-				continue;
-			}
-
-			if ( $connection_id && ! $is_legacy_managed && $template_conn && $template_conn !== $connection_id ) {
+			if ( $connection_id && $template_conn && $template_conn !== $connection_id ) {
 				continue;
 			}
 

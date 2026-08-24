@@ -32,10 +32,11 @@ class Local_ComfyUI {
 	 * Whether WordPress has a local ComfyUI URL. A workflow is always
 	 * available: either a pasted custom one or the built-in default.
 	 *
+	 * @param int $connection_id Optional Connection whose endpoint takes precedence.
 	 * @return bool
 	 */
-	public static function is_configured(): bool {
-		return '' !== self::endpoint();
+	public static function is_configured( int $connection_id = 0 ): bool {
+		return '' !== self::endpoint( $connection_id );
 	}
 
 	/**
@@ -44,11 +45,12 @@ class Local_ComfyUI {
 	 * @param string $template Template post ID, slug, or wizard slot to run.
 	 * @param string $prompt Text prompt.
 	 * @param array  $parameters Generation parameters; `inputs` carries modality input slots.
-	 * @param int    $connection_id Optional parent worldgraph_conn post ID, for log correlation.
+	 * @param int    $connection_id Optional parent worldgraph_conn post ID, for endpoint resolution and log correlation.
 	 * @return array|WP_Error
 	 */
 	public static function run_template( string $template, string $prompt, array $parameters, int $connection_id = 0 ) {
-		if ( '' === self::endpoint() ) {
+		$endpoint = self::endpoint( $connection_id );
+		if ( '' === $endpoint ) {
 			Generation_Log::add( 'error', 'local_comfyui', 'Local ComfyUI is not configured.', [], '', $connection_id );
 			return new WP_Error( 'local_comfyui_unconfigured', __( 'Set a local ComfyUI URL in World Graph Studio AI Settings before generating an asset.', 'worldgraph' ) );
 		}
@@ -82,7 +84,7 @@ class Local_ComfyUI {
 				unset( $parameters['seed'], $parameters['noise_seed'] );
 			}
 		}
-		$workflow = self::workflow( $template_id, $modality, $parameters );
+		$workflow = self::workflow( $template_id, $modality, $parameters, $endpoint );
 		if ( is_wp_error( $workflow ) ) {
 			Generation_Log::add( 'error', 'local_comfyui', $workflow->get_error_message(), [], '', $connection_id );
 			return $workflow;
@@ -107,12 +109,12 @@ class Local_ComfyUI {
 			return $workflow;
 		}
 
-		$preflight = self::preflight( $template_id, $connection_id );
+		$preflight = self::preflight( $template_id, $connection_id, $endpoint );
 		if ( is_wp_error( $preflight ) ) {
 			return $preflight;
 		}
 
-		$resolved = self::resolve_inputs( $modality, $inputs, $connection_id, $job_id );
+		$resolved = self::resolve_inputs( $modality, $inputs, $connection_id, $job_id, $endpoint );
 		if ( is_wp_error( $resolved ) ) {
 			Generation_Log::add( 'error', 'local_comfyui', $resolved->get_error_message(), [], '', $connection_id );
 			return $resolved;
@@ -134,9 +136,10 @@ class Local_ComfyUI {
 			return $error;
 		}
 
-		Generation_Log::add( 'info', 'local_comfyui', 'Submitting workflow to ' . self::url( 'prompt' ), [ 'modality' => $modality, 'inputs' => $resolved ], '', $connection_id );
+		$prompt_url = self::url( 'prompt', $endpoint );
+		Generation_Log::add( 'info', 'local_comfyui', 'Submitting workflow to ' . $prompt_url, [ 'modality' => $modality, 'inputs' => $resolved ], '', $connection_id );
 
-		$response = wp_remote_post( self::url( 'prompt' ), [
+		$response = wp_remote_post( $prompt_url, [
 			'timeout' => 60,
 			'headers' => [ 'Content-Type' => 'application/json' ],
 			'body'    => wp_json_encode( [
@@ -159,11 +162,12 @@ class Local_ComfyUI {
 	 * Retrieve a local ComfyUI job status and output URLs.
 	 *
 	 * @param string $job_id ComfyUI prompt ID.
-	 * @param int    $connection_id Optional parent worldgraph_conn post ID, for log correlation.
+	 * @param int    $connection_id Optional parent worldgraph_conn post ID, for endpoint resolution and log correlation.
 	 * @return array|WP_Error
 	 */
 	public static function get_job_status( string $job_id, int $connection_id = 0 ) {
-		$response = wp_remote_get( self::url( 'history/' . rawurlencode( $job_id ) ), [ 'timeout' => 60 ] );
+		$endpoint = self::endpoint( $connection_id );
+		$response = wp_remote_get( self::url( 'history/' . rawurlencode( $job_id ), $endpoint ), [ 'timeout' => 60 ] );
 		$result   = self::decode_response( $response, 'retrieve the job history', $connection_id );
 		if ( is_wp_error( $result ) ) {
 			Generation_Log::add( 'error', 'local_comfyui', $result->get_error_message(), [], $job_id, $connection_id );
@@ -195,9 +199,9 @@ class Local_ComfyUI {
 
 				$ext = strtolower( pathinfo( (string) $image['filename'], PATHINFO_EXTENSION ) );
 				if ( in_array( $ext, [ 'mp4', 'webm', 'mov', 'avi' ], true ) ) {
-					$video_urls[] = self::view_url( $image );
+					$video_urls[] = self::view_url( $image, $endpoint );
 				} else {
-					$image_urls[] = self::view_url( $image );
+					$image_urls[] = self::view_url( $image, $endpoint );
 				}
 			}
 		}
@@ -213,13 +217,22 @@ class Local_ComfyUI {
 	}
 
 	/**
-	 * Get the configured ComfyUI base URL: the `worldgraph_comfy_local_url`
-	 * option, falling back to a local `worldgraph_conn` record's
-	 * endpoint URL so the two configuration surfaces cannot drift apart.
+	 * Get the configured ComfyUI base URL. A specifically requested Connection
+	 * wins; legacy callers fall back to the global option and then the default
+	 * local ComfyUI Connection.
 	 *
+	 * @param int $connection_id Optional Connection whose endpoint takes precedence.
 	 * @return string
 	 */
-	public static function endpoint(): string {
+	public static function endpoint( int $connection_id = 0 ): string {
+		if ( $connection_id ) {
+			$connection = Connection_Repository::get( $connection_id );
+			$url        = $connection ? untrailingslashit( esc_url_raw( (string) ( $connection['endpoint_url'] ?? '' ) ) ) : '';
+			if ( '' !== $url ) {
+				return $url;
+			}
+		}
+
 		$url = untrailingslashit( esc_url_raw( (string) get_option( 'worldgraph_comfy_local_url', '' ) ) );
 		if ( '' !== $url ) {
 			return $url;
@@ -302,16 +315,17 @@ class Local_ComfyUI {
 	 * @param int    $template_id Template post ID, or 0 for none.
 	 * @param string $modality    Modality slug.
 	 * @param array  $runtime     Runtime parameter overrides for this job.
+	 * @param string $endpoint    Resolved ComfyUI base URL for this job.
 	 * @return array|WP_Error
 	 */
-	private static function workflow( int $template_id, string $modality, array $runtime = [] ) {
+	private static function workflow( int $template_id, string $modality, array $runtime = [], string $endpoint = '' ) {
 		$raw = $template_id
 			? (string) worldgraph_get_field_value( $template_id, 'workflow_json' )
 			: (string) get_option( 'worldgraph_comfy_local_workflow', '' );
 		$workflow = json_decode( $raw, true );
 		if ( is_array( $workflow ) && ! empty( $workflow ) ) {
 			if ( Comfy_Graph::is_editor_graph( $workflow ) ) {
-				$object_info = Comfy_Manifest::object_info( self::endpoint() );
+				$object_info = Comfy_Manifest::object_info( '' !== $endpoint ? $endpoint : self::endpoint() );
 				if ( is_wp_error( $object_info ) ) {
 					return $object_info;
 				}
@@ -384,14 +398,15 @@ class Local_ComfyUI {
 	 *
 	 * @param int $template_id   Template post ID, or 0 when none is resolvable.
 	 * @param int $connection_id Connection post ID, for log correlation.
+	 * @param string $endpoint   Resolved ComfyUI base URL for this job.
 	 * @return true|WP_Error
 	 */
-	private static function preflight( int $template_id, int $connection_id ) {
+	private static function preflight( int $template_id, int $connection_id, string $endpoint = '' ) {
 		if ( ! $template_id ) {
 			return true;
 		}
 
-		$report = Comfy_Manifest::validate( $template_id );
+		$report = Comfy_Manifest::validate( $template_id, $endpoint );
 		if ( is_wp_error( $report ) ) {
 			// A catalog that cannot be read is a transient connectivity
 			// problem, not a Template defect; let ComfyUI report it instead.
@@ -436,9 +451,11 @@ class Local_ComfyUI {
 	 * @param string $modality      Modality slug.
 	 * @param array  $inputs        Raw input slot values.
 	 * @param int    $connection_id Connection post ID, for log correlation.
+	 * @param int    $job_id        Queued job ID, for background authorization.
+	 * @param string $endpoint      Resolved ComfyUI base URL for this job.
 	 * @return array<string, string>|WP_Error
 	 */
-	private static function resolve_inputs( string $modality, array $inputs, int $connection_id, int $job_id = 0 ) {
+	private static function resolve_inputs( string $modality, array $inputs, int $connection_id, int $job_id = 0, string $endpoint = '' ) {
 		$resolved = [];
 		foreach ( Generation_Modality::inputs( $modality ) as $slot => $definition ) {
 			$value = $inputs[ $slot ] ?? '';
@@ -466,7 +483,7 @@ class Local_ComfyUI {
 				continue;
 			}
 
-			$uploaded = self::upload_input( $value, $connection_id, $job_id );
+			$uploaded = self::upload_input( $value, $connection_id, $job_id, $endpoint );
 			if ( is_wp_error( $uploaded ) ) {
 				return $uploaded;
 			}
@@ -484,9 +501,10 @@ class Local_ComfyUI {
 	 * @param string $reference     Attachment ID or validated HTTPS URL.
 	 * @param int    $connection_id Connection post ID, for log correlation.
 	 * @param int    $job_id        Queued job ID, for background authorization.
+	 * @param string $endpoint      Resolved ComfyUI base URL for this job.
 	 * @return string|WP_Error
 	 */
-	private static function upload_input( string $reference, int $connection_id, int $job_id = 0 ) {
+	private static function upload_input( string $reference, int $connection_id, int $job_id = 0, string $endpoint = '' ) {
 		$path    = '';
 		$cleanup = false;
 
@@ -561,7 +579,7 @@ class Local_ComfyUI {
 			wp_delete_file( $path );
 		}
 
-		$response = wp_remote_post( self::url( 'upload/image' ), [
+		$response = wp_remote_post( self::url( 'upload/image', $endpoint ), [
 			'timeout' => 120,
 			'headers' => [ 'Content-Type' => 'multipart/form-data; boundary=' . $boundary ],
 			'body'    => $body,
@@ -613,25 +631,29 @@ class Local_ComfyUI {
 	/**
 	 * Build a URL relative to the configured API endpoint.
 	 *
-	 * @param string $path Endpoint path.
+	 * @param string $path     Endpoint path.
+	 * @param string $endpoint Optional already-resolved ComfyUI base URL.
 	 * @return string
 	 */
-	private static function url( string $path ): string {
-		return self::endpoint() . '/' . ltrim( $path, '/' );
+	private static function url( string $path, string $endpoint = '' ): string {
+		$endpoint = '' !== $endpoint ? untrailingslashit( esc_url_raw( $endpoint ) ) : self::endpoint();
+
+		return $endpoint . '/' . ltrim( $path, '/' );
 	}
 
 	/**
 	 * Build a downloadable ComfyUI output image URL.
 	 *
-	 * @param array $image ComfyUI output descriptor.
+	 * @param array  $image    ComfyUI output descriptor.
+	 * @param string $endpoint Optional already-resolved ComfyUI base URL.
 	 * @return string
 	 */
-	private static function view_url( array $image ): string {
+	private static function view_url( array $image, string $endpoint = '' ): string {
 		return add_query_arg( [
 			'filename'  => (string) $image['filename'],
 			'subfolder' => (string) ( $image['subfolder'] ?? '' ),
 			'type'      => (string) ( $image['type'] ?? 'output' ),
-		], self::url( 'view' ) );
+		], self::url( 'view', $endpoint ) );
 	}
 
 	/**
