@@ -37,6 +37,7 @@ class Asset_Generator_MetaBox {
 		'worldgraph_episode',
 		'worldgraph_scene',
 		'worldgraph_shot',
+		'worldgraph_sound',
 		'worldgraph_asset',
 		'worldgraph_editorial',
 	];
@@ -104,6 +105,7 @@ class Asset_Generator_MetaBox {
 				'imageSelection'    => __( 'Image to create', 'worldgraph' ),
 				'sequenceSelection' => __( 'Sequence to create', 'worldgraph' ),
 				'videoSelection'    => __( 'Video to create', 'worldgraph' ),
+				'audioSelection'    => __( 'Audio to create', 'worldgraph' ),
 				'demonstrationSelection' => __( 'Demonstration to create', 'worldgraph' ),
 				'notAvailable'      => __( 'Not defined for this item', 'worldgraph' ),
 				'stillImage'        => __( 'still image', 'worldgraph' ),
@@ -111,6 +113,7 @@ class Asset_Generator_MetaBox {
 				'outputs'           => __( 'outputs', 'worldgraph' ),
 				'createImage'       => __( 'Create image:', 'worldgraph' ),
 				'createVideo'       => __( 'Create video:', 'worldgraph' ),
+				'createAudio'       => __( 'Create audio:', 'worldgraph' ),
 				'reviewQueue'       => __( 'Review and queue', 'worldgraph' ),
 				'reviewProject'     => __( 'Review and queue all Project media', 'worldgraph' ),
 				'reviewDemonstration' => __( 'Review and generate demonstration video', 'worldgraph' ),
@@ -144,8 +147,10 @@ class Asset_Generator_MetaBox {
 				'missingTemplates'  => __( 'required outputs have no runnable Template.', 'worldgraph' ),
 				'generatingImage'   => __( 'Queueing image…', 'worldgraph' ),
 				'generatingVideo'   => __( 'Queueing video…', 'worldgraph' ),
+				'generatingAudio'   => __( 'Queueing audio…', 'worldgraph' ),
 				'queuedImage'       => __( 'Image generation queued. The background worker will import the completed media.', 'worldgraph' ),
 				'queuedVideo'       => __( 'Video generation queued. The background worker will import the completed media.', 'worldgraph' ),
+				'queuedAudio'       => __( 'Audio generation queued. The background worker will import the completed media.', 'worldgraph' ),
 				'job'               => __( 'Job', 'worldgraph' ),
 				'jobSingular'       => __( 'job', 'worldgraph' ),
 				'image'             => __( 'image', 'worldgraph' ),
@@ -169,12 +174,14 @@ class Asset_Generator_MetaBox {
 				'cancelled'         => __( 'Not-yet-dispatched work was stopped. Already-dispatched jobs will finish and import.', 'worldgraph' ),
 				'done'              => __( 'Image generated and attached.', 'worldgraph' ),
 				'doneVideo'         => __( 'Video generated and attached.', 'worldgraph' ),
+				'doneAudio'         => __( 'Audio generated and attached.', 'worldgraph' ),
 				'featured'          => __( 'Set as the featured asset.', 'worldgraph' ),
 				'assetCreated'      => __( 'Linked Asset record created.', 'worldgraph' ),
 				'reloadHint'        => __( 'Reload the editor to see completed media in the featured asset and gallery fields.', 'worldgraph' ),
 				'error'             => __( 'Media generation failed.', 'worldgraph' ),
 				'unconfiguredImage' => __( 'No runnable image Template is configured. Configure an active text-to-image Template and Connection first.', 'worldgraph' ),
 				'unconfiguredVideo' => __( 'No runnable video Template is configured. Configure an active text-to-video Template and Connection first.', 'worldgraph' ),
+				'unconfiguredAudio' => __( 'No runnable audio Template is configured. Configure an active text-to-speech, text-to-music, or other audio Template and Connection first.', 'worldgraph' ),
 			],
 		] );
 	}
@@ -245,6 +252,10 @@ class Asset_Generator_MetaBox {
 					<label class="worldgraph-generate-asset__mode">
 						<input type="radio" name="worldgraph-generation-mode-<?php echo esc_attr( $post->ID ); ?>" value="video" disabled />
 						<span><strong><?php esc_html_e( 'Video', 'worldgraph' ); ?></strong><small><?php esc_html_e( 'Create one selected moving shot', 'worldgraph' ); ?></small></span>
+					</label>
+					<label class="worldgraph-generate-asset__mode">
+						<input type="radio" name="worldgraph-generation-mode-<?php echo esc_attr( $post->ID ); ?>" value="audio" disabled />
+						<span><strong><?php esc_html_e( 'Audio', 'worldgraph' ); ?></strong><small><?php esc_html_e( 'Create one selected speech, music, or sound-effect cue', 'worldgraph' ); ?></small></span>
 					</label>
 					<label class="worldgraph-generate-asset__mode">
 						<input type="radio" name="worldgraph-generation-mode-<?php echo esc_attr( $post->ID ); ?>" value="demonstration" disabled />

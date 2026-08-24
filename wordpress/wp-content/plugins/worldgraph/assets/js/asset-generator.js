@@ -63,7 +63,7 @@
 	function watchSingleJob( panel, generationId, type ) {
 		clearSinglePoll( panel );
 		var watchToken = panel._worldgraphSingleWatchToken;
-		var queued = 'video' === type ? strings.queuedVideo : strings.queuedImage;
+		var queued = 'video' === type ? strings.queuedVideo : ( 'audio' === type ? strings.queuedAudio : strings.queuedImage );
 
 		function poll() {
 			if ( watchToken !== panel._worldgraphSingleWatchToken ) {
@@ -761,6 +761,7 @@
 			image: actions.some( function ( action ) { return 'image' === action.type; } ),
 			sequence: ( parseInt( body.total_jobs, 10 ) || 0 ) > 1 || '1' === panel.dataset.isProject,
 			video: actions.some( function ( action ) { return 'video' === action.type; } ),
+			audio: actions.some( function ( action ) { return 'audio' === action.type; } ),
 			demonstration: '1' === panel.dataset.isProject
 		};
 		var firstAvailable = '';
@@ -789,8 +790,8 @@
 		var actions = panel._worldgraphActions || [];
 		select.textContent = '';
 
-		if ( 'image' === mode || 'video' === mode ) {
-			label.textContent = 'video' === mode ? strings.videoSelection : strings.imageSelection;
+		if ( 'image' === mode || 'video' === mode || 'audio' === mode ) {
+			label.textContent = 'video' === mode ? strings.videoSelection : ( 'audio' === mode ? strings.audioSelection : strings.imageSelection );
 			actions.filter( function ( action ) {
 				return mode === action.type;
 			} ).forEach( function ( action ) {
@@ -969,7 +970,7 @@
 
 		setTemplateVisibility( panel, 'image', 'image' === type, strings.singleTemplateHelp );
 		setTemplateVisibility( panel, 'video', 'video' === type, strings.singleTemplateHelp );
-		setTemplateVisibility( panel, 'audio', false, '' );
+		setTemplateVisibility( panel, 'audio', 'audio' === type, strings.singleTemplateHelp );
 		fillTemplateSelect( select, templates, action.default_template_id || 0, false, savedTemplate( panel, target, type ), type );
 		renderRunControlsForSelection( panel );
 
@@ -983,9 +984,9 @@
 		panel.querySelector( '.worldgraph-generate-asset__prompt-help' ).textContent = strings.singlePromptHelp;
 		panel.querySelector( '.worldgraph-generate-asset__choice-description' ).textContent = strings.singleChoiceHelp;
 		panel.querySelector( '.worldgraph-generate-asset__context-preview' ).textContent = action.prompt || '';
-		panel.querySelector( '.worldgraph-generate-asset__run' ).textContent = ( 'video' === type ? strings.createVideo : strings.createImage ) + ' ' + action.label;
+		panel.querySelector( '.worldgraph-generate-asset__run' ).textContent = ( 'video' === type ? strings.createVideo : ( 'audio' === type ? strings.createAudio : strings.createImage ) ) + ' ' + action.label;
 		renderSingleSummary( panel, action );
-		selectionStatus( panel, action.configured ? '' : ( 'video' === type ? strings.unconfiguredVideo : strings.unconfiguredImage ), ! action.configured );
+		selectionStatus( panel, action.configured ? '' : ( 'video' === type ? strings.unconfiguredVideo : ( 'audio' === type ? strings.unconfiguredAudio : strings.unconfiguredImage ) ), ! action.configured );
 		updatePrimaryState( panel );
 	}
 
@@ -1180,7 +1181,7 @@
 				panel._worldgraphTemplates = {
 					image: body.image_templates || body.templates || [],
 					video: body.video_templates || [],
-					audio: []
+					audio: body.audio_templates || []
 				};
 				panel._worldgraphPlanEpoch = ( panel._worldgraphPlanEpoch || 0 ) + 1;
 				panel._worldgraphPlanCache = {};
@@ -1221,7 +1222,7 @@
 
 	function renderResult( panel, body, type ) {
 		var result = panel.querySelector( '.worldgraph-generate-asset__result' );
-		var messages = [ 'video' === type ? strings.doneVideo : strings.done ];
+		var messages = [ 'video' === type ? strings.doneVideo : ( 'audio' === type ? strings.doneAudio : strings.done ) ];
 		if ( body.featured ) {
 			messages.push( strings.featured );
 		}
@@ -1234,6 +1235,10 @@
 			var media;
 			if ( 'video' === type ) {
 				media = document.createElement( 'video' );
+				media.controls = true;
+				media.src = body.url;
+			} else if ( 'audio' === type ) {
+				media = document.createElement( 'audio' );
 				media.controls = true;
 				media.src = body.url;
 			} else {
@@ -1256,7 +1261,7 @@
 		clearSinglePoll( panel );
 		var templateId = parseInt( templateSelect( panel, action.type ).value, 10 ) || 0;
 		if ( ! templateId ) {
-			setStatus( panel, 'video' === action.type ? strings.unconfiguredVideo : strings.unconfiguredImage, true );
+			setStatus( panel, 'video' === action.type ? strings.unconfiguredVideo : ( 'audio' === action.type ? strings.unconfiguredAudio : strings.unconfiguredImage ), true );
 			return;
 		}
 
@@ -1273,13 +1278,14 @@
 		if ( null !== runValues ) {
 			payload.run_values = runValues;
 		}
+		clearResult( panel );
 		panel._worldgraphBusy = true;
 		updatePrimaryState( panel );
-		setStatus( panel, 'video' === action.type ? strings.generatingVideo : strings.generatingImage );
+		setStatus( panel, 'video' === action.type ? strings.generatingVideo : ( 'audio' === action.type ? strings.generatingAudio : strings.generatingImage ) );
 		request( settings.restUrl, { method: 'POST', body: JSON.stringify( payload ) } )
 			.then( function ( body ) {
 				if ( 'queued' === body.status ) {
-					var queued = 'video' === action.type ? strings.queuedVideo : strings.queuedImage;
+					var queued = 'video' === action.type ? strings.queuedVideo : ( 'audio' === action.type ? strings.queuedAudio : strings.queuedImage );
 					setStatus( panel, queued + ( body.generation_id ? ' (' + strings.job + ' #' + body.generation_id + ')' : '' ) );
 					if ( body.generation_id ) {
 						watchSingleJob( panel, body.generation_id, action.type );
@@ -1334,6 +1340,7 @@
 		if ( null !== audioRunValues ) {
 			payload.audio_run_values = audioRunValues;
 		}
+		clearResult( panel );
 		panel._worldgraphBusy = true;
 		updatePrimaryState( panel );
 		setStatus( panel, strings.starting );

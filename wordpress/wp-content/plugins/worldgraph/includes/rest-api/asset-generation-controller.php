@@ -38,7 +38,7 @@ class Asset_Generation_Controller extends Base_Controller {
 			'permission_callback' => [ $this, 'check_generate_permission' ],
 			'args'                => [
 				'post_id'      => [ 'description' => 'Story element post ID the media belongs to.', 'type' => 'integer', 'required' => true ],
-				'type'         => [ 'description' => 'Direct output type.', 'type' => 'string', 'enum' => [ 'image', 'video' ], 'default' => 'image' ],
+				'type'         => [ 'description' => 'Direct output type.', 'type' => 'string', 'enum' => [ 'image', 'video', 'audio' ], 'default' => 'image' ],
 				'prompt'       => [ 'description' => 'Optional additional instructions appended to the saved Story Graph prompt.', 'type' => 'string' ],
 				'intent'       => [ 'description' => 'Optional built-in representative-media intent.', 'type' => 'string' ],
 				'set_featured' => [ 'description' => 'Set a generated image as the featured asset. Ignored for video.', 'type' => 'boolean', 'default' => true ],
@@ -141,8 +141,9 @@ class Asset_Generation_Controller extends Base_Controller {
 
 	/** Queue one story-aware image or video output. */
 	public static function generate( WP_REST_Request $request ) {
-		$post_id = absint( $request->get_param( 'post_id' ) );
-		$type    = 'video' === sanitize_key( (string) $request->get_param( 'type' ) ) ? 'video' : 'image';
+		$post_id      = absint( $request->get_param( 'post_id' ) );
+		$requested_type = sanitize_key( (string) $request->get_param( 'type' ) );
+		$type         = in_array( $requested_type, [ 'video', 'audio' ], true ) ? $requested_type : 'image';
 		$intent  = sanitize_key( (string) $request->get_param( 'intent' ) );
 		$plan    = Generation_Workflows::plan( $post_id, 'item' );
 		if ( is_wp_error( $plan ) ) {
@@ -151,11 +152,13 @@ class Asset_Generation_Controller extends Base_Controller {
 
 		$task = self::task_for_output( $plan, $type, $intent );
 		if ( empty( $task ) ) {
+			$messages = [
+				'video' => __( 'This item has no direct video output. Generate video from a Shot, or use Generate all Project media for owned Shots.', 'worldgraph' ),
+				'audio' => __( 'This item has no direct audio output.', 'worldgraph' ),
+			];
 			return new WP_Error(
 				'worldgraph_generation_output_unavailable',
-				'video' === $type
-					? __( 'This item has no direct video output. Generate video from a Shot, or use Generate all Project media for owned Shots.', 'worldgraph' )
-					: __( 'This item has no direct image output.', 'worldgraph' ),
+				$messages[ $type ] ?? __( 'This item has no direct image output.', 'worldgraph' ),
 				[ 'status' => 400 ]
 			);
 		}
@@ -187,9 +190,10 @@ class Asset_Generation_Controller extends Base_Controller {
 
 		$image_templates = Generation_Workflows::runnable_templates( $post_id, 'image' );
 		$video_templates = Generation_Workflows::runnable_templates( $post_id, 'video' );
+		$audio_templates = Generation_Workflows::runnable_templates( $post_id, 'audio' );
 		$actions         = [];
 		$outputs         = [];
-		$default_ids     = [ 'image' => 0, 'video' => 0 ];
+		$default_ids     = [ 'image' => 0, 'video' => 0, 'audio' => 0 ];
 		foreach ( (array) ( $plan['tasks'] ?? [] ) as $task ) {
 			$type        = (string) ( $task['type'] ?? 'image' );
 			$default_id  = Generation_Workflows::resolve_template_id( $task );
@@ -228,6 +232,7 @@ class Asset_Generation_Controller extends Base_Controller {
 			'templates'            => $image_templates,
 			'image_templates'      => $image_templates,
 			'video_templates'      => $video_templates,
+			'audio_templates'      => $audio_templates,
 			'default_template_id'  => $default_ids['image'],
 			'default_template_ids' => $default_ids,
 			'latest_batch'         => Generation_Workflows::latest_batch( $post_id, 'item' ),

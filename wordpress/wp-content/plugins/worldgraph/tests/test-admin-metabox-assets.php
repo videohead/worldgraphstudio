@@ -92,6 +92,7 @@ class Test_Admin_Metabox_Assets extends TestCase {
 		$this->assertStringContainsString( 'renderAssemblyResult( panel, body.latest_demonstration_batch.assembly )', $script );
 		$this->assertStringContainsString( 'renderAssemblyResult( panel, body.assembly );', $script );
 		$this->assertStringContainsString( 'clearResult( panel );', $script );
+		$this->assertSame( 4, substr_count( $script, 'clearResult( panel );' ) );
 		$this->assertStringContainsString( "result.dataset.resultKind = 'direct'", $script );
 		$this->assertStringContainsString( "'direct' !== panel.querySelector( '.worldgraph-generate-asset__result' ).dataset.resultKind", $script );
 		$this->assertStringContainsString( "'demonstration' === body.scope", $script );

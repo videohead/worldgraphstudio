@@ -300,6 +300,7 @@ class Test_Rough_Cut_Assembler extends TestCase {
 
 		$this->assertSame( 'segment-0001.mp4', $method->invoke( null, 'segment-0001.mp4', 'segment' ) );
 		$this->assertSame( 'rough-cut-final.mp4', $method->invoke( null, 'rough-cut-final.mp4' ) );
+		$this->assertSame( 'rough-cut-sideload.mp4', $method->invoke( null, 'rough-cut-sideload.mp4' ) );
 		$this->assertSame( '', $method->invoke( null, '../rough-cut-final.mp4' ) );
 		$this->assertSame( '', $method->invoke( null, 'unowned.tmp' ) );
 	}
@@ -336,6 +337,9 @@ class Test_Rough_Cut_Assembler extends TestCase {
 		$this->assertStringContainsString( 'self::state_signature( $state )', $source );
 		$this->assertStringContainsString( 'self::safe_batch_work_dir(', $source );
 		$this->assertStringContainsString( 'self::existing_imported_video(', $source );
+		$this->assertStringContainsString( "'rough-cut-sideload.mp4'", $source );
+		$this->assertStringContainsString( "'worldgraph_rough_cut_provenance_failed'", $source );
+		$this->assertStringContainsString( 'wp_delete_attachment( $id, true )', $source );
 		$this->assertStringContainsString( 'self::$known_files', $source );
 		$this->assertStringContainsString( 'self::path_is_within( $file, $work_dir )', $source );
 	}

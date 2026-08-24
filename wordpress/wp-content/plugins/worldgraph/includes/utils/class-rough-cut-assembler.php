@@ -52,10 +52,11 @@ class Rough_Cut_Assembler {
 	private static int $current_batch_id = 0;
 
 	/**
-	 * Idempotently discard one cancelled batch's verified durable temp state.
+	 * Idempotently discard one batch's verified durable temp state.
 	 *
 	 * State meta is removed even when corrupt, but an unverified path is never
-	 * touched. Call this only after the batch cancellation marker is durable.
+	 * touched. Call this only after cancellation is durable or the coordinator
+	 * knows no live worker can continue the state.
 	 */
 	public static function cancel( int $batch_id ): void {
 		$stored = get_post_meta( $batch_id, self::STATE_META, true );
@@ -515,7 +516,7 @@ class Rough_Cut_Assembler {
 		if ( 'segment' === $kind ) {
 			return preg_match( '/^segment-\d{4}\.mp4$/', $name ) ? $name : '';
 		}
-		$fixed = [ 'segments.txt', 'joined.mp4', 'rough-cut.srt', 'subtitled.mp4', 'rough-cut-final.mp4' ];
+		$fixed = [ 'segments.txt', 'joined.mp4', 'rough-cut.srt', 'subtitled.mp4', 'rough-cut-final.mp4', 'rough-cut-sideload.mp4' ];
 
 		return in_array( $name, $fixed, true ) || preg_match( '/^segment-\d{4}\.mp4$/', $name ) ? $name : '';
 	}
@@ -2076,9 +2077,10 @@ class Rough_Cut_Assembler {
 		] );
 		foreach ( $ids as $attachment_id ) {
 			$attachment_id = absint( $attachment_id );
-			$source_id     = absint( get_post_meta( $attachment_id, '_worldgraph_generated_from', true ) );
-			$url           = (string) wp_get_attachment_url( $attachment_id );
-			if ( $source_id === $project_id && 0 === strpos( strtolower( (string) get_post_mime_type( $attachment_id ) ), 'video/' ) ) {
+			$source_id      = absint( get_post_meta( $attachment_id, '_worldgraph_generated_from', true ) );
+			$url            = (string) wp_get_attachment_url( $attachment_id );
+			$attached_file  = (string) get_attached_file( $attachment_id );
+			if ( $source_id === $project_id && '' !== $url && is_readable( $attached_file ) && 0 === strpos( strtolower( (string) get_post_mime_type( $attachment_id ) ), 'video/' ) ) {
 				return [ 'attachment_id' => $attachment_id, 'url' => $url ];
 			}
 		}
@@ -2124,19 +2126,38 @@ class Rough_Cut_Assembler {
 			return self::error( 'worldgraph_rough_cut_upload_unavailable', __( 'WordPress Media Library upload functions are unavailable.', 'worldgraph' ), [ 'status' => 503 ] );
 		}
 
-		$project  = get_post( $project_id );
-		$slug     = $project instanceof \WP_Post ? sanitize_title( $project->post_name ?: $project->post_title ) : 'project';
-		$filename = sanitize_file_name( ( $slug ?: 'project' ) . '-rough-cut-batch-' . $batch_id . '.mp4' );
-		$upload   = wp_handle_sideload(
+		$project       = get_post( $project_id );
+		$slug          = $project instanceof \WP_Post ? sanitize_title( $project->post_name ?: $project->post_title ) : 'project';
+		$filename      = sanitize_file_name( ( $slug ?: 'project' ) . '-rough-cut-batch-' . $batch_id . '.mp4' );
+		$work_dir      = dirname( $file );
+		$sideload_file = $work_dir . DIRECTORY_SEPARATOR . 'rough-cut-sideload.mp4';
+		// WordPress moves sideloads. Upload a bounded copy so the signed assembly
+		// state retains its final source if import fails before provenance commits.
+		if ( ! self::safe_batch_work_dir( $work_dir, $batch_id )
+			|| 'rough-cut-final.mp4' !== basename( $file )
+			|| ! self::path_is_within( $sideload_file, $work_dir )
+			|| false === copy( $file, $sideload_file ) ) {
+			return self::error( 'worldgraph_rough_cut_upload_copy_failed', __( 'The assembled rough cut could not be prepared for Media Library import.', 'worldgraph' ), [ 'status' => 500 ] );
+		}
+		clearstatcache( true, $sideload_file );
+		$sideload_size = filesize( $sideload_file );
+		if ( false === $sideload_size || (int) $size !== (int) $sideload_size ) {
+			wp_delete_file( $sideload_file );
+			return self::error( 'worldgraph_rough_cut_upload_copy_failed', __( 'The assembled rough cut could not be prepared for Media Library import.', 'worldgraph' ), [ 'status' => 500 ] );
+		}
+		$upload = wp_handle_sideload(
 			[
 				'name'     => $filename,
 				'type'     => 'video/mp4',
-				'tmp_name' => $file,
+				'tmp_name' => $sideload_file,
 				'error'    => 0,
 				'size'     => (int) $size,
 			],
 			[ 'test_form' => false ]
 		);
+		if ( is_file( $sideload_file ) ) {
+			wp_delete_file( $sideload_file );
+		}
 		if ( ! is_array( $upload ) || ! empty( $upload['error'] ) || empty( $upload['file'] ) ) {
 			return self::error(
 				'worldgraph_rough_cut_upload_failed',
@@ -2166,8 +2187,30 @@ class Rough_Cut_Assembler {
 		update_post_meta( $id, '_worldgraph_generated_from', $project_id );
 		update_post_meta( $id, '_worldgraph_gen_batch_id', $batch_id );
 		update_post_meta( $id, '_worldgraph_rough_cut', 1 );
+		$attachment    = get_post( $id );
+		$attached_file = (string) get_attached_file( $id );
+		$url           = (string) wp_get_attachment_url( $id );
+		$verified      = $attachment instanceof \WP_Post
+			&& 'attachment' === $attachment->post_type
+			&& $project_id === (int) $attachment->post_parent
+			&& $project_id === absint( get_post_meta( $id, '_worldgraph_generated_from', true ) )
+			&& $batch_id === absint( get_post_meta( $id, '_worldgraph_gen_batch_id', true ) )
+			&& 1 === absint( get_post_meta( $id, '_worldgraph_rough_cut', true ) )
+			&& 0 === strpos( strtolower( (string) get_post_mime_type( $id ) ), 'video/' )
+			&& '' !== $url
+			&& is_readable( $attached_file );
+		if ( ! $verified ) {
+			$deleted = wp_delete_attachment( $id, true );
+			if ( ! $deleted ) {
+				wp_delete_post( $id, true );
+				if ( is_file( (string) $upload['file'] ) ) {
+					wp_delete_file( (string) $upload['file'] );
+				}
+			}
+			return self::error( 'worldgraph_rough_cut_provenance_failed', __( 'The rough cut was uploaded, but its verified Project and batch provenance could not be stored.', 'worldgraph' ), [ 'status' => 500 ] );
+		}
 
-		return [ 'attachment_id' => $id, 'url' => (string) wp_get_attachment_url( $id ) ];
+		return [ 'attachment_id' => $id, 'url' => $url ];
 	}
 
 	/** Import an SRT fallback without weakening the site's normal video policy. */

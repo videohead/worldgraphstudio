@@ -77,6 +77,7 @@ class Generation_Workflows {
 		'worldgraph_shot'      => [ 'shot_number', 'shot_type', 'camera_angle', 'lens', 'duration', 'shot_description', 'editorial_notes' ],
 		'worldgraph_scene'     => [ 'scene_number', 'summary', 'script_content', 'dialogue', 'location', 'time_of_day', 'emotional_tone', 'production_notes' ],
 		'worldgraph_episode'   => [ 'episode_number', 'synopsis' ],
+		'worldgraph_sound'     => [ 'sound_type', 'spoken_text', 'lyrics', 'diegetic', 'duration', 'production_notes' ],
 	];
 
 	/**
@@ -201,6 +202,14 @@ class Generation_Workflows {
 				'description' => __( 'A filmstrip contrasting the first and last scenes.', 'worldgraph' ),
 				'outputs'     => [
 					self::output( 'episode-bookend-filmstrip', 'image', __( 'Episode bookend filmstrip', 'worldgraph' ), __( 'Create a cinematic filmstrip composition that contrasts the episode\'s opening scene with its final scene. Show the visual and emotional transformation between the bookends while preserving story-world continuity.', 'worldgraph' ), true ),
+				],
+			],
+			'worldgraph_sound'     => [
+				'id'          => 'sound-cue',
+				'label'       => __( 'Soundtrack cue', 'worldgraph' ),
+				'description' => __( 'One rendered audio cue for this Sound record.', 'worldgraph' ),
+				'outputs'     => [
+					self::output( 'sound-cue', 'audio', __( 'Soundtrack cue', 'worldgraph' ), __( 'Render this soundtrack cue exactly as specified: narration or dialogue must be spoken verbatim, music must follow the given lyrics and mood, and a sound effect or ambience must match the described source and duration.', 'worldgraph' ), false ),
 				],
 			],
 		];
@@ -2736,7 +2745,13 @@ class Generation_Workflows {
 
 	/** Run the independently scheduled rough-cut worker without blocking provider polling. */
 	public static function process_assembly_queue(): void {
-		$lock_token = self::acquire_named_lock( self::ASSEMBLY_LOCK, self::COORDINATOR_LOCK_TTL );
+		// The lease must outlive the longest bounded FFmpeg stage. Heartbeats are
+		// the faster liveness signal, but the lease remains a safe fallback when
+		// a metadata write fails.
+		$lock_token = self::acquire_named_lock(
+			self::ASSEMBLY_LOCK,
+			2 * Rough_Cut_Assembler::PROCESS_TIMEOUT + self::COORDINATOR_LOCK_TTL
+		);
 		if ( '' === $lock_token ) {
 			self::schedule_assembly( 60 );
 			return;
@@ -2792,6 +2807,7 @@ class Generation_Workflows {
 				delete_post_meta( $batch_id, '_worldgraph_gen_assembly_worker_token' );
 				delete_post_meta( $batch_id, '_worldgraph_gen_assembly_heartbeat' );
 				if ( ! self::schedule_assembly() ) {
+					Rough_Cut_Assembler::cancel( $batch_id );
 					self::finish_assembly( $batch_id, new WP_Error( 'worldgraph_rough_cut_schedule_failed', __( 'WordPress could not reschedule the incomplete rough-cut assembly.', 'worldgraph' ) ) );
 				}
 				return;
@@ -2838,7 +2854,7 @@ class Generation_Workflows {
 		$started     = absint( get_post_meta( $batch_id, '_worldgraph_gen_assembly_started_at', true ) );
 		$liveness    = $heartbeat ?: $started;
 		$stale_after = 2 * Rough_Cut_Assembler::PROCESS_TIMEOUT + self::COORDINATOR_LOCK_TTL;
-		if ( '' !== $worker && ( ! $liveness || $liveness + $stale_after >= time() ) ) {
+		if ( '' !== $worker && $liveness && $liveness + $stale_after >= time() ) {
 			self::schedule_assembly( 60 );
 			return true;
 		}
@@ -3285,7 +3301,10 @@ class Generation_Workflows {
 		if ( empty( $status ) ) {
 			return [];
 		}
-		if ( in_array( $status['status'], [ 'completed', 'completed_with_errors', 'cancelled', 'failed' ], true ) ) {
+		$cancelled_assembly_needs_cleanup = 'cancelled' === $status['status']
+			&& self::DEMONSTRATION_BATCH === (string) get_post_meta( $batch_id, self::BATCH_KIND_META, true )
+			&& metadata_exists( 'post', $batch_id, Rough_Cut_Assembler::STATE_META );
+		if ( in_array( $status['status'], [ 'completed', 'completed_with_errors', 'cancelled', 'failed' ], true ) && ! $cancelled_assembly_needs_cleanup ) {
 			$status['stopped_queued'] = 0;
 			$status['cancel_note']     = __( 'This batch had already reached a terminal state, so no cancellation was applied.', 'worldgraph' );
 			return $status;
@@ -3297,8 +3316,21 @@ class Generation_Workflows {
 		update_post_meta( $batch_id, '_worldgraph_gen_status', 'batch_cancelling' );
 		if ( self::DEMONSTRATION_BATCH === (string) get_post_meta( $batch_id, self::BATCH_KIND_META, true ) ) {
 			$assembly_worker = (string) get_post_meta( $batch_id, '_worldgraph_gen_assembly_worker_token', true );
-			if ( '' === $assembly_worker ) {
+			$heartbeat       = absint( get_post_meta( $batch_id, '_worldgraph_gen_assembly_heartbeat', true ) );
+			$started         = absint( get_post_meta( $batch_id, '_worldgraph_gen_assembly_started_at', true ) );
+			$liveness        = $heartbeat ?: $started;
+			$stale_after     = 2 * Rough_Cut_Assembler::PROCESS_TIMEOUT + self::COORDINATOR_LOCK_TTL;
+			$assembly_lease  = get_option( self::ASSEMBLY_LOCK, [] );
+			$lease_is_live   = '' !== $assembly_worker
+				&& is_array( $assembly_lease )
+				&& hash_equals( $assembly_worker, (string) ( $assembly_lease['token'] ?? '' ) )
+				&& absint( $assembly_lease['expires'] ?? 0 ) >= time();
+			$worker_is_stale = '' !== $assembly_worker
+				&& ! $lease_is_live
+				&& ( ! $liveness || $liveness + $stale_after < time() );
+			if ( '' === $assembly_worker || $worker_is_stale ) {
 				Rough_Cut_Assembler::cancel( $batch_id );
+				delete_post_meta( $batch_id, '_worldgraph_gen_assembly_worker_token' );
 				delete_post_meta( $batch_id, '_worldgraph_gen_assembly_heartbeat' );
 				delete_post_meta( $batch_id, '_worldgraph_gen_assembly_progress' );
 			} else {
