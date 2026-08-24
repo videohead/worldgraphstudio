@@ -3,7 +3,7 @@ Theme Name: World Graph Studio
 Description: A vintage production-notebook child theme for the World Graph Studio creative workspace.
 Author: World Graph Studio Contributors
 Template: frost
-Version: 1.2.0
+Version: 1.3.0
 Requires at least: 6.9
 Requires PHP: 7.2
 License: GNU General Public License v3 or later
@@ -340,18 +340,6 @@ textarea:focus {
 
 .wg-section[id] {
 	scroll-margin-top: 7rem;
-}
-
-.wg-section.has-warm-ivory-background-color {
-	background-size: 36px 36px;
-}
-
-.wg-section.has-charcoal-background-color,
-.wg-section.has-dark-espresso-background-color {
-	background-image:
-		linear-gradient(rgba(242, 234, 215, 0.025) 1px, transparent 1px),
-		linear-gradient(90deg, rgba(242, 234, 215, 0.025) 1px, transparent 1px);
-	background-size: 36px 36px;
 }
 
 .wg-section__header {

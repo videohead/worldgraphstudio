@@ -358,8 +358,8 @@
 	</section>
 	<!-- /wp:group -->
 
-	<!-- wp:group {"tagName":"section","align":"full","backgroundColor":"warm-ivory","textColor":"dark-espresso","className":"wg-section wg-cta","layout":{"type":"constrained"}} -->
-	<section class="wp-block-group alignfull wg-section wg-cta has-dark-espresso-color has-warm-ivory-background-color has-text-color has-background">
+	<!-- wp:group {"tagName":"section","align":"full","backgroundColor":"charcoal","textColor":"warm-ivory","className":"wg-section wg-cta","layout":{"type":"constrained"}} -->
+	<section class="wp-block-group alignfull wg-section wg-cta has-warm-ivory-color has-charcoal-background-color has-text-color has-background">
 		<!-- wp:group {"align":"wide","className":"wg-cta__inner","layout":{"type":"constrained"}} -->
 		<div class="wp-block-group alignwide wg-cta__inner">
 			<!-- wp:heading {"textAlign":"center","className":"wg-cta__title","fontFamily":"headline"} -->
