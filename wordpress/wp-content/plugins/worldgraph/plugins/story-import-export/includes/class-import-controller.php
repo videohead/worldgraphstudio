@@ -241,7 +241,7 @@ class Import_Controller extends Base_Controller {
 			$connection_id
 		);
 		if ( is_wp_error( $result ) ) {
-			$status = str_starts_with( (string) $result->get_error_code(), 'worldgraph_llm_' ) ? 502 : 422;
+			$status = 'worldgraph_llm_request_failed' === (string) $result->get_error_code() ? 502 : 422;
 			return $this->safe_error( $result, $status );
 		}
 

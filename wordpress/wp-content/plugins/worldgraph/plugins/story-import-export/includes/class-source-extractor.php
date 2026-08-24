@@ -32,7 +32,7 @@ class Source_Extractor {
 		$filename = get_the_title( $attachment_id );
 		$source   = get_post_meta( $attachment_id, '_wp_attached_file', true );
 		if ( is_string( $source ) && '' !== $source ) {
-			$filename = wp_basename( $source );
+			$filename = wp_basename( rawurldecode( wp_basename( $source ) ) );
 		}
 
 		return $this->extract_file( $path, (string) $filename );
@@ -533,6 +533,27 @@ class Source_Extractor {
 		$text = str_replace( [ "\r\n", "\r" ], "\n", $text );
 		if ( ! mb_check_encoding( $text, 'UTF-8' ) ) {
 			$text = mb_convert_encoding( $text, 'UTF-8', 'Windows-1252' );
+		}
+		$text = strtr(
+			$text,
+			[
+				'ﬀ' => 'ff',
+				'ﬁ' => 'fi',
+				'ﬂ' => 'fl',
+				'ﬃ' => 'ffi',
+				'ﬄ' => 'ffl',
+				'ﬅ' => 'st',
+				'ﬆ' => 'st',
+			]
+		);
+		$latin_count    = preg_match_all( '/\p{Latin}/u', $text );
+		$cyrillic_count = preg_match_all( '/\p{Cyrillic}/u', $text );
+		$shcha_count    = substr_count( $text, 'щ' );
+		if ( $shcha_count > 0 && $shcha_count === $cyrillic_count && $latin_count > $cyrillic_count * 100 ) {
+			// Some Latin-script PDF font maps use U+0449 as a line-break glyph.
+			// Apply this only when it is the sole Cyrillic character in an
+			// overwhelmingly Latin document so genuine Cyrillic prose is retained.
+			$text = str_replace( 'щ', "\n", $text );
 		}
 		$text = preg_replace( '/[^\P{C}\n\t]+/u', '', $text );
 		$text = preg_replace( '/[ \t]+\n/u', "\n", (string) $text );

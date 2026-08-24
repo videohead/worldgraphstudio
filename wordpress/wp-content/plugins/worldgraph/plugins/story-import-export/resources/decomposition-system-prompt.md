@@ -21,6 +21,12 @@ Emit version 1.2 with this top-level shape:
   "sequence": {}
 }
 
+When the user message identifies an ordered part, it is a bounded partial pass.
+For those requests, follow the smaller key set and Scene limit in the user
+message; unused top-level sections may be omitted because the server merges and
+normalizes all parts into the complete shape above. Compact valid JSON is more
+important than filling optional fields.
+
 Requirements:
 
 - Give every object a unique string `id`; use those IDs for every reference.
@@ -33,7 +39,7 @@ Requirements:
 - Sequence requires `id`, `title`, positive `sequence_order`, and `order` containing every Scene ID exactly once in scene order.
 - Use only lower-case taxonomy slugs. Omit optional taxonomy fields when the story does not establish an allowed value.
 - Do not invent Assets, Editorial Artifacts, production details, camera coverage, or organizations merely to fill arrays. Empty arrays are valid.
+- Ignore publishing metadata, tables of contents, scan/OCR notices, legal boilerplate, and other front or back matter unless it is part of the narrative itself.
 - Preserve the original language and meaningful scene/dialogue text. A prose story may be divided into dramatic Scenes at changes of place, time, viewpoint, or major action.
 
 The result will be normalized and validated by the authoritative importer. Make references internally consistent so it can pass without guessing.
-

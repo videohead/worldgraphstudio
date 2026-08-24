@@ -67,12 +67,30 @@ extracts normalized UTF-8 text without invoking external conversion binaries.
 Current bounds are 20 MB per source and at least 20 usable extracted
 characters. Canonical JSON follows the 20 MB upload boundary; non-canonical
 sources are limited to 500,000 extracted characters and 300,000 characters per
-decomposition. Sources through 60,000 characters use one
-direct pass; longer sources are split near paragraph boundaries into at most
-six ordered chunks of approximately 50,000 characters, then merged and
-validated as one document. A source above 300,000 characters must be split into
-separate imports. These are implementation limits, not a promise that every
-selected model has enough context for the maximum accepted input.
+decomposition. For an OpenAI-compatible Connection, the decomposer uses model
+metadata when the endpoint advertises the configured model's context window.
+It reserves room for both instructions and output. Advertised windows below
+2,048 tokens are refused as unsafe. Constrained models use compact,
+context-budgeted ordered parts that are merged and validated as one document;
+a short source can use the more detailed whole-document contract when the
+advertised window is at least 32,768 tokens. If usable context metadata is
+unavailable, decomposition fails closed to conservative 2,500-character parts
+instead of assuming that a large prompt will fit.
+
+One preview may finish with at most 24 ordered parts. A whole-document candidate
+receives an initial request and at most one JSON-only repair. Each constrained
+part may receive up to two JSON-only repairs; if it remains invalid or reaches
+its output limit, only that part is halved and retried when the 24-part budget
+allows. Adaptive parent excerpts are attempts rather than final ordered parts:
+the bounded worst case is 47 excerpt nodes and 141 model calls, with selected
+Connection work isolated in a 144-request-per-user-per-minute bucket. The
+ordinary interactive AI limit remains separate. The output budget requested by
+the decomposer is always capped by the selected Connection's configured
+`max_tokens`; callers cannot raise a request above that Connection ceiling. The
+300,000-character source limit still applies, but a small or undiscoverable
+context window can reach the part limit much earlier. In that case, split the
+source into smaller files or choose a Connection whose model advertises a
+larger context window.
 
 PDF handling does not run OCR. If the importer reports that no usable text layer
 exists, run OCR outside World Graph Studio and upload the searchable PDF or a
@@ -100,13 +118,17 @@ page geometry, typography, images, comments, or application-specific layout.
 3. The server sends that text, the sanitized filename, and server-owned
    decomposition instructions only to the selected Connection. It disables
    response caching and provider fallback for this request.
-4. The decomposer accepts JSON objects from the model, merges bounded ordered
-   chunks when needed, normalizes required sections, identifiers, references,
-   and ordering, and asks the authoritative importer to dry-run validate the
-   final document.
-5. A direct candidate or individual chunk can receive one bounded JSON repair
-   attempt. A final candidate that still fails validation is not offered for
-   import.
+4. The decomposer accepts only graph-shaped JSON objects with usable Scene
+   evidence, merges compact ordered parts when needed, removes unsupported
+   generated catalog names that do not occur in the manuscript, preserves
+   typed references when the same evidenced name legitimately appears in more
+   than one catalog, normalizes required sections, identifiers, references, and
+   ordering, and asks the authoritative importer to dry-run validate the final
+   document.
+5. A constrained part can receive up to two bounded JSON repair attempts and,
+   if necessary, adaptive subdivision within the part limit. An unsplit
+   whole-document candidate receives one repair attempt. A final candidate
+   that still fails validation is not offered for import.
 6. The administrator reviews the resulting canonical document. The plugin does
    not create or update Story Graph records until **I reviewed this candidate
    and want to import it.** and **Confirm and Import Project** are submitted.
@@ -116,10 +138,24 @@ The confirmation token cannot be used by another user, and the overwrite choice
 cannot be changed between preview and commit. Confirmation revalidates before
 writing. Cancel discards the pending preview but not the uploaded source.
 
+Decomposition runs synchronously while the admin or REST preview request is
+open. Parts and their optional repairs are processed in order, so a constrained
+model can require many sequential provider calls. Long previews are therefore
+subject to the selected provider's latency as well as PHP, web-server, and
+reverse-proxy request timeouts. A timeout does not confirm or commit a Story
+Graph import; the retained source can be retried with a smaller file, a faster
+model, or a larger-context Connection.
+
 LLM decomposition is a structured first draft, not a claim of perfect literary
 interpretation. The administrator is responsible for checking titles,
 characters, locations, Scene boundaries, dialogue, Shot suggestions,
 relationships, and omissions before confirmation.
+
+The decomposition instructions tell the model to ignore publishing metadata,
+tables of contents, scan/OCR notices, legal boilerplate, and other front or back
+matter where the extracted narrative provides enough evidence to distinguish
+it. Extraction and model judgment are best effort, so the administrator should
+still verify that paratext did not become Story Graph content.
 
 ## Source retention and privacy
 
@@ -138,11 +174,14 @@ operator's network; a hosted Connection sends it to that provider. Operators
 must evaluate the provider's privacy, retention, copyright, and usage terms.
 
 The preview REST response includes the derived canonical candidate, filename,
-format, character count, model name, backend, model-pass and chunk counts, and
-token count. For a non-canonical source, it does not return the original
-extracted manuscript. It never returns endpoint configuration, a credential
-reference, or a credential. Successful preview/export payloads are marked
-`no-store`, and provider or credential failures are normalized.
+format, character count, model name, backend, model-pass and ordered-part
+counts, and token count. `attempts` counts model calls and the ordered-part
+count retains the `chunks` response key for compatibility; adaptive parent
+attempts are not additional final chunks. For a non-canonical source, it does
+not return the original extracted manuscript. It never returns endpoint
+configuration, a credential reference, or a credential. Successful
+preview/export payloads are marked `no-store`, and provider or credential
+failures are normalized.
 
 ## Canonical JSON contract
 
