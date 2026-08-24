@@ -27,6 +27,7 @@
 		<!-- wp:group {"style":{"spacing":{"blockGap":"18px"}},"className":"wg-header-actions","layout":{"type":"flex","flexWrap":"wrap","justifyContent":"right"}} -->
 		<div class="wp-block-group wg-header-actions">
 			<!-- wp:navigation {"textColor":"warm-ivory","overlayBackgroundColor":"dark-espresso","overlayTextColor":"warm-ivory","style":{"spacing":{"blockGap":"18px"},"typography":{"fontSize":"0.88rem"}},"layout":{"type":"flex","justifyContent":"right"},"ariaLabel":"<?php echo esc_attr_x( 'World Graph Studio sections', 'Header navigation label.', 'worldgraph-child' ); ?>"} -->
+				<!-- wp:navigation-link {"label":"<?php echo esc_html_x( 'Overview', 'Header navigation link.', 'worldgraph-child' ); ?>","url":"<?php echo esc_url( home_url( '/overview/' ) ); ?>","kind":"custom"} /-->
 				<!-- wp:navigation-link {"label":"<?php echo esc_html_x( 'Story Graph', 'Header navigation link.', 'worldgraph-child' ); ?>","url":"<?php echo esc_url( home_url( '/#story-graph' ) ); ?>","kind":"custom"} /-->
 				<!-- wp:navigation-link {"label":"<?php echo esc_html_x( 'Capabilities', 'Header navigation link.', 'worldgraph-child' ); ?>","url":"<?php echo esc_url( home_url( '/#capabilities' ) ); ?>","kind":"custom"} /-->
 				<!-- wp:navigation-link {"label":"<?php echo esc_html_x( 'Integrations', 'Header navigation link.', 'worldgraph-child' ); ?>","url":"<?php echo esc_url( home_url( '/#integrations' ) ); ?>","kind":"custom"} /-->

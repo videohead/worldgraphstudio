@@ -191,5 +191,14 @@
 			"name": "footer",
 			"title": "Site Footer"
 		}
+	],
+	"customTemplates": [
+		{
+			"name": "page-overview",
+			"title": "Overview",
+			"postTypes": [
+				"page"
+			]
+		}
 	]
 }
