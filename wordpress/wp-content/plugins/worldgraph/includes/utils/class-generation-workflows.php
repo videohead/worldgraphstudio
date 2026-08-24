@@ -2525,7 +2525,7 @@ class Generation_Workflows {
 		$required    = array_intersect( Generation_Modality::required_inputs( $modality ), Generation_Modality::MEDIA_SLOTS );
 		$references  = is_array( $task['input_refs'] ?? null ) ? $task['input_refs'] : [];
 		$bindings    = Template_Bindings::resolve( $template_id, absint( $task['source_id'] ?? 0 ) );
-		$inputs      = [];
+		$inputs      = array_map( 'strval', array_intersect_key( $bindings, array_flip( $media_slots ) ) );
 
 		foreach ( $media_slots as $slot ) {
 			$reference = is_array( $references[ $slot ] ?? null ) ? $references[ $slot ] : [];

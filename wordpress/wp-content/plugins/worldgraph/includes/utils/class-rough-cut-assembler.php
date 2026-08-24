@@ -1115,8 +1115,7 @@ class Rough_Cut_Assembler {
 		}
 		foreach ( array_values( array_unique( array_filter( array_map( 'absint', $candidates ) ) ) ) as $attachment_id ) {
 			$source = absint( get_post_meta( $attachment_id, '_worldgraph_gen_source_post_id', true ) ?: get_post_meta( $attachment_id, '_worldgraph_generated_from', true ) );
-			$job    = absint( get_post_meta( $attachment_id, '_worldgraph_gen_job_id', true ) ?: ( $asset_id ? get_post_meta( $asset_id, '_worldgraph_gen_job_id', true ) : 0 ) );
-			if ( ! $job || ( $source && $source !== $sound_id ) ) {
+			if ( $source && ! in_array( $source, array_filter( [ $sound_id, $asset_id ] ), true ) ) {
 				continue;
 			}
 			$file = self::attachment_file( $attachment_id, 'audio' );

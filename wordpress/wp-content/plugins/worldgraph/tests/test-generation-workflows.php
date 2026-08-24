@@ -22,10 +22,32 @@ if ( ! function_exists( 'sanitize_key' ) ) {
 	}
 }
 
+if ( ! function_exists( 'sanitize_text_field' ) ) {
+	function sanitize_text_field( $value ): string {
+		return trim( strip_tags( (string) $value ) );
+	}
+}
+
+if ( ! function_exists( 'absint' ) ) {
+	function absint( $value ): int {
+		return abs( (int) $value );
+	}
+}
+
+require_once dirname( __DIR__ ) . '/includes/utils/generation-modality.php';
 require_once dirname( __DIR__ ) . '/includes/utils/class-generation-workflows.php';
 
 /** Representative workflow and metabox contract tests. */
 class Test_Generation_Workflows extends TestCase {
+
+	/** Read one production method without coupling assertions to unrelated code. */
+	private function method_source( string $method ): string {
+		$reflection = new ReflectionMethod( Generation_Workflows::class, $method );
+		$lines      = file( $reflection->getFileName() );
+
+		$this->assertIsArray( $lines );
+		return implode( '', array_slice( $lines, $reflection->getStartLine() - 1, $reflection->getEndLine() - $reflection->getStartLine() + 1 ) );
+	}
 
 	/** Default recipes must retain the promised image/video output counts. */
 	public function test_default_workflow_output_counts(): void {
@@ -95,6 +117,145 @@ class Test_Generation_Workflows extends TestCase {
 		$this->assertStringContainsString( "'subtitle_fallback' => true", $workflow );
 		$this->assertStringContainsString( "'preferred_modalities'", $workflow );
 		$this->assertStringContainsString( "'generation_required'", $workflow );
+	}
+
+	/** Demonstration retries are isolated by batch kind and freeze the coordinator contract. */
+	public function test_demonstration_idempotency_and_frozen_task_contract(): void {
+		$reflection  = new ReflectionClass( Generation_Workflows::class );
+		$idempotency = $reflection->getMethod( 'idempotency_option_name' );
+		$idempotency->setAccessible( true );
+		$representative = $idempotency->invoke( null, 42, 7, 'same-request', Generation_Workflows::REPRESENTATIVE_BATCH );
+		$demonstration  = $idempotency->invoke( null, 42, 7, 'same-request', Generation_Workflows::DEMONSTRATION_BATCH );
+
+		$this->assertNotSame( $representative, $demonstration );
+		$this->assertSame( $demonstration, $idempotency->invoke( null, 42, 7, 'same-request', Generation_Workflows::DEMONSTRATION_BATCH ) );
+
+		$freeze = $reflection->getMethod( 'freeze_task' );
+		$freeze->setAccessible( true );
+		$frozen = $freeze->invoke( null, [
+			'task_key'             => 'Shot 9 Video!',
+			'source_id'            => -91,
+			'source_type'          => 'worldgraph_shot',
+			'source_title'         => '<b>Closing shot</b>',
+			'workflow_id'          => 'shot-video',
+			'intent'               => 'demonstration-shot-video',
+			'label'                => 'Shot video',
+			'type'                 => 'video',
+			'phase'                => 'video',
+			'required'             => false,
+			'generation_required'  => true,
+			'prompt'               => 'Camera tracks forward.',
+			'dependencies'         => [ 'Character Ref', 'Character Ref', '' ],
+			'preferred_modalities' => [ 'text_image_to_video', 'video_to_video', 'text_image_to_video' ],
+			'input_refs'           => [
+				'image'      => [ 'task_key' => 'Character Ref', 'fallback_task_key' => 'Shot Still' ],
+				'end_frame'  => 'Next Still',
+				'not_a_slot' => 'discard-me',
+			],
+		], 3 );
+
+		$this->assertSame( 3, $frozen['step'] );
+		$this->assertSame( 'shot9video', $frozen['task_key'] );
+		$this->assertSame( 91, $frozen['source_id'] );
+		$this->assertFalse( $frozen['required'] );
+		$this->assertTrue( $frozen['generation_required'] );
+		$this->assertSame( [ 'characterref' ], $frozen['dependencies'] );
+		$this->assertSame( [ 'text_image_to_video', 'video_to_video' ], $frozen['preferred_modalities'] );
+		$this->assertSame( [ 'task_key' => 'characterref', 'fallback_task_key' => 'shotstill' ], $frozen['input_refs']['image'] );
+		$this->assertSame( [ 'task_key' => 'nextstill' ], $frozen['input_refs']['end_frame'] );
+		$this->assertArrayNotHasKey( 'not_a_slot', $frozen['input_refs'] );
+		$this->assertSame( hash( 'sha256', 'Camera tracks forward.' ), $frozen['prompt_hash'] );
+
+		$queue = $this->method_source( 'queue_batch' );
+		$this->assertStringContainsString( "'scope'             => \$scope", $queue );
+		$this->assertStringContainsString( 'batch_for_idempotency_key( $post_id, $requester_id, $idempotency_key, $batch_kind )', $queue );
+		$this->assertStringContainsString( 'reserve_idempotency_key( $post_id, $requester_id, $idempotency_key, $request_hash, $batch_kind )', $queue );
+		$this->assertStringContainsString( '$meta[ self::ASSEMBLY_PLAN_META ] = (array) ( $plan[\'assembly\'] ?? [] );', $queue );
+	}
+
+	/** Media references wait for siblings, verify provenance, and become immutable inputs. */
+	public function test_demonstration_dependency_resolution_and_input_freeze_contract(): void {
+		$resolve   = $this->method_source( 'resolve_demonstration_inputs' );
+		$reference = $this->method_source( 'demonstration_reference_state' );
+		$persist   = $this->method_source( 'persist_resolved_inputs' );
+
+		$this->assertStringContainsString( 'Generation_Modality::media_inputs( $modality )', $resolve );
+		$this->assertStringContainsString( 'Generation_Modality::required_inputs( $modality )', $resolve );
+		$this->assertStringContainsString( 'demonstration_reference_state( $batch_id, $task_key, $slot, $plan )', $resolve );
+		$this->assertStringContainsString( 'demonstration_reference_state( $batch_id, $fallback, $slot, $plan )', $resolve );
+		$this->assertStringContainsString( "return [ 'status' => 'pending', 'inputs' => [] ];", $resolve );
+		$this->assertStringContainsString( '$inputs[ $slot ] = (string) $state[\'attachment_id\'];', $resolve );
+		$this->assertStringContainsString( '$batch_id === $attachment_batch', $reference );
+		$this->assertStringContainsString( '$job_id === $attachment_job', $reference );
+		$this->assertStringContainsString( 'get_post_mime_type( $attachment_id )', $reference );
+		$this->assertStringContainsString( "array_key_exists( 'resolved_inputs', \$plan[ \$step ] )", $persist );
+		$this->assertStringContainsString( 'worldgraph_generation_input_conflict', $persist );
+		$this->assertStringContainsString( '$plan[ $step ][\'resolved_inputs\'] = $inputs;', $persist );
+		$this->assertStringContainsString( 'self::BATCH_PLAN_META, wp_slash( $plan )', $persist );
+	}
+
+	/** Optional or already-linked enhancements produce terminal placeholders. */
+	public function test_demonstration_optional_placeholder_and_waiting_contract(): void {
+		$materialize = $this->method_source( 'materialize_demonstration_batch' );
+		$placeholder = $this->method_source( 'create_placeholder_child' );
+
+		$this->assertStringContainsString( "empty( \$task['generation_required'] )", $materialize );
+		$this->assertStringContainsString( "empty( \$task['required'] ) ? 'skipped' : 'failed'", $materialize );
+		$this->assertStringContainsString( "'pending' === ( \$resolved['status'] ?? '' )", $materialize );
+		$this->assertStringContainsString( "'inputs'                => \$inputs", $materialize );
+		$this->assertStringContainsString( "'initial_status'        => 'queued'", $materialize );
+		$this->assertStringContainsString( "'batch_waiting_assembly', 'batch_materializing'", $materialize );
+		$this->assertStringContainsString( "[ 'skipped', 'failed', 'cancelled' ]", $placeholder );
+		$this->assertStringContainsString( "'_worldgraph_gen_task_key'", $placeholder );
+		$this->assertStringContainsString( "update_post_meta( (int) \$job_id, '_worldgraph_gen_status', \$status )", $placeholder );
+	}
+
+	/** Assembly is claimed atomically and records both terminal outcomes. */
+	public function test_demonstration_assembly_state_machine_contract(): void {
+		$process  = $this->method_source( 'process_batches' );
+		$assemble = $this->method_source( 'maybe_assemble_demonstration' );
+
+		$this->assertStringContainsString( "[ 'batch_waiting_assembly', 'batch_assembling' ]", $process );
+		$this->assertStringContainsString( 'self::maybe_assemble_demonstration( (int) $batch_id, $lock_token )', $process );
+		$this->assertStringContainsString( 'self::is_cancel_requested( $batch_id )', $assemble );
+		$this->assertStringContainsString( "'_worldgraph_gen_status', 'value' => self::ACTIVE_JOB_STATES", $assemble );
+		$this->assertStringContainsString( "'batch_assembling', 'batch_waiting_assembly'", $assemble );
+		$this->assertStringContainsString( 'Rough_Cut_Assembler::assemble( $batch_id )', $assemble );
+		$this->assertStringContainsString( "'status' => 'failed'", $assemble );
+		$this->assertStringContainsString( "'batch_assembly_failed', 'batch_assembling'", $assemble );
+		$this->assertStringContainsString( '$record[\'status\'] = \'completed\';', $assemble );
+		$this->assertStringContainsString( "'batch_complete', 'batch_assembling'", $assemble );
+	}
+
+	/** Batch summaries expose demonstration progress, skipped work, and assembly. */
+	public function test_demonstration_batch_status_and_latest_lookup_contract(): void {
+		$status = $this->method_source( 'batch_status' );
+		$latest = $this->method_source( 'latest_batch' );
+
+		$this->assertStringContainsString( 'in_array( $batch_kind, self::supported_batch_kinds(), true )', $status );
+		$this->assertStringContainsString( '$skipped                 = (int) ( $counts[\'skipped\'] ?? 0 );', $status );
+		$this->assertStringContainsString( '$terminal                = $completed + $failed + $skipped + $cancelled;', $status );
+		$this->assertStringContainsString( "'batch_kind'      => \$batch_kind", $status );
+		$this->assertStringContainsString( "'skipped'         => \$skipped", $status );
+		$this->assertStringContainsString( "'assembly'        => \$assembly", $status );
+		$this->assertStringContainsString( '$progress = min( 99, $progress );', $status );
+		$this->assertStringContainsString( 'self::batch_kind_for_scope( $scope )', $latest );
+		$this->assertStringContainsString( "[ 'key' => self::BATCH_SCOPE_META, 'value' => \$scope ]", $latest );
+	}
+
+	/** The REST boundary forwards audio settings and reports non-generated inputs. */
+	public function test_demonstration_controller_audio_and_generation_required_contract(): void {
+		$controller = file_get_contents( dirname( __DIR__ ) . '/includes/rest-api/asset-generation-controller.php' );
+
+		$this->assertNotFalse( $controller );
+		$this->assertStringContainsString( "'audio_template_id' => absint( \$request->get_param( 'audio_template_id' ) )", $controller );
+		$this->assertStringContainsString( "'audio_run_values'  => (array) \$request->get_param( 'audio_run_values' )", $controller );
+		$this->assertStringContainsString( "Generation_Workflows::common_templates( (array) \$plan['tasks'], 'audio' )", $controller );
+		$this->assertStringContainsString( "\$defaults        = [ 'image' => [], 'video' => [], 'audio' => [] ];", $controller );
+		$this->assertStringContainsString( "array_key_exists( 'generation_required', \$task )", $controller );
+		$this->assertStringContainsString( "'generation_required' => \$generation_required", $controller );
+		$this->assertStringContainsString( "'audio_templates'      => \$audio_templates", $controller );
+		$this->assertStringContainsString( "Generation_Workflows::latest_batch( \$post_id, 'demonstration' )", $controller );
 	}
 
 	/** Direct REST generation must route the selected output, not hard-code image. */
