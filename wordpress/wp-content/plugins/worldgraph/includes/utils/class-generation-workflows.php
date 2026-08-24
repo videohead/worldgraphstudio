@@ -42,6 +42,8 @@ class Generation_Workflows {
 	const MATERIALIZE_PER_TICK  = 20;
 	const ACTIVATE_PER_TICK     = 50;
 	const COORDINATOR_LOCK      = 'worldgraph_generation_workflow_coordinator_lock';
+	const ASSEMBLY_HOOK         = 'worldgraph_process_rough_cut_assembly';
+	const ASSEMBLY_LOCK         = 'worldgraph_rough_cut_assembly_lock';
 	const COORDINATOR_LOCK_TTL  = 300;
 	const IDEMPOTENCY_LOCK_TTL  = 1800;
 
@@ -110,6 +112,7 @@ class Generation_Workflows {
 	/** Register the bounded parent-batch coordinator before the job worker. */
 	public static function init(): void {
 		add_action( Generation_Batch::HOOK, [ __CLASS__, 'process_batches' ], 5 );
+		add_action( self::ASSEMBLY_HOOK, [ __CLASS__, 'process_assembly_queue' ] );
 	}
 
 	/** Supported planning scopes accepted by plan(). */
@@ -692,29 +695,32 @@ class Generation_Workflows {
 			}
 		}
 
-		$recurring = array_filter(
-			$character_usage['occurrences'],
-			static fn( array $occurrence ): bool => count( $occurrence['segment_keys'] ) > 1
-		);
+		$story_characters = $character_usage['occurrences'];
 		uasort(
-			$recurring,
+			$story_characters,
 			static function ( array $left, array $right ): int {
+				$left_recurring  = count( $left['segment_keys'] ) > 1 ? 0 : 1;
+				$right_recurring = count( $right['segment_keys'] ) > 1 ? 0 : 1;
+				if ( $left_recurring !== $right_recurring ) {
+					return $left_recurring <=> $right_recurring;
+				}
 				$first = (int) $left['first_order'] <=> (int) $right['first_order'];
 				return 0 !== $first ? $first : (int) $left['character_id'] <=> (int) $right['character_id'];
 			}
 		);
-		foreach ( $recurring as $character_id => $occurrence ) {
+		foreach ( $story_characters as $character_id => $occurrence ) {
 			$character = $character_usage['characters'][ $character_id ] ?? null;
 			if ( ! $character instanceof \WP_Post ) {
 				continue;
 			}
-			$task_key = 'demo-character-' . $character->ID . '-reference';
-			$tasks[]  = self::demonstration_task(
+			$is_recurring = count( $occurrence['segment_keys'] ) > 1;
+			$task_key     = 'demo-character-' . $character->ID . '-reference';
+			$tasks[]      = self::demonstration_task(
 				$task_key,
 				$character,
 				'character-look-set',
 				'character-full-view',
-				__( 'Recurring character reference', 'worldgraph' ),
+				$is_recurring ? __( 'Recurring character reference', 'worldgraph' ) : __( 'Character reference still', 'worldgraph' ),
 				'image',
 				'references',
 				true,
@@ -1886,6 +1892,7 @@ class Generation_Workflows {
 
 		$resolved_tasks = [];
 		$missing        = [];
+		$invalid_explicit = [];
 		foreach ( $plan['tasks'] as $task ) {
 			if ( ! user_can( $requester_id, 'edit_post', (int) $task['source_id'] ) ) {
 				return new WP_Error(
@@ -1903,6 +1910,16 @@ class Generation_Workflows {
 			$explicit            = absint( $args[ (string) $task['type'] . '_template_id' ] ?? 0 );
 			$template_id         = $generation_required ? self::resolve_template_id( $task, $explicit ) : 0;
 			if ( ! $template_id ) {
+				if ( $generation_required && $explicit ) {
+					$invalid_explicit[] = [
+						'template_id'  => $explicit,
+						'source_id'    => (int) $task['source_id'],
+						'source_title' => (string) $task['source_title'],
+						'intent'       => (string) $task['intent'],
+						'type'         => (string) $task['type'],
+					];
+					continue;
+				}
 				if ( $generation_required && $required ) {
 					$missing[] = [
 						'source_id'    => (int) $task['source_id'],
@@ -1937,6 +1954,13 @@ class Generation_Workflows {
 			$resolved_tasks[]    = $task;
 		}
 
+		if ( ! empty( $invalid_explicit ) ) {
+			return new WP_Error(
+				'worldgraph_generation_template_incompatible',
+				__( 'A selected Template cannot run every matching task in this frozen plan. Refresh the plan and choose a common Template, or use each output’s configured Template.', 'worldgraph' ),
+				[ 'status' => 409, 'incompatible' => $invalid_explicit ]
+			);
+		}
 		if ( ! empty( $missing ) ) {
 			return new WP_Error(
 				'worldgraph_generation_template_missing',
@@ -2210,7 +2234,7 @@ class Generation_Workflows {
 			'fields'         => 'ids',
 			'meta_query'     => [
 				[ 'key' => self::BATCH_KIND_META, 'value' => self::supported_batch_kinds(), 'compare' => 'IN' ],
-				[ 'key' => '_worldgraph_gen_status', 'value' => [ 'batch_materializing', 'batch_activating', 'batch_waiting_assembly', 'batch_assembling' ], 'compare' => 'IN' ],
+				[ 'key' => '_worldgraph_gen_status', 'value' => [ 'batch_materializing', 'batch_activating', 'batch_waiting_assembly' ], 'compare' => 'IN' ],
 				[ 'key' => '_worldgraph_gen_cancel_requested', 'compare' => 'NOT EXISTS' ],
 			],
 		] );
@@ -2230,7 +2254,7 @@ class Generation_Workflows {
 					}
 				} elseif ( self::REPRESENTATIVE_BATCH === $kind && 'batch_activating' === $status ) {
 					self::activate_batch( (int) $batch_id, $lock_token );
-				} elseif ( self::DEMONSTRATION_BATCH === $kind && in_array( $status, [ 'batch_waiting_assembly', 'batch_assembling' ], true ) ) {
+				} elseif ( self::DEMONSTRATION_BATCH === $kind && 'batch_waiting_assembly' === $status ) {
 					self::maybe_assemble_demonstration( (int) $batch_id, $lock_token );
 				}
 			}
@@ -2240,6 +2264,9 @@ class Generation_Workflows {
 
 		if ( self::has_pending_batches() ) {
 			Generation_Batch::schedule();
+		}
+		if ( self::has_pending_assemblies() ) {
+			self::schedule_assembly();
 		}
 	}
 
@@ -2677,16 +2704,6 @@ class Generation_Workflows {
 			return;
 		}
 		$status = (string) get_post_meta( $batch_id, '_worldgraph_gen_status', true );
-		if ( 'batch_assembling' === $status ) {
-			$started = absint( get_post_meta( $batch_id, '_worldgraph_gen_assembly_started_at', true ) );
-			if ( ! $started || $started + Rough_Cut_Assembler::PROCESS_TIMEOUT + self::COORDINATOR_LOCK_TTL >= time() ) {
-				return;
-			}
-			if ( false === update_post_meta( $batch_id, '_worldgraph_gen_status', 'batch_waiting_assembly', 'batch_assembling' ) ) {
-				return;
-			}
-			$status = 'batch_waiting_assembly';
-		}
 		if ( 'batch_waiting_assembly' !== $status || ! self::refresh_coordinator_lock( $lock_token ) ) {
 			return;
 		}
@@ -2708,8 +2725,164 @@ class Generation_Workflows {
 		if ( false === update_post_meta( $batch_id, '_worldgraph_gen_status', 'batch_assembling', 'batch_waiting_assembly' ) ) {
 			return;
 		}
-		update_post_meta( $batch_id, '_worldgraph_gen_assembly_started_at', time() );
-		$result = Rough_Cut_Assembler::assemble( $batch_id );
+		$started = time();
+		update_post_meta( $batch_id, '_worldgraph_gen_assembly_started_at', $started );
+		update_post_meta( $batch_id, '_worldgraph_gen_assembly_heartbeat', $started );
+		if ( ! self::schedule_assembly() ) {
+			$error = new WP_Error( 'worldgraph_rough_cut_schedule_failed', __( 'WordPress could not schedule the rough-cut assembly worker.', 'worldgraph' ) );
+			self::finish_assembly( $batch_id, $error );
+		}
+	}
+
+	/** Run the independently scheduled rough-cut worker without blocking provider polling. */
+	public static function process_assembly_queue(): void {
+		$lock_token = self::acquire_named_lock( self::ASSEMBLY_LOCK, self::COORDINATOR_LOCK_TTL );
+		if ( '' === $lock_token ) {
+			self::schedule_assembly( 60 );
+			return;
+		}
+
+		try {
+			if ( self::cleanup_cancelled_assembly_state() ) {
+				return;
+			}
+			$batches = get_posts( [
+				'post_type'      => 'worldgraph_gen',
+				'post_status'    => 'any',
+				'posts_per_page' => 1,
+				'fields'         => 'ids',
+				'orderby'        => 'ID',
+				'order'          => 'ASC',
+				'meta_query'     => [
+					[ 'key' => self::BATCH_KIND_META, 'value' => self::DEMONSTRATION_BATCH ],
+					[ 'key' => '_worldgraph_gen_status', 'value' => 'batch_assembling' ],
+					[ 'key' => '_worldgraph_gen_cancel_requested', 'compare' => 'NOT EXISTS' ],
+				],
+			] );
+			if ( empty( $batches ) ) {
+				return;
+			}
+
+			$batch_id    = (int) $batches[0];
+			$worker      = (string) get_post_meta( $batch_id, '_worldgraph_gen_assembly_worker_token', true );
+			$heartbeat   = absint( get_post_meta( $batch_id, '_worldgraph_gen_assembly_heartbeat', true ) );
+			$started     = absint( get_post_meta( $batch_id, '_worldgraph_gen_assembly_started_at', true ) );
+			$liveness    = $heartbeat ?: $started;
+			$stale_after = 2 * Rough_Cut_Assembler::PROCESS_TIMEOUT + self::COORDINATOR_LOCK_TTL;
+			if ( '' !== $worker && $liveness && $liveness + $stale_after >= time() ) {
+				self::schedule_assembly( 60 );
+				return;
+			}
+
+			update_post_meta( $batch_id, '_worldgraph_gen_assembly_worker_token', $lock_token );
+			if ( ! hash_equals( $lock_token, (string) get_post_meta( $batch_id, '_worldgraph_gen_assembly_worker_token', true ) ) ) {
+				self::schedule_assembly( 60 );
+				return;
+			}
+			update_post_meta( $batch_id, '_worldgraph_gen_assembly_heartbeat', time() );
+			update_post_meta( $batch_id, '_worldgraph_gen_assembly_attempts', absint( get_post_meta( $batch_id, '_worldgraph_gen_assembly_attempts', true ) ) + 1 );
+			$result = method_exists( Rough_Cut_Assembler::class, 'advance' )
+				? Rough_Cut_Assembler::advance( $batch_id )
+				: Rough_Cut_Assembler::assemble( $batch_id );
+			if ( ! hash_equals( $lock_token, (string) get_post_meta( $batch_id, '_worldgraph_gen_assembly_worker_token', true ) ) ) {
+				return;
+			}
+			if ( is_array( $result ) && 'pending' === ( $result['status'] ?? '' ) ) {
+				update_post_meta( $batch_id, '_worldgraph_gen_assembly_progress', wp_slash( $result ) );
+				delete_post_meta( $batch_id, '_worldgraph_gen_assembly_worker_token' );
+				delete_post_meta( $batch_id, '_worldgraph_gen_assembly_heartbeat' );
+				if ( ! self::schedule_assembly() ) {
+					self::finish_assembly( $batch_id, new WP_Error( 'worldgraph_rough_cut_schedule_failed', __( 'WordPress could not reschedule the incomplete rough-cut assembly.', 'worldgraph' ) ) );
+				}
+				return;
+			}
+			self::finish_assembly( $batch_id, $result );
+		} finally {
+			self::release_named_lock( self::ASSEMBLY_LOCK, $lock_token );
+		}
+
+		if ( self::has_pending_assemblies() ) {
+			self::schedule_assembly();
+		}
+	}
+
+	/**
+	 * Remove a cancelled between-tick assembly state once no live worker owns it.
+	 *
+	 * A running FFmpeg process polls the durable cancellation marker and performs
+	 * its own cleanup. This recovery path handles cancellation between ticks and
+	 * a worker that died before observing the marker.
+	 */
+	private static function cleanup_cancelled_assembly_state(): bool {
+		$batches = get_posts( [
+			'post_type'      => 'worldgraph_gen',
+			'post_status'    => 'any',
+			'posts_per_page' => 1,
+			'fields'         => 'ids',
+			'orderby'        => 'ID',
+			'order'          => 'ASC',
+			'meta_query'     => [
+				[ 'key' => self::BATCH_KIND_META, 'value' => self::DEMONSTRATION_BATCH ],
+				[ 'key' => '_worldgraph_gen_status', 'value' => 'batch_cancelling' ],
+				[ 'key' => '_worldgraph_gen_cancel_requested', 'compare' => 'EXISTS' ],
+				[ 'key' => Rough_Cut_Assembler::STATE_META, 'compare' => 'EXISTS' ],
+			],
+		] );
+		if ( empty( $batches ) ) {
+			return false;
+		}
+
+		$batch_id    = (int) $batches[0];
+		$worker      = (string) get_post_meta( $batch_id, '_worldgraph_gen_assembly_worker_token', true );
+		$heartbeat   = absint( get_post_meta( $batch_id, '_worldgraph_gen_assembly_heartbeat', true ) );
+		$started     = absint( get_post_meta( $batch_id, '_worldgraph_gen_assembly_started_at', true ) );
+		$liveness    = $heartbeat ?: $started;
+		$stale_after = 2 * Rough_Cut_Assembler::PROCESS_TIMEOUT + self::COORDINATOR_LOCK_TTL;
+		if ( '' !== $worker && ( ! $liveness || $liveness + $stale_after >= time() ) ) {
+			self::schedule_assembly( 60 );
+			return true;
+		}
+
+		Rough_Cut_Assembler::cancel( $batch_id );
+		delete_post_meta( $batch_id, '_worldgraph_gen_assembly_worker_token' );
+		delete_post_meta( $batch_id, '_worldgraph_gen_assembly_heartbeat' );
+		delete_post_meta( $batch_id, '_worldgraph_gen_assembly_progress' );
+		if ( self::has_cancelled_assembly_state() ) {
+			self::schedule_assembly();
+		}
+
+		return false;
+	}
+
+	/** Whether another cancelled demonstration still has durable temp state. */
+	private static function has_cancelled_assembly_state(): bool {
+		$batches = get_posts( [
+			'post_type'      => 'worldgraph_gen',
+			'post_status'    => 'any',
+			'posts_per_page' => 1,
+			'fields'         => 'ids',
+			'meta_query'     => [
+				[ 'key' => self::BATCH_KIND_META, 'value' => self::DEMONSTRATION_BATCH ],
+				[ 'key' => '_worldgraph_gen_status', 'value' => 'batch_cancelling' ],
+				[ 'key' => '_worldgraph_gen_cancel_requested', 'compare' => 'EXISTS' ],
+				[ 'key' => Rough_Cut_Assembler::STATE_META, 'compare' => 'EXISTS' ],
+			],
+		] );
+
+		return ! empty( $batches );
+	}
+
+	/** Publish a verified terminal assembly result, unless cancellation won first. */
+	private static function finish_assembly( int $batch_id, $result ): void {
+		delete_post_meta( $batch_id, '_worldgraph_gen_assembly_worker_token' );
+		delete_post_meta( $batch_id, '_worldgraph_gen_assembly_heartbeat' );
+		delete_post_meta( $batch_id, '_worldgraph_gen_assembly_progress' );
+		if ( self::is_cancel_requested( $batch_id ) ) {
+			return;
+		}
+		if ( ! is_wp_error( $result ) ) {
+			$result = self::verified_assembly_result( $batch_id, $result );
+		}
 		if ( is_wp_error( $result ) ) {
 			$data   = $result->get_error_data();
 			$record = [
@@ -2718,20 +2891,142 @@ class Generation_Workflows {
 				'error'  => sanitize_text_field( $result->get_error_message() ),
 				'data'   => is_array( $data ) ? $data : [],
 			];
-			update_post_meta( $batch_id, self::ASSEMBLY_META, wp_slash( $record ) );
+			if ( ! self::store_assembly_record( $batch_id, $record ) ) {
+				$record['error'] = __( 'WordPress could not persist the rough-cut assembly result.', 'worldgraph' );
+			}
+			if ( self::is_cancel_requested( $batch_id ) ) {
+				delete_post_meta( $batch_id, self::ASSEMBLY_META );
+				return;
+			}
 			update_post_meta( $batch_id, '_worldgraph_gen_error', $record['error'] );
-			if ( ! self::is_cancel_requested( $batch_id ) ) {
-				update_post_meta( $batch_id, '_worldgraph_gen_status', 'batch_assembly_failed', 'batch_assembling' );
+			$transitioned = update_post_meta( $batch_id, '_worldgraph_gen_status', 'batch_assembly_failed', 'batch_assembling' );
+			if ( false === $transitioned && self::is_cancel_requested( $batch_id ) ) {
+				delete_post_meta( $batch_id, self::ASSEMBLY_META );
+				delete_post_meta( $batch_id, '_worldgraph_gen_error' );
 			}
 			return;
 		}
 
 		$record           = (array) $result;
 		$record['status'] = 'completed';
-		update_post_meta( $batch_id, self::ASSEMBLY_META, wp_slash( $record ) );
-		if ( ! self::is_cancel_requested( $batch_id ) ) {
-			update_post_meta( $batch_id, '_worldgraph_gen_status', 'batch_complete', 'batch_assembling' );
+		if ( ! self::store_assembly_record( $batch_id, $record ) ) {
+			update_post_meta( $batch_id, '_worldgraph_gen_error', __( 'WordPress could not persist the completed rough-cut result.', 'worldgraph' ) );
+			update_post_meta( $batch_id, '_worldgraph_gen_status', 'batch_assembly_failed', 'batch_assembling' );
+			return;
 		}
+		if ( self::is_cancel_requested( $batch_id ) ) {
+			delete_post_meta( $batch_id, self::ASSEMBLY_META );
+			return;
+		}
+		$transitioned = update_post_meta( $batch_id, '_worldgraph_gen_status', 'batch_complete', 'batch_assembling' );
+		if ( false === $transitioned && self::is_cancel_requested( $batch_id ) ) {
+			delete_post_meta( $batch_id, self::ASSEMBLY_META );
+		}
+	}
+
+	/** Accept completion only for the batch's durable rough-cut video attachment. */
+	private static function verified_assembly_result( int $batch_id, $result ) {
+		if ( ! is_array( $result ) || ( isset( $result['status'] ) && 'completed' !== sanitize_key( (string) $result['status'] ) ) ) {
+			return new WP_Error( 'worldgraph_rough_cut_result_invalid', __( 'The rough-cut worker returned an invalid completion result.', 'worldgraph' ) );
+		}
+
+		$attachment_id    = absint( $result['attachment_id'] ?? 0 );
+		$batch             = get_post( $batch_id );
+		$attachment        = $attachment_id ? get_post( $attachment_id ) : null;
+		$mime              = strtolower( (string) get_post_mime_type( $attachment_id ) );
+		$attachment_batch = absint( get_post_meta( $attachment_id, self::BATCH_ID_META, true ) );
+		$is_rough_cut      = 1 === absint( get_post_meta( $attachment_id, '_worldgraph_rough_cut', true ) );
+		if ( ! $batch instanceof \WP_Post
+			|| ! $attachment instanceof \WP_Post
+			|| 'attachment' !== $attachment->post_type
+			|| ! str_starts_with( $mime, 'video/' )
+			|| $batch_id !== $attachment_batch
+			|| ! $is_rough_cut
+			|| (int) $batch->post_parent !== (int) $attachment->post_parent ) {
+			return new WP_Error( 'worldgraph_rough_cut_result_invalid', __( 'The rough-cut worker did not produce a verified video attachment for this batch.', 'worldgraph' ) );
+		}
+
+		$result['batch_id']      = $batch_id;
+		$result['attachment_id'] = $attachment_id;
+		$result['url']           = (string) wp_get_attachment_url( $attachment_id );
+		return $result;
+	}
+
+	/** Store and verify the final assembly DTO before publishing a terminal root state. */
+	private static function store_assembly_record( int $batch_id, array $record ): bool {
+		update_post_meta( $batch_id, self::ASSEMBLY_META, wp_slash( $record ) );
+
+		return $record === get_post_meta( $batch_id, self::ASSEMBLY_META, true );
+	}
+
+	/** Ensure a separate rough-cut worker wake-up exists. */
+	private static function schedule_assembly( int $delay = 5 ): bool {
+		if ( ! wp_next_scheduled( self::ASSEMBLY_HOOK ) ) {
+			$scheduled = wp_schedule_single_event( time() + max( 1, $delay ), self::ASSEMBLY_HOOK );
+			if ( false === $scheduled && ! wp_next_scheduled( self::ASSEMBLY_HOOK ) ) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	/** Whether an independently claimed demonstration still needs assembly work. */
+	private static function has_pending_assemblies(): bool {
+		$batches = get_posts( [
+			'post_type'      => 'worldgraph_gen',
+			'post_status'    => 'any',
+			'posts_per_page' => 1,
+			'fields'         => 'ids',
+			'meta_query'     => [
+				[ 'key' => self::BATCH_KIND_META, 'value' => self::DEMONSTRATION_BATCH ],
+				[ 'key' => '_worldgraph_gen_status', 'value' => 'batch_assembling' ],
+				[ 'key' => '_worldgraph_gen_cancel_requested', 'compare' => 'NOT EXISTS' ],
+			],
+		] );
+
+		return ! empty( $batches );
+	}
+
+	/** Acquire an atomic option-backed lease for the separately scheduled assembler. */
+	private static function acquire_named_lock( string $option_name, int $ttl ): string {
+		global $wpdb;
+
+		$token = wp_generate_uuid4();
+		$value = [ 'token' => $token, 'expires' => time() + max( 60, $ttl ) ];
+		if ( add_option( $option_name, $value, '', false ) ) {
+			return $token;
+		}
+		$current = get_option( $option_name, [] );
+		if ( ! is_array( $current ) || absint( $current['expires'] ?? 0 ) >= time() ) {
+			return '';
+		}
+		$updated = $wpdb->update(
+			$wpdb->options,
+			[ 'option_value' => maybe_serialize( $value ) ],
+			[ 'option_name' => $option_name, 'option_value' => maybe_serialize( $current ) ],
+			[ '%s' ],
+			[ '%s', '%s' ]
+		);
+		wp_cache_delete( $option_name, 'options' );
+
+		return 1 === $updated ? $token : '';
+	}
+
+	/** Release only the named assembler lease owned by this worker. */
+	private static function release_named_lock( string $option_name, string $token ): void {
+		global $wpdb;
+
+		$current = get_option( $option_name, [] );
+		if ( ! is_array( $current ) || ! hash_equals( $token, (string) ( $current['token'] ?? '' ) ) ) {
+			return;
+		}
+		$wpdb->delete(
+			$wpdb->options,
+			[ 'option_name' => $option_name, 'option_value' => maybe_serialize( $current ) ],
+			[ '%s', '%s' ]
+		);
+		wp_cache_delete( $option_name, 'options' );
 	}
 
 	/** Promote a bounded number of staged jobs only after the full plan exists. */
@@ -2831,7 +3126,7 @@ class Generation_Workflows {
 			'fields'         => 'ids',
 			'meta_query'     => [
 				[ 'key' => self::BATCH_KIND_META, 'value' => self::supported_batch_kinds(), 'compare' => 'IN' ],
-				[ 'key' => '_worldgraph_gen_status', 'value' => [ 'batch_materializing', 'batch_activating', 'batch_waiting_assembly', 'batch_assembling' ], 'compare' => 'IN' ],
+				[ 'key' => '_worldgraph_gen_status', 'value' => [ 'batch_materializing', 'batch_activating', 'batch_waiting_assembly' ], 'compare' => 'IN' ],
 				[ 'key' => '_worldgraph_gen_cancel_requested', 'compare' => 'NOT EXISTS' ],
 			],
 		] );
@@ -2886,6 +3181,11 @@ class Generation_Workflows {
 		$pending_materialization = max( 0, $total - $materialized );
 		$root_status             = (string) get_post_meta( $batch_id, '_worldgraph_gen_status', true );
 		$cancel_requested        = '' !== (string) get_post_meta( $batch_id, '_worldgraph_gen_cancel_requested', true );
+		if ( ! $cancel_requested && 'batch_assembling' === $root_status ) {
+			self::schedule_assembly();
+		} elseif ( ! $cancel_requested && in_array( $root_status, [ 'batch_materializing', 'batch_activating', 'batch_waiting_assembly' ], true ) ) {
+			Generation_Batch::schedule();
+		}
 		$active_children         = array_sum( array_intersect_key( $counts, array_flip( self::ACTIVE_JOB_STATES ) ) );
 		$active                  = $active_children + ( ! $cancel_requested && in_array( $root_status, [ 'batch_materializing', 'batch_activating' ], true ) ? $pending_materialization : 0 );
 		$completed               = (int) ( $counts['completed'] ?? 0 );
@@ -2917,6 +3217,10 @@ class Generation_Workflows {
 		}
 		$assembly = get_post_meta( $batch_id, self::ASSEMBLY_META, true );
 		$assembly = is_array( $assembly ) ? $assembly : [];
+		if ( empty( $assembly ) && 'batch_assembling' === $root_status ) {
+			$progress_record = get_post_meta( $batch_id, '_worldgraph_gen_assembly_progress', true );
+			$assembly        = is_array( $progress_record ) ? $progress_record : [];
+		}
 		if ( ! empty( $assembly['attachment_id'] ) && empty( $assembly['url'] ) ) {
 			$assembly['url'] = (string) wp_get_attachment_url( absint( $assembly['attachment_id'] ) );
 		}
@@ -2991,6 +3295,16 @@ class Generation_Workflows {
 		// marker before and after every child transition.
 		update_post_meta( $batch_id, '_worldgraph_gen_cancel_requested', current_time( 'mysql' ) );
 		update_post_meta( $batch_id, '_worldgraph_gen_status', 'batch_cancelling' );
+		if ( self::DEMONSTRATION_BATCH === (string) get_post_meta( $batch_id, self::BATCH_KIND_META, true ) ) {
+			$assembly_worker = (string) get_post_meta( $batch_id, '_worldgraph_gen_assembly_worker_token', true );
+			if ( '' === $assembly_worker ) {
+				Rough_Cut_Assembler::cancel( $batch_id );
+				delete_post_meta( $batch_id, '_worldgraph_gen_assembly_heartbeat' );
+				delete_post_meta( $batch_id, '_worldgraph_gen_assembly_progress' );
+			} else {
+				self::schedule_assembly();
+			}
+		}
 
 		$stoppable = get_posts( [
 			'post_type'      => 'worldgraph_gen',

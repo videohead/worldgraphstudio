@@ -129,18 +129,16 @@ from the built-in advisor execution path.
 The canonical [Generation_Modality](../includes/utils/generation-modality.php)
 registry currently contains:
 
-- `text_to_image`;
-- `text_to_speech`;
-- `text_to_dialogue`;
-- `text_to_sound_effect`;
-- `text_to_music`;
-- `text_to_voice`; and
-- `text_to_lyrics`.
+- image: `text_to_image`, `image_to_image`, and `image_text_to_image`;
+- video: `text_to_video`, `text_image_to_video`, `video_to_video`, and
+  `video_with_audio`; and
+- audio/text: `text_to_speech`, `text_to_dialogue`,
+  `text_to_sound_effect`, `text_to_music`, `text_to_voice`, and
+  `text_to_lyrics`.
 
-The first is the built-in ComfyUI image path. The five audio shapes are
-provisioned by ElevenLabs, and Suno provisions music plus text-to-lyrics
-Templates. The media-import layer can store image, video, and audio results,
-but broader storage does not imply a registered direct generation modality.
+Adapters and Templates decide which registered shapes are executable for a
+specific Connection. The media-import layer stores validated image, video, and
+audio results; lyrics remain normalized text output.
 
 ### Connections and Templates
 
@@ -182,21 +180,35 @@ panel for the required nodes and checkpoint.
 
 The **World Graph Studio Assets** metabox:
 
-1. builds a prompt from the source Story Graph post;
-2. lists active image Templates whose bindings and Connections are available;
-3. queues the selected Template through the REST controller; and
-4. optionally sets the imported result as featured media and creates a linked
-   Asset.
+1. builds intent-specific prompts from the source Story Graph context;
+2. offers direct **Image** or **Video**, multi-output **Sequence**, and a
+   Project-only whole-story **Demonstration**;
+3. filters active Templates by output, preferred modality, available
+   Connection, bindings, and generated-reference slots;
+4. validates and freezes per-type Template/run-control selections before
+   queueing; and
+5. optionally sets imported images as featured media and creates linked Assets.
 
-This is a Template-first workflow. A Generation Intent registry and Generate
-Preferences screen are not part of the current release.
+The representative workflow/intent registry defines default output recipes,
+and Generate Preferences can select Templates by intent or output type.
+Demonstration planning adds character/location/Shot stills, optional generated
+Sound and Shot video tasks, dependency-aware image-to-video or first/last-frame
+inputs, and a frozen editorial assembly timeline.
 
 ### WP-Cron jobs
 
 [Generation_Batch](../includes/utils/generation-batch.php) owns the
 `worldgraph_process_generation_batch` hook. It locks concurrent runs, polls
 submitted work, submits queued work, and reschedules itself after 60 seconds
-while jobs remain.
+while jobs remain. `Generation_Workflows` shares that hook at an earlier
+priority to materialize dependency-aware parent batches before child polling.
+
+Representative-media and demonstration runs use durable parent
+`worldgraph_gen` records. Their batch kinds are `representative_media` and
+`demonstration_video`; children retain the parent ID and frozen task step.
+Demonstration parents additionally retain the frozen assembly plan and final
+assembly DTO. Optional missing enhancements become terminal skipped children,
+so the editorial plan and aggregate status remain auditable.
 
 ```text
 POST generation request
@@ -216,6 +228,16 @@ attachments + optional Asset + provenance
 completed | failed | cancelled
 ```
 
+After demonstration children become terminal, the separate
+`worldgraph_process_rough_cut_assembly` hook advances signed, resumable FFmpeg
+state through normalization, concatenation, subtitles, generated-audio or
+silence, and Media Library import. A distinct lease plus per-batch worker token,
+heartbeat, attempts, and progress metadata permit stale-worker recovery without
+blocking provider polling. Cancellation is checked between stages. Completion
+is published only after the rough-cut video attachment, batch provenance, and
+Project parent are verified; missing FFmpeg or failed assembly is reported
+without discarding completed child media.
+
 Completed image, video, and audio files pass through WordPress validation and
 media attachment creation. Text-output jobs retain their normalized provider
 result without creating a media attachment. Generation records retain source,
@@ -233,7 +255,7 @@ Primary route groups are:
 | --- | --- |
 | Story content | `/projects`, `/storyworlds`, `/characters`, `/locations`, `/props`, `/organizations`, `/episodes`, `/scenes`, `/shots`, `/sounds`, `/assets`, `/editorial-artifacts` |
 | Graph | `/graph/{id}`, `/graph/entities`, `/graph/relationships` |
-| Generation | `/assets/generate`, `/assets/generate/prompt`, `/generation`, `/generation/{id}`, `/generation/{id}/cancel`, `/generation/asset/{id}/history`, `/generation/templates/{id}/requirements` |
+| Generation | `/assets/generate`, `/assets/generate/prompt`, `/assets/generate/plan`, `/assets/generate/batches`, `/assets/generate/batches/{id}`, `/assets/generate/batches/{id}/cancel`, `/generation`, `/generation/{id}`, `/generation/{id}/cancel`, `/generation/asset/{id}/history`, `/generation/templates/{id}/requirements` |
 | Connections | `/connections`, `/connections/{id}`, `/connections/{id}/resolve`, `/connections/{id}/test`, `/connections/sync` |
 | AI Editor | `/ai/agents`, `/ai/chat`, `/ai/analyze`, `/ai/context`, `/ai/continuity`, `/ai/generate`, `/ai/health`, `/ai/settings` |
 | Production/editorial | `/production/{project_id}/*`, `/editorial/{project_id}/*`, `/sequences/*` |

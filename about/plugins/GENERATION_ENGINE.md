@@ -82,7 +82,11 @@ The generic generation REST endpoint accepts `image`,
 Template and provider adapter still determine whether a request can run.
 On a Project, the same editor also exposes **Demonstration**, which previews and
 queues a dependency-aware whole-story pass with image, video, and audio tasks
-and still, subtitle, and silence fallbacks.
+and still, subtitle, and silence fallbacks. Demonstration provides separate
+image and video Template selectors and shows an audio Template selector only
+when its plan contains audio that must be generated. Each may remain configured
+per item (`0`) or override generated tasks of its type; direct image/video runs
+do not expose audio controls.
 
 ## Story-aware prompts and representative workflows
 
@@ -120,6 +124,18 @@ only for workflows that generate audio. Negative-prompt notes remain separate
 guidance. Prompt profiles do not override workflow model files or sampling,
 resolution, frame-rate, CFG, denoise, or motion values.
 
+For a compatible WAN graph that exposes these controls, the documented quality
+starting point is 1280x720, 24 fps, 20-25 steps, CFG 5-7, and DPM++ 2M/Karras
+or Euler ancestral, with DPM++ 3M SDE only when advertised. The documented LTX
+operator presets are Balanced (DPM++ 2M/Karras, 24, 4.5, 0.60, 0.55,
+1920x1080/50 fps), Hero (DPM++ 2M/Karras, 36-40, 4.2, 0.55, 0.45,
+2560x1440/50 fps), and Preview (UniPC, 16, 4.0, 0.65, 0.50,
+768x432/24 fps), where the numbers after steps are CFG, denoise, and motion.
+They are not enforced defaults: use them only when the saved graph exposes
+equivalent nodes. Official LTX distilled/custom sampling remains authoritative,
+raw latent dimensions must be divisible by 32, and literal frame counts must be
+`8n + 1`. See [Text to Video with Local ComfyUI](../how-to-text-to-video.md).
+
 `WorldGraph\Utils\Generation_Workflows` defines the delivered representative
 recipes:
 
@@ -142,14 +158,17 @@ maximum is 5,000 child tasks, filterable with
 
 The separate Project-only `demonstration` scope orders Episodes, Scenes, and
 Shots into a frozen editorial timeline. It requires reusable still references
-for recurring Characters and Locations and a durable Shot still (or Scene or
-Project card when there are no Shots). Moving Shots and generated Sound cues
-are optional enhancements. A moving task prefers first-frame/last-frame video,
-then character-reference I2V, then text-to-video. Its symbolic media references
+for story-occurring Characters and referenced Locations and a durable Shot
+still (or Scene or Project card when there are no Shots). Moving Shots and
+generated Sound cues are optional enhancements. When a Character reference
+exists, a moving task prefers character-reference I2V, with recurring
+Characters ordered first; otherwise it prefers
+first-frame/last-frame video when the next Shot still exists, then
+still-conditioned I2V, then text-to-video. Its symbolic media references
 identify the current Shot still as `start_frame`, the following Shot still as
-`end_frame`, and the recurring Character image as the primary I2V `image`, with
-the Shot still as fallback. Only slots required by the selected modality are
-resolved and sent.
+`end_frame`, and the first applicable Character image as the primary I2V
+`image`, with the Shot still as fallback. Only slots required by the selected
+modality are resolved and sent.
 
 ## Connections and provider adapters
 
@@ -298,6 +317,15 @@ markers win; otherwise a single image loader or topology-proven first/last
 frame is bound. Unrelated literal loaders remain Template-owned, while an
 ambiguous required binding fails before upload and submission.
 
+The saved graph is authoritative. In particular, the official WAN 2.2 5B
+hybrid workflow selects the FP8 UMT5 encoder and `wan2.2_vae.safetensors`
+(a tested compatible FP16 encoder can be selected when FP8 is unsupported),
+whereas official WAN 2.2 14B high/low-noise workflows use paired task-specific
+diffusion loaders and `wan_2.1_vae.safetensors`. LTX 2.5 workflows have their
+own transformer, text encoder, video/audio VAE, and optional latent-upscaler
+selections. The Workflow Test display—not a prompt keyword or family label—is
+the exact list the selected Connection must provide.
+
 The author first chooses a conditional **Image**, **Sequence**, **Video**, or
 Project-only **Demonstration** mode. Image and video each reveal only their own
 defined output selector,
@@ -305,7 +333,10 @@ matching active runnable Template, applicable featured/linked-Asset choices,
 and contextual action. Sequence reveals the complete item or Project workflow,
 image/video counts, and only the Template controls needed by that plan before
 confirming a durable batch. Demonstration shows image, video, and audio work,
-fallback behavior, and the latest whole-story batch before confirmation. Modes
+separate applicable Template selectors, fallback behavior, and the latest
+whole-story batch before confirmation. Its audio selector and scalar run
+controls appear only for generated audio tasks; linked audio needs no provider
+override. Modes
 not defined for the current CPT are disabled.
 The complete prompt for a single output remains server-composed and appears in
 a collapsed read-only preview; a Sequence instead previews its distinct jobs.
@@ -320,12 +351,13 @@ task. `Template_Bindings` resolves declared media slots from a featured image,
 the post's asset gallery, or an SCF/post-meta field. Invalid combinations fail
 before provider execution.
 
-Direct story-aware generation may submit `run_values`. A representative batch
-may submit one `image_run_values` map and one `video_run_values` map for its
-corresponding tasks when it also selects an explicit Template override of that
-type. Values must be scalar, use advertised keys, and match the advertised
-types, bounds, and allowed choices. A non-empty batch map without its matching
-Template ID, unknown keys, and nested arrays/objects are errors; they are not
+Direct story-aware generation may submit `run_values`. A batch may submit one
+`image_run_values`, `video_run_values`, or `audio_run_values` map for its
+corresponding generated tasks when it also selects the explicit per-type
+Template override. Values must be scalar, use advertised keys, and match the
+advertised types, bounds, and allowed choices. A non-empty batch map without
+its matching Template ID, unknown keys, and nested arrays/objects are errors;
+they are not
 silently forwarded. Omitting these maps applies compatible Project framing and
 otherwise preserves the Template/provider defaults. Omitting `seed`
 specifically preserves the existing randomization behavior; integer `0` is not
@@ -333,7 +365,7 @@ treated as omission.
 
 For each task, Template resolution follows this cascade:
 
-1. an explicit image or video Template supplied with the batch request;
+1. an explicit image, video, or audio Template supplied with the batch request;
 2. per-post `_worldgraph_generation_template_{intent}` metadata;
 3. the intent mapping in `worldgraph_generation_preferences_v1`;
 4. the output-type mapping in that option;
@@ -377,10 +409,12 @@ persists the record before external execution and schedules
 Representative-media and demonstration batches are also durable
 `worldgraph_gen` posts, marked with `_worldgraph_gen_batch_kind =
 representative_media` or `demonstration_video`. The parent stores the
-root post, `item` or `project` scope, requester, optional idempotency key, a
+root post, `item`, `project`, or `demonstration` scope, requester, optional
+idempotency key, a
 versioned frozen task plan, materialization cursor, planned total, and aggregate
-status. Each task snapshot retains its step, source, workflow, intent, output
-type, Template, prompt, prompt hash, featured behavior, normalized explicit run
+status. The current frozen workflow contract is version 2. Each task snapshot
+retains its step, source, workflow, intent, output type, Template, prompt,
+prompt hash, featured behavior, normalized explicit run
 values, and separately projected Project output values. Both effective value
 sets are frozen before materialization. Child jobs store
 `_worldgraph_gen_batch_id`, `_worldgraph_gen_batch_step`, and
@@ -391,7 +425,8 @@ worker lifecycle.
 A demonstration batch additionally freezes task keys, reference/audio/video
 phases, required versus optional behavior, dependencies, symbolic input
 references, preferred modalities, fallbacks, and `_worldgraph_gen_assembly_plan`.
-Reference and audio work can be queued before moving Shots; a video task waits
+Reference and generated audio work can be queued before moving Shots; linked
+Sound Assets bypass provider generation. A video task waits
 until media required by its selected modality has completed. Missing optional
 motion becomes its still fallback. Missing audio becomes silence, while Scene
 dialogue/captions can become subtitle graphics. A terminal skipped child
@@ -403,9 +438,9 @@ source, resolves all required Templates, and re-derives and validates the run
 control allowlist before freezing the batch plan. A
 requester-scoped non-empty idempotency key returns the prior batch for the same
 root and the same normalized run values instead of creating duplicate provider
-work. Image and video run values are part of the request fingerprint, so reuse
-of a key with different settings fails rather than returning or creating the
-wrong run. Batch summaries derive their
+work. Image, video, and audio run values are part of the request fingerprint,
+so reuse of a key with different settings fails rather than returning or
+creating the wrong run. Batch summaries derive their
 counts from the frozen total and persisted child states and report `pending`,
 `active`, `cancelling`, `cancelled`, `failed`, `completed`, or
 `completed_with_errors`.
@@ -428,8 +463,20 @@ The worker:
 4. records the provider's remote job identifier;
 5. reschedules itself after 60 seconds while work remains;
 6. imports completed media before recording success; and
-7. after demonstration children are terminal, invokes bounded FFmpeg assembly
-   and stores the imported rough-cut attachment or an assembly diagnostic.
+7. after demonstration children are terminal, transitions the parent to
+   assembly and schedules the independent rough-cut worker.
+
+The rough-cut worker uses its own WP-Cron hook and claim, separate from provider
+polling. It advances a bounded assembly phase/cursor per tick, checkpoints the
+signed `_worldgraph_rough_cut_state`, verified batch-specific work directory,
+and progress, and reschedules while work remains. One tick initializes,
+attempts one segment/fallback, concatenates, handles subtitles, mixes audio or
+silence, or imports. A heartbeat protects a live FFmpeg operation; a stale
+claim can be recovered on a
+later tick. Completion stores the imported rough-cut attachment, while an
+unrecoverable or unavailable-FFmpeg result stores a bounded diagnostic.
+Successful or terminal-error cleanup removes private assembly state and safe
+generated temporary files; import retries reuse batch-tagged attachments.
 
 The durable states are:
 
@@ -455,7 +502,8 @@ The rough-cut assembler prefers each completed Shot video, normalizes it to the
 Project frame profile, and falls back to its completed still when video is
 missing or cannot be normalized. It preserves the frozen editorial order,
 builds still/title cards for stories without Shots, renders subtitles, mixes
-bounded audio cues where available, concatenates H.264 segments, and imports
+bounded generated or linked audio cues where available, uses silence when none
+is usable, concatenates H.264 segments, and imports
 the result into the Media Library. It is deliberately a watchable first pass,
 not an assertion that provider generations need no editorial revision.
 
@@ -526,7 +574,7 @@ The canonical REST base is `/wp-json/worldgraph/v1/`.
 | `GET /assets/generate/prompt?post_id={id}` | Direct image/Shot-video actions, read-only prompts, and runnable Templates with sanitized run controls |
 | `POST /assets/generate` | Queue one story-aware image or Shot video with optional `run_values` |
 | `GET /assets/generate/plan?post_id={id}&scope=item\|project\|demonstration` | Preview representative or whole-story outputs, prompt hashes, runnable Templates and run controls, defaults, fallbacks, and the latest batch |
-| `POST /assets/generate/batches` | Validate and start a durable item, Project representative-media, or Project demonstration batch with optional image/video run values |
+| `POST /assets/generate/batches` | Validate and start a durable item, Project representative-media, or Project demonstration batch with optional image/video/audio Template overrides and run values |
 | `GET /assets/generate/batches/{id}` | Read aggregate batch progress and child jobs |
 | `POST /assets/generate/batches/{id}/cancel` | Cancel not-yet-dispatched children and return refreshed batch status |
 | `POST /generation` | Create a Template-backed generation record |
@@ -545,9 +593,9 @@ not public catalog REST routes. They require an edit-capable administrator and
 a `worldgraph_conn_configurator` nonce.
 
 The story-aware run-value contract is additive. Clients that omit
-`run_values`, `image_run_values`, and `video_run_values` keep the prior
-Template-default behavior. See the REST specification for their exact request
-and response shapes.
+`run_values`, `image_run_values`, `video_run_values`, and `audio_run_values`
+keep the prior Template-default behavior. See the REST specification for their
+exact request and response shapes.
 
 ## WordPress Abilities and MCP exposure
 

@@ -18,6 +18,12 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 class Rough_Cut_Assembler {
 
+	/** Durable per-batch assembly state. */
+	const STATE_META = '_worldgraph_rough_cut_state';
+
+	/** Current durable state schema. */
+	const STATE_VERSION = 1;
+
 	/** Upper bound for one assembly request. */
 	const MAX_SEGMENTS = 500;
 
@@ -44,6 +50,516 @@ class Rough_Cut_Assembler {
 
 	/** Demonstration batch whose long-running FFmpeg process should emit a heartbeat. */
 	private static int $current_batch_id = 0;
+
+	/**
+	 * Idempotently discard one cancelled batch's verified durable temp state.
+	 *
+	 * State meta is removed even when corrupt, but an unverified path is never
+	 * touched. Call this only after the batch cancellation marker is durable.
+	 */
+	public static function cancel( int $batch_id ): void {
+		$stored = get_post_meta( $batch_id, self::STATE_META, true );
+		delete_post_meta( $batch_id, self::STATE_META );
+		if ( ! is_array( $stored ) || $batch_id !== absint( $stored['batch_id'] ?? 0 ) ) {
+			return;
+		}
+		$signature = (string) ( $stored['signature'] ?? '' );
+		if ( '' === $signature || ! hash_equals( $signature, self::state_signature( $stored ) ) ) {
+			return;
+		}
+		self::cleanup_state_directory( $batch_id, $stored );
+	}
+
+	/**
+	 * Advance one durable, bounded rough-cut assembly stage.
+	 *
+	 * @param int $batch_id Demonstration generation batch ID.
+	 * @return array<string,mixed>|WP_Error
+	 */
+	public static function advance( int $batch_id ) {
+		self::$current_batch_id = $batch_id;
+		self::touch_assembly_heartbeat();
+
+		try {
+			$stored = get_post_meta( $batch_id, self::STATE_META, true );
+			$state  = is_array( $stored ) ? $stored : [];
+			if ( self::cancellation_requested() ) {
+				self::cancel( $batch_id );
+				return self::cancellation_error();
+			}
+
+			if ( empty( $state ) ) {
+				return self::initialize_state( $batch_id );
+			}
+
+			$verified = self::verify_state( $batch_id, $state );
+			if ( is_wp_error( $verified ) ) {
+				self::cancel( $batch_id );
+				return $verified;
+			}
+			$state    = $verified;
+			$work_dir = (string) $state['work_dir'];
+			$binary   = (string) $state['binary'];
+			$profile  = (array) $state['profile'];
+
+			switch ( (string) $state['stage'] ) {
+				case 'normalize':
+					$index = (int) $state['segment_index'];
+					if ( $index >= count( $state['shots'] ) ) {
+						$state['stage'] = 'concat';
+						return self::save_pending_state( $batch_id, $state, __( 'Shot segments are normalized; concatenation is next.', 'worldgraph' ) );
+					}
+
+					$shot = (array) $state['shots'][ $index ];
+					$mode = sanitize_key( (string) ( $shot['normalize_mode'] ?? 'card' ) );
+					if ( 'video' === $mode ) {
+						$media = self::attachment_file( absint( $shot['video_attachment_id'] ?? 0 ), 'video' );
+						if ( empty( $media['file'] ) ) {
+							$mode = ! empty( $shot['still_attachment_id'] ) ? 'still' : 'card';
+						}
+					} elseif ( 'still' === $mode ) {
+						$media = self::attachment_file( absint( $shot['still_attachment_id'] ?? 0 ), 'image' );
+						if ( empty( $media['file'] ) ) {
+							$mode = 'card';
+						}
+					}
+					$shot['normalize_mode'] = $mode;
+					$shot['video_file']     = 'video' === $mode ? (string) ( $media['file'] ?? '' ) : '';
+					$shot['still_file']     = 'still' === $mode ? (string) ( $media['file'] ?? '' ) : '';
+					$output_name            = sprintf( 'segment-%04d.mp4', $index + 1 );
+					$output                 = $work_dir . DIRECTORY_SEPARATOR . $output_name;
+					$result                 = self::normalize_shot( $binary, $shot, $profile, $output, $work_dir, 'still' === $mode || 'card' === $mode );
+					if ( is_wp_error( $result ) ) {
+						if ( 'worldgraph_rough_cut_cancelled' === $result->get_error_code() ) {
+							self::discard_state( $batch_id, $state );
+							return $result;
+						}
+						$next_mode = 'video' === $mode && ! empty( $shot['still_attachment_id'] ) ? 'still' : ( 'card' !== $mode ? 'card' : '' );
+						if ( '' !== $next_mode ) {
+							$state['warnings'][] = sprintf(
+								__( 'The %1$s source for “%2$s” could not be normalized; the %3$s fallback will be tried next. %4$s', 'worldgraph' ),
+								$mode,
+								(string) ( $shot['shot_title'] ?: $shot['scene_title'] ),
+								$next_mode,
+								$result->get_error_message()
+							);
+							$state['shots'][ $index ]['normalize_mode'] = $next_mode;
+							return self::save_pending_state( $batch_id, $state, __( 'A Shot media fallback is queued for the next assembly tick.', 'worldgraph' ) );
+						}
+
+						return self::terminal_state_error( $batch_id, $state, $result );
+					}
+
+					$shot['video_file']      = '';
+					$shot['still_file']      = '';
+					$shot['normalized_name'] = $output_name;
+					$state['normalized'][]   = $shot;
+					$state['files'][]        = $output_name;
+					$state['segment_index']  = $index + 1;
+					if ( $state['segment_index'] >= count( $state['shots'] ) ) {
+						$state['stage'] = 'concat';
+					}
+
+					return self::save_pending_state( $batch_id, $state, sprintf( __( 'Normalized %1$d of %2$d planned segments.', 'worldgraph' ), $state['segment_index'], count( $state['shots'] ) ) );
+
+				case 'concat':
+					$concat_name = 'segments.txt';
+					$concat_file = $work_dir . DIRECTORY_SEPARATOR . $concat_name;
+					$concat_body = '';
+					foreach ( $state['normalized'] as $segment ) {
+						$name = self::safe_state_filename( (string) ( $segment['normalized_name'] ?? '' ), 'segment' );
+						if ( '' === $name || ! is_readable( $work_dir . DIRECTORY_SEPARATOR . $name ) ) {
+							return self::terminal_state_error( $batch_id, $state, self::error( 'worldgraph_rough_cut_state_invalid', __( 'A normalized segment recorded in the durable assembly state is missing.', 'worldgraph' ), [ 'status' => 409 ] ) );
+						}
+						$concat_body .= "file '" . $name . "'\n";
+					}
+					if ( false === file_put_contents( $concat_file, $concat_body, LOCK_EX ) ) {
+						return self::terminal_state_error( $batch_id, $state, self::error( 'worldgraph_rough_cut_work_file_failed', __( 'The temporary FFmpeg concat list could not be written.', 'worldgraph' ), [ 'status' => 500 ] ) );
+					}
+					$joined_name = 'joined.mp4';
+					$joined_file = $work_dir . DIRECTORY_SEPARATOR . $joined_name;
+					$result      = self::run_ffmpeg(
+						$binary,
+						[ '-f', 'concat', '-safe', '1', '-i', $concat_name, '-map', '0:v:0', '-an', '-c:v', 'copy', '-movflags', '+faststart', $joined_name ],
+						$work_dir,
+						'worldgraph_rough_cut_concat_failed',
+						__( 'FFmpeg could not concatenate the normalized Shot segments.', 'worldgraph' )
+					);
+					if ( is_wp_error( $result ) ) {
+						return self::terminal_state_error( $batch_id, $state, $result );
+					}
+					$state['files'] = array_merge( $state['files'], [ $concat_name, $joined_name ] );
+					$state['stage'] = 'subtitle';
+
+					return self::save_pending_state( $batch_id, $state, __( 'The normalized segments were concatenated.', 'worldgraph' ) );
+
+				case 'subtitle':
+					$srt_name = 'rough-cut.srt';
+					$srt_file = $work_dir . DIRECTORY_SEPARATOR . $srt_name;
+					if ( false === file_put_contents( $srt_file, self::build_srt( $state['normalized'] ), LOCK_EX ) ) {
+						return self::terminal_state_error( $batch_id, $state, self::error( 'worldgraph_rough_cut_subtitle_failed', __( 'The rough-cut subtitle file could not be written.', 'worldgraph' ), [ 'status' => 500 ] ) );
+					}
+					$burned_name = 'subtitled.mp4';
+					$result      = self::run_ffmpeg(
+						$binary,
+						[
+							'-i', 'joined.mp4', '-map', '0:v:0', '-an', '-vf', 'subtitles=filename=' . $srt_name,
+							'-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', $burned_name,
+						],
+						$work_dir,
+						'worldgraph_rough_cut_subtitle_burn_failed',
+						__( 'FFmpeg could not burn the subtitles into the rough cut.', 'worldgraph' )
+					);
+					$state['files'][] = $srt_name;
+					if ( is_wp_error( $result ) ) {
+						if ( 'worldgraph_rough_cut_cancelled' === $result->get_error_code() ) {
+							return self::terminal_state_error( $batch_id, $state, $result );
+						}
+						$state['warnings'][]       = __( 'Burned subtitles are unavailable; the SRT will be retained as a sidecar file.', 'worldgraph' ) . ' ' . $result->get_error_message();
+						$state['burned_subtitles'] = false;
+						$state['video_for_audio']  = 'joined.mp4';
+					} else {
+						$state['files'][]          = $burned_name;
+						$state['burned_subtitles'] = true;
+						$state['video_for_audio']  = $burned_name;
+					}
+					$state['stage'] = 'audio';
+
+					return self::save_pending_state( $batch_id, $state, __( 'Subtitle processing is complete.', 'worldgraph' ) );
+
+				case 'audio':
+					$cues = self::sound_cues( (int) $state['project_id'], $batch_id, $state['normalized'], (float) $profile['fps'], $state['warnings'] );
+					$state['audio_cues'] = count( $cues );
+					$video_file = $work_dir . DIRECTORY_SEPARATOR . (string) $state['video_for_audio'];
+					$final_name = 'rough-cut-final.mp4';
+					$final_file = $work_dir . DIRECTORY_SEPARATOR . $final_name;
+					$result = empty( $cues )
+						? self::add_silence( $binary, $video_file, (float) $state['duration'], $final_file, $work_dir )
+						: self::mix_audio( $binary, $video_file, $cues, (float) $state['duration'], $final_file, $work_dir );
+					if ( is_wp_error( $result ) ) {
+						if ( 'worldgraph_rough_cut_cancelled' === $result->get_error_code() ) {
+							return self::terminal_state_error( $batch_id, $state, $result );
+						}
+						if ( ! empty( $cues ) ) {
+							$state['warnings'][] = __( 'Generated Sound cues could not be mixed; a silent audio track will be used.', 'worldgraph' ) . ' ' . $result->get_error_message();
+							$state['stage'] = 'silence';
+							return self::save_pending_state( $batch_id, $state, __( 'The silent audio fallback is queued.', 'worldgraph' ) );
+						}
+
+						return self::terminal_state_error( $batch_id, $state, $result );
+					}
+					$state['files'][] = $final_name;
+					$state['stage']   = 'import';
+
+					return self::save_pending_state( $batch_id, $state, __( 'Audio processing is complete.', 'worldgraph' ) );
+
+				case 'silence':
+					$final_name = 'rough-cut-final.mp4';
+					$result = self::add_silence(
+						$binary,
+						$work_dir . DIRECTORY_SEPARATOR . (string) $state['video_for_audio'],
+						(float) $state['duration'],
+						$work_dir . DIRECTORY_SEPARATOR . $final_name,
+						$work_dir
+					);
+					if ( is_wp_error( $result ) ) {
+						return self::terminal_state_error( $batch_id, $state, $result );
+					}
+					$state['files'][] = $final_name;
+					$state['stage']   = 'import';
+
+					return self::save_pending_state( $batch_id, $state, __( 'The silent audio fallback is complete.', 'worldgraph' ) );
+
+				case 'import':
+					if ( self::cancellation_requested() ) {
+						self::discard_state( $batch_id, $state );
+						return self::cancellation_error();
+					}
+					$video = self::existing_imported_video( $batch_id, (int) $state['project_id'] );
+					if ( empty( $video ) ) {
+						$video = self::import_video( $work_dir . DIRECTORY_SEPARATOR . 'rough-cut-final.mp4', (int) $state['project_id'], $batch_id );
+					}
+					if ( is_wp_error( $video ) ) {
+						return self::terminal_state_error( $batch_id, $state, $video );
+					}
+					if ( self::cancellation_requested() ) {
+						self::discard_state( $batch_id, $state );
+						return self::cancellation_error();
+					}
+
+					$srt_attachment_id = 0;
+					if ( empty( $state['burned_subtitles'] ) ) {
+						$srt_attachment_id = self::existing_imported_srt( $batch_id, (int) $state['project_id'] );
+						if ( ! $srt_attachment_id ) {
+							$sidecar = self::import_srt( $work_dir . DIRECTORY_SEPARATOR . 'rough-cut.srt', (int) $state['project_id'], $batch_id );
+							if ( is_wp_error( $sidecar ) ) {
+								$state['warnings'][] = $sidecar->get_error_message();
+							} else {
+								$srt_attachment_id = (int) $sidecar;
+							}
+						}
+					}
+					$gallery = self::add_to_project_gallery( (int) $state['project_id'], (int) $video['attachment_id'] );
+					if ( is_wp_error( $gallery ) ) {
+						return self::terminal_state_error( $batch_id, $state, $gallery );
+					}
+					if ( $srt_attachment_id ) {
+						update_post_meta( (int) $video['attachment_id'], '_worldgraph_rough_cut_srt_attachment_id', $srt_attachment_id );
+					}
+
+					$dto = [
+						'batch_id'          => $batch_id,
+						'batch_kind'        => (string) $state['batch_kind'],
+						'project_id'        => (int) $state['project_id'],
+						'attachment_id'     => (int) $video['attachment_id'],
+						'srt_attachment_id' => $srt_attachment_id,
+						'url'               => (string) $video['url'],
+						'burned_subtitles'  => (bool) $state['burned_subtitles'],
+						'sidecar_srt'       => ! $state['burned_subtitles'] && 0 !== $srt_attachment_id,
+						'segments'          => count( $state['normalized'] ),
+						'audio_cues'        => (int) $state['audio_cues'],
+						'width'             => (int) $profile['width'],
+						'height'            => (int) $profile['height'],
+						'fps'               => (float) $profile['fps'],
+						'duration'          => (float) $state['duration'],
+						'warnings'          => array_values( array_unique( array_filter( array_map( 'strval', $state['warnings'] ) ) ) ),
+					];
+					self::discard_state( $batch_id, $state );
+
+					return $dto;
+			}
+
+			return self::terminal_state_error( $batch_id, $state, self::error( 'worldgraph_rough_cut_state_invalid', __( 'The durable assembly stage is invalid.', 'worldgraph' ), [ 'status' => 409 ] ) );
+		} finally {
+			self::touch_assembly_heartbeat();
+			self::$current_batch_id = 0;
+		}
+	}
+
+	/** Initialize and persist a verified assembly state without doing heavy work. */
+	private static function initialize_state( int $batch_id ) {
+		$batch      = get_post( $batch_id );
+		$batch_kind = (string) get_post_meta( $batch_id, '_worldgraph_gen_batch_kind', true );
+		if ( ! $batch instanceof \WP_Post || 'worldgraph_gen' !== $batch->post_type || ! in_array( $batch_kind, self::supported_batch_kinds(), true ) ) {
+			return self::error( 'worldgraph_rough_cut_batch_invalid', __( 'Select a demonstration-video or representative-media generation batch.', 'worldgraph' ), [ 'status' => 404 ] );
+		}
+		$project_id = self::project_id( (int) $batch->post_parent );
+		if ( ! $project_id ) {
+			return self::error( 'worldgraph_rough_cut_project_missing', __( 'The generation batch has no owning Project.', 'worldgraph' ), [ 'status' => 409 ] );
+		}
+		$availability = self::availability();
+		if ( self::cancellation_requested() ) {
+			return self::cancellation_error();
+		}
+		if ( empty( $availability['available'] ) ) {
+			return self::error(
+				'worldgraph_rough_cut_ffmpeg_unavailable',
+				__( 'FFmpeg is unavailable, so the rough cut could not be assembled.', 'worldgraph' ),
+				[ 'binary' => (string) $availability['binary'], 'diagnostic' => (string) $availability['error'], 'status' => 503 ]
+			);
+		}
+
+		$work_dir = self::create_work_dir( $batch_id );
+		if ( is_wp_error( $work_dir ) ) {
+			return $work_dir;
+		}
+		$warnings = [];
+		$shots    = self::batch_shots( $batch_id, $project_id, $batch_kind, $warnings );
+		if ( is_wp_error( $shots ) ) {
+			self::cleanup_state_directory( $batch_id, [ 'work_dir' => $work_dir ] );
+			return $shots;
+		}
+		if ( empty( $shots ) ) {
+			self::cleanup_state_directory( $batch_id, [ 'work_dir' => $work_dir ] );
+			return self::error( 'worldgraph_rough_cut_no_segments', __( 'No planned rough-cut segments are available.', 'worldgraph' ), [ 'status' => 409 ] );
+		}
+		$duration = array_sum( array_map( static fn( array $shot ): float => (float) $shot['duration'], $shots ) );
+		if ( $duration > self::MAX_TOTAL_DURATION ) {
+			self::cleanup_state_directory( $batch_id, [ 'work_dir' => $work_dir ] );
+			return self::error( 'worldgraph_rough_cut_duration_exceeded', __( 'The planned rough cut exceeds the bounded timeline duration.', 'worldgraph' ), [ 'duration' => $duration, 'limit' => self::MAX_TOTAL_DURATION, 'status' => 400 ] );
+		}
+		self::assign_timeline_and_dialogue( $shots );
+		foreach ( $shots as &$shot ) {
+			$shot['normalize_mode'] = ! empty( $shot['video_attachment_id'] ) ? 'video' : ( ! empty( $shot['still_attachment_id'] ) ? 'still' : 'card' );
+			$shot['video_file']     = '';
+			$shot['still_file']     = '';
+		}
+		unset( $shot );
+		if ( self::cancellation_requested() ) {
+			self::cleanup_state_directory( $batch_id, [ 'work_dir' => $work_dir ] );
+			return self::cancellation_error();
+		}
+
+		$state = [
+			'version'            => self::STATE_VERSION,
+			'batch_id'           => $batch_id,
+			'batch_kind'         => $batch_kind,
+			'project_id'         => $project_id,
+			'binary'             => (string) $availability['binary'],
+			'profile'            => self::project_profile( $project_id ),
+			'work_dir'           => $work_dir,
+			'stage'              => 'normalize',
+			'segment_index'      => 0,
+			'shots'              => array_values( $shots ),
+			'normalized'         => [],
+			'files'              => [],
+			'warnings'           => array_values( $warnings ),
+			'duration'           => $duration,
+			'burned_subtitles'   => false,
+			'video_for_audio'    => '',
+			'audio_cues'         => 0,
+			'created_at'         => time(),
+		];
+
+		return self::save_pending_state( $batch_id, $state, __( 'Durable rough-cut assembly state was initialized.', 'worldgraph' ) );
+	}
+
+	/** Validate durable state, including its signature and batch-specific temp root. */
+	private static function verify_state( int $batch_id, array $state ) {
+		$signature = (string) ( $state['signature'] ?? '' );
+		if ( '' === $signature || ! hash_equals( $signature, self::state_signature( $state ) ) ) {
+			return self::error( 'worldgraph_rough_cut_state_invalid', __( 'The durable rough-cut state failed integrity verification.', 'worldgraph' ), [ 'status' => 409 ] );
+		}
+		$stage = sanitize_key( (string) ( $state['stage'] ?? '' ) );
+		$batch = get_post( $batch_id );
+		$live_kind = (string) get_post_meta( $batch_id, '_worldgraph_gen_batch_kind', true );
+		$live_project_id = $batch instanceof \WP_Post && 'worldgraph_gen' === $batch->post_type ? self::project_id( (int) $batch->post_parent ) : 0;
+		if ( self::STATE_VERSION !== absint( $state['version'] ?? 0 )
+			|| $batch_id !== absint( $state['batch_id'] ?? 0 )
+			|| ! $live_project_id || $live_project_id !== absint( $state['project_id'] ?? 0 )
+			|| $live_kind !== (string) ( $state['batch_kind'] ?? '' ) || ! in_array( $live_kind, self::supported_batch_kinds(), true )
+			|| ! self::safe_batch_work_dir( (string) ( $state['work_dir'] ?? '' ), $batch_id )
+			|| ! in_array( $stage, [ 'normalize', 'concat', 'subtitle', 'audio', 'silence', 'import' ], true )
+			|| (string) ( $state['binary'] ?? '' ) !== self::configured_binary()
+			|| empty( $state['profile'] ) || ! is_array( $state['profile'] )
+			|| empty( $state['shots'] ) || ! is_array( $state['shots'] ) || count( $state['shots'] ) > self::MAX_SEGMENTS
+			|| ! isset( $state['normalized'], $state['files'], $state['warnings'] )
+			|| ! is_array( $state['normalized'] ) || ! is_array( $state['files'] ) || ! is_array( $state['warnings'] ) ) {
+			return self::error( 'worldgraph_rough_cut_state_invalid', __( 'The durable rough-cut state is invalid or no longer matches this deployment.', 'worldgraph' ), [ 'status' => 409 ] );
+		}
+		$index = (int) ( $state['segment_index'] ?? -1 );
+		if ( $index < 0 || $index > count( $state['shots'] ) || count( $state['normalized'] ) !== $index ) {
+			return self::error( 'worldgraph_rough_cut_state_invalid', __( 'The durable rough-cut segment cursor is invalid.', 'worldgraph' ), [ 'status' => 409 ] );
+		}
+		foreach ( $state['files'] as $name ) {
+			if ( '' === self::safe_state_filename( (string) $name ) ) {
+				return self::error( 'worldgraph_rough_cut_state_invalid', __( 'The durable rough-cut state contains an unsafe file path.', 'worldgraph' ), [ 'status' => 409 ] );
+			}
+		}
+
+		return $state;
+	}
+
+	/** Sign all state fields except the signature itself with the WordPress secret. */
+	private static function state_signature( array $state ): string {
+		unset( $state['signature'] );
+		$secret = function_exists( 'wp_salt' ) ? (string) wp_salt( 'auth' ) : ( defined( 'AUTH_KEY' ) ? (string) AUTH_KEY : '' );
+		if ( '' === $secret ) {
+			return '';
+		}
+
+		return hash_hmac( 'sha256', serialize( $state ), $secret ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_serialize -- internal signed state, never unserialized here.
+	}
+
+	/** Persist signed state, verify the round trip, and return its progress DTO. */
+	private static function save_pending_state( int $batch_id, array $state, string $message ) {
+		$state['files']     = array_values( array_unique( array_filter( array_map( 'strval', (array) $state['files'] ) ) ) );
+		$state['warnings']  = array_slice( array_values( array_unique( array_filter( array_map( 'strval', (array) $state['warnings'] ) ) ) ), 0, 500 );
+		$state['signature'] = self::state_signature( $state );
+		if ( '' === $state['signature'] ) {
+			self::discard_state( $batch_id, $state );
+			return self::error( 'worldgraph_rough_cut_state_store_failed', __( 'WordPress could not sign the durable rough-cut assembly state.', 'worldgraph' ), [ 'status' => 500 ] );
+		}
+		update_post_meta( $batch_id, self::STATE_META, wp_slash( $state ) );
+		$stored = get_post_meta( $batch_id, self::STATE_META, true );
+		if ( ! is_array( $stored ) || (string) ( $stored['signature'] ?? '' ) !== $state['signature'] ) {
+			self::discard_state( $batch_id, $state );
+			return self::error( 'worldgraph_rough_cut_state_store_failed', __( 'WordPress could not persist the durable rough-cut assembly state.', 'worldgraph' ), [ 'status' => 500 ] );
+		}
+
+		return self::pending_result( $batch_id, $state, $message );
+	}
+
+	/** Build the stable coordinator-facing pending result. */
+	private static function pending_result( int $batch_id, array $state, string $message ): array {
+		$segments = count( (array) ( $state['shots'] ?? [] ) );
+		$stage    = sanitize_key( (string) ( $state['stage'] ?? 'normalize' ) );
+		$completed = min( $segments, max( 0, (int) ( $state['segment_index'] ?? 0 ) ) );
+		if ( 'subtitle' === $stage ) {
+			$completed = $segments + 1;
+		} elseif ( in_array( $stage, [ 'audio', 'silence' ], true ) ) {
+			$completed = $segments + 2;
+		} elseif ( 'import' === $stage ) {
+			$completed = $segments + 3;
+		}
+		$total = $segments + 4;
+		$progress = $total ? min( 99, (int) floor( 100 * $completed / $total ) ) : 0;
+
+		return [
+			'status'          => 'pending',
+			'batch_id'        => $batch_id,
+			'stage'           => $stage,
+			'completed_steps' => $completed,
+			'total_steps'     => $total,
+			'progress'        => $progress,
+			'progress_percent' => $progress,
+			'message'         => self::subtitle_text( $message ),
+		];
+	}
+
+	/** Return a state-safe generated filename, or an empty string. */
+	private static function safe_state_filename( string $name, string $kind = '' ): string {
+		if ( $name !== basename( $name ) || preg_match( '/[\x00-\x1F\x7F]/', $name ) ) {
+			return '';
+		}
+		if ( 'segment' === $kind ) {
+			return preg_match( '/^segment-\d{4}\.mp4$/', $name ) ? $name : '';
+		}
+		$fixed = [ 'segments.txt', 'joined.mp4', 'rough-cut.srt', 'subtitled.mp4', 'rough-cut-final.mp4' ];
+
+		return in_array( $name, $fixed, true ) || preg_match( '/^segment-\d{4}\.mp4$/', $name ) ? $name : '';
+	}
+
+	/** Verify a persisted work directory belongs only to this batch under temp. */
+	private static function safe_batch_work_dir( string $work_dir, int $batch_id ): bool {
+		return self::safe_work_dir( $work_dir )
+			&& 0 === strpos( basename( (string) realpath( $work_dir ) ), 'worldgraph-rough-cut-' . $batch_id . '-' );
+	}
+
+	/** Clean terminal durable state and return its original error. */
+	private static function terminal_state_error( int $batch_id, array $state, WP_Error $error ): WP_Error {
+		self::discard_state( $batch_id, $state );
+
+		return $error;
+	}
+
+	/** Delete durable state and only predictable files below its verified root. */
+	private static function discard_state( int $batch_id, array $state ): void {
+		delete_post_meta( $batch_id, self::STATE_META );
+		self::cleanup_state_directory( $batch_id, $state );
+	}
+
+	/** Remove safe state-owned files and the verified empty batch directory. */
+	private static function cleanup_state_directory( int $batch_id, array $state ): void {
+		$work_dir = (string) ( $state['work_dir'] ?? '' );
+		if ( ! self::safe_batch_work_dir( $work_dir, $batch_id ) ) {
+			return;
+		}
+		$contents = scandir( $work_dir );
+		foreach ( is_array( $contents ) ? $contents : [] as $name ) {
+			if ( '' === self::safe_state_filename( (string) $name ) ) {
+				continue;
+			}
+			$file = $work_dir . DIRECTORY_SEPARATOR . $name;
+			if ( self::path_is_within( $file, $work_dir ) && is_file( $file ) ) {
+				wp_delete_file( $file );
+			}
+		}
+		$remaining = scandir( $work_dir );
+		if ( [ '.', '..' ] === $remaining ) {
+			rmdir( $work_dir );
+		}
+	}
 
 	/**
 	 * Report whether a usable FFmpeg process can be started.
@@ -124,6 +640,9 @@ class Rough_Cut_Assembler {
 		$binary            = (string) $availability['binary'];
 
 		try {
+			if ( self::cancellation_requested() ) {
+				return self::cancellation_error();
+			}
 			$shots = self::batch_shots( $batch_id, $project_id, $batch_kind, $warnings );
 			if ( is_wp_error( $shots ) ) {
 				return $shots;
@@ -141,10 +660,16 @@ class Rough_Cut_Assembler {
 
 			$normalized = [];
 			foreach ( $shots as $index => $shot ) {
+				if ( self::cancellation_requested() ) {
+					return self::cancellation_error();
+				}
 				$output = $work_dir . DIRECTORY_SEPARATOR . sprintf( 'segment-%04d.mp4', $index + 1 );
 				self::remember_file( $output, $work_dir );
 				$result = self::normalize_shot( $binary, $shot, $profile, $output, $work_dir, false );
 
+				if ( is_wp_error( $result ) && 'worldgraph_rough_cut_cancelled' === $result->get_error_code() ) {
+					return $result;
+				}
 				if ( is_wp_error( $result ) && ! empty( $shot['still_file'] ) ) {
 					$warnings[] = sprintf(
 						/* translators: 1: Shot title, 2: FFmpeg diagnostic. */
@@ -154,14 +679,23 @@ class Rough_Cut_Assembler {
 					);
 					$result = self::normalize_shot( $binary, $shot, $profile, $output, $work_dir, true );
 				}
+				if ( is_wp_error( $result ) && 'worldgraph_rough_cut_cancelled' === $result->get_error_code() ) {
+					return $result;
+				}
 				if ( is_wp_error( $result ) ) {
 					$warnings[] = sprintf(
 						/* translators: 1: Shot title, 2: FFmpeg diagnostic. */
-						__( 'Shot “%1$s” was omitted from the rough cut. %2$s', 'worldgraph' ),
+						__( 'Shot “%1$s” could not use its completed media; a black title/subtitle card was used instead. %2$s', 'worldgraph' ),
 						(string) $shot['shot_title'],
 						$result->get_error_message()
 					);
-					continue;
+					$card_shot               = $shot;
+					$card_shot['video_file'] = '';
+					$card_shot['still_file'] = '';
+					$result = self::normalize_shot( $binary, $card_shot, $profile, $output, $work_dir, true );
+					if ( is_wp_error( $result ) ) {
+						return $result;
+					}
 				}
 
 				$shot['normalized_file'] = $output;
@@ -174,6 +708,9 @@ class Rough_Cut_Assembler {
 					__( 'No completed Shot video or representative still could be assembled.', 'worldgraph' ),
 					[ 'warnings' => $warnings, 'status' => 409 ]
 				);
+			}
+			if ( self::cancellation_requested() ) {
+				return self::cancellation_error();
 			}
 
 			self::assign_timeline_and_dialogue( $normalized );
@@ -202,6 +739,9 @@ class Rough_Cut_Assembler {
 			if ( is_wp_error( $join ) ) {
 				return $join;
 			}
+			if ( self::cancellation_requested() ) {
+				return self::cancellation_error();
+			}
 
 			$srt_file = $work_dir . DIRECTORY_SEPARATOR . 'rough-cut.srt';
 			$srt      = self::build_srt( $normalized );
@@ -226,6 +766,9 @@ class Rough_Cut_Assembler {
 				'worldgraph_rough_cut_subtitle_burn_failed',
 				__( 'FFmpeg could not burn the subtitles into the rough cut.', 'worldgraph' )
 			);
+			if ( is_wp_error( $burn ) && 'worldgraph_rough_cut_cancelled' === $burn->get_error_code() ) {
+				return $burn;
+			}
 			if ( is_wp_error( $burn ) ) {
 				$warnings[] = __( 'Burned subtitles are unavailable; the SRT will be retained as a sidecar file.', 'worldgraph' ) . ' ' . $burn->get_error_message();
 			} else {
@@ -240,12 +783,18 @@ class Rough_Cut_Assembler {
 			$final_file = $work_dir . DIRECTORY_SEPARATOR . 'rough-cut-final.mp4';
 			self::remember_file( $final_file, $work_dir );
 			$mixed = self::mix_audio( $binary, $video_for_audio, $audio_cues, $total_duration, $final_file, $work_dir );
+			if ( is_wp_error( $mixed ) && 'worldgraph_rough_cut_cancelled' === $mixed->get_error_code() ) {
+				return $mixed;
+			}
 			if ( is_wp_error( $mixed ) && ! empty( $audio_cues ) ) {
 				$warnings[] = __( 'Generated Sound cues could not be mixed; a silent audio track was used.', 'worldgraph' ) . ' ' . $mixed->get_error_message();
 				$mixed = self::add_silence( $binary, $video_for_audio, $total_duration, $final_file, $work_dir );
 			}
 			if ( is_wp_error( $mixed ) ) {
 				return $mixed;
+			}
+			if ( self::cancellation_requested() ) {
+				return self::cancellation_error();
 			}
 
 			$video = self::import_video( $final_file, $project_id, $batch_id );
@@ -471,6 +1020,130 @@ class Rough_Cut_Assembler {
 		return $segments;
 	}
 
+	/**
+	 * Project a frozen demonstration plan into its complete editorial timeline.
+	 *
+	 * Completed outputs are optional. A planned row without readable media is
+	 * retained as a black card whose frozen labels and subtitle are burned later.
+	 * Only output/task pairs whose frozen source provenance matches the timeline
+	 * row are accepted.
+	 *
+	 * @param array<string,mixed>            $plan    Frozen assembly plan or wrapper.
+	 * @param array<int,array<string,mixed>> $tasks   Flat frozen batch task list.
+	 * @param array<int,array<string,mixed>> $outputs Validated completed task outputs.
+	 * @return array<int,array<string,mixed>>
+	 */
+	public static function demonstration_segments_from_plan( array $plan, array $tasks, array $outputs ): array {
+		$assembly = isset( $plan['assembly'] ) && is_array( $plan['assembly'] ) ? $plan['assembly'] : $plan;
+		$timeline = isset( $assembly['timeline'] ) && is_array( $assembly['timeline'] ) ? $assembly['timeline'] : [];
+		if ( empty( $timeline ) ) {
+			return [];
+		}
+
+		$tasks_by_key = [];
+		foreach ( array_slice( array_values( $tasks ), 0, self::MAX_SEGMENTS * 8 ) as $task ) {
+			if ( ! is_array( $task ) ) {
+				continue;
+			}
+			$key = trim( (string) ( $task['task_key'] ?? '' ) );
+			if ( '' !== $key ) {
+				$tasks_by_key[ $key ] = $task;
+			}
+		}
+
+		$outputs_by_key = [];
+		foreach ( array_slice( array_values( $outputs ), 0, self::MAX_SEGMENTS * 4 ) as $output ) {
+			if ( ! is_array( $output ) || empty( $output['file'] ) ) {
+				continue;
+			}
+			$key  = trim( (string) ( $output['task_key'] ?? '' ) );
+			$task = $tasks_by_key[ $key ] ?? null;
+			if ( '' === $key || ! is_array( $task ) ) {
+				continue;
+			}
+			if ( absint( $output['source_id'] ?? 0 ) !== absint( $task['source_id'] ?? 0 )
+				|| sanitize_key( (string) ( $output['source_type'] ?? '' ) ) !== sanitize_key( (string) ( $task['source_type'] ?? '' ) )
+				|| sanitize_key( (string) ( $output['type'] ?? '' ) ) !== sanitize_key( (string) ( $task['type'] ?? '' ) ) ) {
+				continue;
+			}
+			$outputs_by_key[ $key ] = $output;
+		}
+
+		$segments = [];
+		foreach ( array_slice( array_values( $timeline ), 0, self::MAX_SEGMENTS ) as $scene_index => $scene ) {
+			if ( ! is_array( $scene ) ) {
+				continue;
+			}
+			$scene_id       = absint( $scene['scene_id'] ?? 0 );
+			$scene_order    = isset( $scene['scene_order'] ) ? (int) $scene['scene_order'] : $scene_index;
+			$scene_title    = self::subtitle_text( (string) ( $scene['scene_title'] ?? '' ) );
+			$scene_subtitle = self::subtitle_text( (string) ( $scene['subtitle_text'] ?? '' ) );
+			$scene_audio    = array_values( array_filter( array_map( 'strval', (array) ( $scene['sound_task_keys'] ?? [] ) ) ) );
+			$rows           = isset( $scene['segments'] ) && is_array( $scene['segments'] ) ? $scene['segments'] : [];
+
+			foreach ( array_slice( array_values( $rows ), 0, self::MAX_SEGMENTS ) as $shot_index => $row ) {
+				if ( ! is_array( $row ) || count( $segments ) >= self::MAX_SEGMENTS ) {
+					continue;
+				}
+				$row_scene_id = absint( $row['scene_id'] ?? $scene_id );
+				$shot_id      = absint( $row['shot_id'] ?? 0 );
+				$video_key    = trim( (string) ( $row['video_task_key'] ?? '' ) );
+				$still_key    = trim( (string) ( $row['fallback_still_task_key'] ?? '' ) );
+				$video_task   = $tasks_by_key[ $video_key ] ?? null;
+				$still_task   = $tasks_by_key[ $still_key ] ?? null;
+
+				$video_ok = $shot_id && is_array( $video_task )
+					&& $shot_id === absint( $video_task['source_id'] ?? 0 )
+					&& 'worldgraph_shot' === sanitize_key( (string) ( $video_task['source_type'] ?? '' ) )
+					&& 'video' === sanitize_key( (string) ( $video_task['type'] ?? '' ) );
+				$still_source_id   = is_array( $still_task ) ? absint( $still_task['source_id'] ?? 0 ) : 0;
+				$still_source_type = is_array( $still_task ) ? sanitize_key( (string) ( $still_task['source_type'] ?? '' ) ) : '';
+				$still_ok = is_array( $still_task ) && 'image' === sanitize_key( (string) ( $still_task['type'] ?? '' ) )
+					&& ( ( $shot_id && 'worldgraph_shot' === $still_source_type && $shot_id === $still_source_id )
+						|| ( ! $shot_id && $row_scene_id && 'worldgraph_scene' === $still_source_type && $row_scene_id === $still_source_id )
+						|| ( ! $shot_id && ! $row_scene_id && 'worldgraph_project' === $still_source_type ) );
+
+				$video_output = $video_ok && isset( $outputs_by_key[ $video_key ] ) ? $outputs_by_key[ $video_key ] : [];
+				$still_output = $still_ok && isset( $outputs_by_key[ $still_key ] ) ? $outputs_by_key[ $still_key ] : [];
+				$shot_title   = $video_ok ? self::subtitle_text( (string) ( $video_task['source_title'] ?? '' ) ) : '';
+				if ( '' === $shot_title && $still_ok ) {
+					$shot_title = self::subtitle_text( (string) ( $still_task['source_title'] ?? '' ) );
+				}
+				if ( '' === $shot_title && $shot_id ) {
+					$shot_title = sprintf( __( 'Shot %d', 'worldgraph' ), $shot_id );
+				}
+
+				$subtitle   = self::subtitle_text( (string) ( $row['subtitle_text'] ?? '' ) );
+				$dialogue   = array_values( array_filter( array_unique( [ $subtitle, $scene_subtitle ] ) ) );
+				$audio_keys = array_values( array_unique( array_filter( array_merge( $scene_audio, array_map( 'strval', (array) ( $row['audio_task_keys'] ?? [] ) ) ) ) ) );
+				$segments[] = [
+					'shot_id'              => $shot_id,
+					'shot_title'           => $shot_title,
+					'shot_menu_order'      => isset( $row['shot_order'] ) ? (int) $row['shot_order'] : $shot_index,
+					'shot_number'          => (float) $shot_index,
+					'scene_id'             => $row_scene_id,
+					'scene_title'          => $scene_title,
+					'scene_menu_order'     => $scene_order,
+					'scene_sequence_order' => $scene_order + 1,
+					'scene_number'         => (float) $scene_order,
+					'duration'             => self::bounded_duration( $row['duration'] ?? self::DEFAULT_SHOT_DURATION ),
+					'video_file'           => (string) ( $video_output['file'] ?? '' ),
+					'video_attachment_id'  => absint( $video_output['attachment_id'] ?? 0 ),
+					'still_file'           => (string) ( $still_output['file'] ?? '' ),
+					'still_attachment_id'  => absint( $still_output['attachment_id'] ?? 0 ),
+					'dialogue_lines'       => $dialogue,
+					'video_task_key'       => $video_key,
+					'fallback_task_key'    => $still_key,
+					'audio_task_keys'      => $audio_keys,
+					'card_only'            => empty( $video_output['file'] ) && empty( $still_output['file'] ),
+					'frozen_timeline'      => true,
+				];
+			}
+		}
+
+		return $segments;
+	}
+
 	/** Resolve and validate the configured binary without executing a shell. */
 	private static function configured_binary(): string {
 		if ( defined( 'WORLDGRAPH_FFMPEG_BINARY' ) ) {
@@ -578,6 +1251,37 @@ class Rough_Cut_Assembler {
 		}
 		update_meta_cache( 'post', $job_ids );
 
+		if ( 'demonstration_video' === $batch_kind ) {
+			$frozen_tasks = self::frozen_batch_tasks( $batch_id );
+			$assembly     = get_post_meta( $batch_id, '_worldgraph_gen_assembly_plan', true );
+			$assembly     = is_array( $assembly ) ? $assembly : [];
+			if ( isset( $assembly['assembly'] ) && is_array( $assembly['assembly'] ) ) {
+				$assembly = $assembly['assembly'];
+			}
+			if ( ! empty( $assembly['timeline'] ) ) {
+				$outputs  = self::completed_demonstration_outputs( $batch_id, $project_id, $job_ids, $frozen_tasks, $warnings );
+				$segments = self::demonstration_segments_from_plan( [ 'assembly' => $assembly ], $frozen_tasks, $outputs );
+				if ( count( $segments ) > self::MAX_SEGMENTS ) {
+					return self::error(
+						'worldgraph_rough_cut_too_large',
+						__( 'The rough cut exceeds the bounded Shot segment limit.', 'worldgraph' ),
+						[ 'segments' => count( $segments ), 'limit' => self::MAX_SEGMENTS, 'status' => 400 ]
+					);
+				}
+				foreach ( $segments as $segment ) {
+					if ( ! empty( $segment['card_only'] ) ) {
+						$warnings[] = sprintf(
+							__( 'Planned Shot “%s” has no completed video or still; a black title/subtitle card will preserve its timeline position.', 'worldgraph' ),
+							(string) ( $segment['shot_title'] ?: $segment['scene_title'] )
+						);
+					}
+				}
+
+				// The frozen timeline order is authoritative for a demonstration.
+				return $segments;
+			}
+		}
+
 		$shots = [];
 		foreach ( $job_ids as $job_id ) {
 			$job_id    = absint( $job_id );
@@ -641,6 +1345,76 @@ class Rough_Cut_Assembler {
 		}
 
 		return $shots;
+	}
+
+	/** Return the flat, frozen task list saved with a generation batch. */
+	private static function frozen_batch_tasks( int $batch_id ): array {
+		$frozen = get_post_meta( $batch_id, '_worldgraph_gen_batch_plan', true );
+		$frozen = is_array( $frozen ) ? $frozen : [];
+		if ( isset( $frozen['tasks'] ) && is_array( $frozen['tasks'] ) ) {
+			$frozen = $frozen['tasks'];
+		}
+
+		return array_values( array_filter( $frozen, 'is_array' ) );
+	}
+
+	/**
+	 * Resolve completed demonstration outputs through frozen step provenance.
+	 *
+	 * @param array<int,int|string>          $job_ids Child generation jobs.
+	 * @param array<int,array<string,mixed>> $tasks   Flat frozen task list.
+	 * @return array<int,array<string,mixed>>
+	 */
+	private static function completed_demonstration_outputs( int $batch_id, int $project_id, array $job_ids, array $tasks, array &$warnings ): array {
+		$tasks_by_step = [];
+		foreach ( array_slice( array_values( $tasks ), 0, 5000 ) as $index => $task ) {
+			if ( ! is_array( $task ) ) {
+				continue;
+			}
+			$step = isset( $task['step'] ) ? (int) $task['step'] : $index;
+			if ( $step >= 0 ) {
+				$tasks_by_step[ $step ] = $task;
+			}
+		}
+
+		$outputs = [];
+		foreach ( $job_ids as $job_id ) {
+			$job_id = absint( $job_id );
+			if ( 'completed' !== sanitize_key( (string) get_post_meta( $job_id, '_worldgraph_gen_status', true ) ) ) {
+				continue;
+			}
+			$step = (int) get_post_meta( $job_id, '_worldgraph_gen_batch_step', true );
+			$task = $tasks_by_step[ $step ] ?? null;
+			if ( ! is_array( $task ) ) {
+				continue;
+			}
+			$task_key    = trim( (string) ( $task['task_key'] ?? '' ) );
+			$type        = sanitize_key( (string) get_post_meta( $job_id, '_worldgraph_gen_type', true ) );
+			$source_id   = absint( get_post_meta( $job_id, '_worldgraph_gen_source_post_id', true ) ?: get_post_field( 'post_parent', $job_id ) );
+			$source_type = sanitize_key( (string) get_post_type( $source_id ) );
+			if ( '' === $task_key || ! in_array( $type, [ 'video', 'image' ], true )
+				|| $source_id !== absint( $task['source_id'] ?? 0 )
+				|| $source_type !== sanitize_key( (string) ( $task['source_type'] ?? '' ) )
+				|| $type !== sanitize_key( (string) ( $task['type'] ?? '' ) )
+				|| self::project_id( $source_id ) !== $project_id ) {
+				$warnings[] = sprintf( __( 'Generation job %d was skipped because its frozen demonstration step does not match its source provenance.', 'worldgraph' ), $job_id );
+				continue;
+			}
+			$attachment = self::job_attachment( $job_id, $batch_id, $source_id, $type );
+			if ( empty( $attachment ) ) {
+				continue;
+			}
+			$outputs[] = [
+				'task_key'      => $task_key,
+				'source_id'     => $source_id,
+				'source_type'   => $source_type,
+				'type'          => $type,
+				'attachment_id' => (int) $attachment['id'],
+				'file'          => (string) $attachment['file'],
+			];
+		}
+
+		return $outputs;
 	}
 
 	/**
@@ -901,9 +1675,7 @@ class Rough_Cut_Assembler {
 	private static function normalize_shot( string $binary, array $shot, array $profile, string $output, string $work_dir, bool $force_still ) {
 		$use_still = $force_still || empty( $shot['video_file'] );
 		$input     = $use_still ? (string) ( $shot['still_file'] ?? '' ) : (string) ( $shot['video_file'] ?? '' );
-		if ( '' === $input ) {
-			return self::error( 'worldgraph_rough_cut_input_missing', __( 'No readable local source file is available.', 'worldgraph' ), [ 'status' => 409 ] );
-		}
+		$use_card  = '' === $input;
 		$duration = self::bounded_duration( $shot['duration'] ?? self::DEFAULT_SHOT_DURATION );
 		$fps      = self::decimal( (float) $profile['fps'] );
 		$seconds  = self::decimal( $duration );
@@ -915,13 +1687,18 @@ class Rough_Cut_Assembler {
 			$seconds
 		);
 		$args = [];
-		if ( $use_still ) {
+		if ( $use_card ) {
+			$args = [ '-f', 'lavfi', '-i', sprintf( 'color=c=black:s=%1$dx%2$d:r=%3$s:d=%4$s', (int) $profile['width'], (int) $profile['height'], $fps, $seconds ) ];
+		} elseif ( $use_still ) {
 			$args = [ '-loop', '1', '-framerate', $fps ];
+		}
+		if ( ! $use_card ) {
+			$args = array_merge( $args, [ '-i', $input ] );
 		}
 		$args = array_merge(
 			$args,
 			[
-				'-i', $input, '-map', '0:v:0', '-an', '-vf', $filter,
+				'-map', '0:v:0', '-an', '-vf', $filter,
 				'-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p',
 				'-r', $fps, '-t', $seconds, '-movflags', '+faststart', $output,
 			]
@@ -944,7 +1721,9 @@ class Rough_Cut_Assembler {
 			$segment['start'] = $cursor;
 			$cursor          += (float) $segment['duration'];
 			$segment['end']   = $cursor;
-			$groups[ (int) $segment['scene_id'] ][] = $index;
+			if ( empty( $segment['frozen_timeline'] ) ) {
+				$groups[ (int) $segment['scene_id'] ][] = $index;
+			}
 		}
 		unset( $segment );
 
@@ -994,6 +1773,11 @@ class Rough_Cut_Assembler {
 
 	/** Discover locally imported, generated Sound audio linked to the cut. */
 	private static function sound_cues( int $project_id, int $batch_id, array $segments, float $fps, array &$warnings ): array {
+		$frozen = self::frozen_sound_cues( $project_id, $batch_id, $segments, $fps, $warnings );
+		if ( null !== $frozen ) {
+			return $frozen;
+		}
+
 		$scene_starts = [];
 		$shot_starts  = [];
 		$scene_ids    = [];
@@ -1049,6 +1833,96 @@ class Rough_Cut_Assembler {
 				'file'     => (string) $attachment['file'],
 				'offset'   => $offset,
 				'duration' => min( max( 0.0, $cut_duration - $offset ), self::optional_duration( worldgraph_get_field_value( (int) $sound->ID, 'duration' ) ) ?: $cut_duration ),
+				'role'     => $role,
+				'volume'   => self::role_volume( $role ),
+			];
+			if ( count( $cues ) >= self::MAX_AUDIO_CUES ) {
+				$warnings[] = __( 'Additional Sound cues were omitted because the rough-cut mix reached its bounded cue limit.', 'worldgraph' );
+				break;
+			}
+		}
+
+		return $cues;
+	}
+
+	/**
+	 * Build demonstration audio placement from frozen task keys and cue metadata.
+	 *
+	 * Returning null means this is a legacy/non-demonstration batch and the
+	 * mutable compatibility path may be used. Returning an empty array means the
+	 * frozen plan deliberately contains no usable cues.
+	 */
+	private static function frozen_sound_cues( int $project_id, int $batch_id, array $segments, float $fps, array &$warnings ): ?array {
+		if ( 'demonstration_video' !== (string) get_post_meta( $batch_id, '_worldgraph_gen_batch_kind', true ) ) {
+			return null;
+		}
+		$tasks = self::frozen_batch_tasks( $batch_id );
+		if ( empty( $tasks ) ) {
+			return null;
+		}
+
+		$tasks_by_key = [];
+		foreach ( $tasks as $task ) {
+			$key = trim( (string) ( $task['task_key'] ?? '' ) );
+			if ( '' !== $key && 'audio' === sanitize_key( (string) ( $task['type'] ?? '' ) ) ) {
+				$tasks_by_key[ $key ] = $task;
+			}
+		}
+
+		$key_context  = [];
+		$cut_duration = empty( $segments ) ? 0.0 : (float) $segments[ count( $segments ) - 1 ]['end'];
+		foreach ( $segments as $segment ) {
+			foreach ( array_values( array_unique( array_filter( array_map( 'strval', (array) ( $segment['audio_task_keys'] ?? [] ) ) ) ) ) as $key ) {
+				$key_context[ $key ][] = [
+					'offset'   => (float) ( $segment['start'] ?? 0.0 ),
+					'scene_id' => absint( $segment['scene_id'] ?? 0 ),
+					'shot_id'  => absint( $segment['shot_id'] ?? 0 ),
+				];
+			}
+		}
+
+		$cues = [];
+		foreach ( $key_context as $key => $contexts ) {
+			$task = $tasks_by_key[ $key ] ?? null;
+			if ( ! is_array( $task ) || 'worldgraph_sound' !== sanitize_key( (string) ( $task['source_type'] ?? '' ) ) ) {
+				continue;
+			}
+			$task_scene_id = absint( $task['scene_id'] ?? 0 );
+			$task_shot_id  = absint( $task['shot_id'] ?? 0 );
+			$context       = null;
+			foreach ( $contexts as $candidate ) {
+				if ( ( ! $task_scene_id || $task_scene_id === (int) $candidate['scene_id'] )
+					&& ( ! $task_shot_id || $task_shot_id === (int) $candidate['shot_id'] ) ) {
+					$context = $candidate;
+					break;
+				}
+			}
+			if ( ! is_array( $context ) ) {
+				$warnings[] = sprintf( __( 'Frozen audio task “%s” was skipped because its timeline context does not match.', 'worldgraph' ), $key );
+				continue;
+			}
+			$sound_id = absint( $task['source_id'] ?? 0 );
+			$role     = sanitize_key( (string) ( $task['audio_role'] ?? '' ) );
+			if ( ! $sound_id || 'silence' === $role ) {
+				continue;
+			}
+			$attachment = self::generated_sound_attachment( $sound_id, $batch_id );
+			$title      = self::subtitle_text( (string) ( $task['source_title'] ?? $key ) );
+			if ( empty( $attachment['file'] ) ) {
+				$warnings[] = sprintf( __( 'Sound cue “%s” has no readable generated or linked audio attachment.', 'worldgraph' ), $title );
+				continue;
+			}
+			$offset = min( 86400.0, max( 0.0, (float) $context['offset'] + self::parse_timecode( (string) ( $task['start_timecode'] ?? '' ), $fps ) ) );
+			if ( $offset >= $cut_duration ) {
+				$warnings[] = sprintf( __( 'Sound cue “%s” starts after the assembled picture and was omitted.', 'worldgraph' ), $title );
+				continue;
+			}
+			$cues[] = [
+				'sound_id' => $sound_id,
+				'task_key' => $key,
+				'file'     => (string) $attachment['file'],
+				'offset'   => $offset,
+				'duration' => min( max( 0.0, $cut_duration - $offset ), self::optional_duration( $task['duration'] ?? '' ) ?: $cut_duration ),
 				'role'     => $role,
 				'volume'   => self::role_volume( $role ),
 			];
@@ -1185,6 +2059,58 @@ class Rough_Cut_Assembler {
 		);
 	}
 
+	/** Reuse a previously imported final video after a worker crash/retry. */
+	private static function existing_imported_video( int $batch_id, int $project_id ): array {
+		$ids = get_posts( [
+			'post_type'      => 'attachment',
+			'post_status'    => 'inherit',
+			'post_parent'    => $project_id,
+			'posts_per_page' => 5,
+			'fields'         => 'ids',
+			'orderby'        => 'ID',
+			'order'          => 'DESC',
+			'meta_query'     => [
+				[ 'key' => '_worldgraph_gen_batch_id', 'value' => $batch_id ],
+				[ 'key' => '_worldgraph_rough_cut', 'value' => 1 ],
+			],
+		] );
+		foreach ( $ids as $attachment_id ) {
+			$attachment_id = absint( $attachment_id );
+			$source_id     = absint( get_post_meta( $attachment_id, '_worldgraph_generated_from', true ) );
+			$url           = (string) wp_get_attachment_url( $attachment_id );
+			if ( $source_id === $project_id && 0 === strpos( strtolower( (string) get_post_mime_type( $attachment_id ) ), 'video/' ) ) {
+				return [ 'attachment_id' => $attachment_id, 'url' => $url ];
+			}
+		}
+
+		return [];
+	}
+
+	/** Reuse a previously imported SRT sidecar after a worker crash/retry. */
+	private static function existing_imported_srt( int $batch_id, int $project_id ): int {
+		$ids = get_posts( [
+			'post_type'      => 'attachment',
+			'post_status'    => 'inherit',
+			'post_parent'    => $project_id,
+			'posts_per_page' => 5,
+			'fields'         => 'ids',
+			'orderby'        => 'ID',
+			'order'          => 'DESC',
+			'meta_query'     => [
+				[ 'key' => '_worldgraph_gen_batch_id', 'value' => $batch_id ],
+				[ 'key' => '_worldgraph_rough_cut_sidecar', 'value' => 1 ],
+			],
+		] );
+		foreach ( $ids as $attachment_id ) {
+			$attachment_id = absint( $attachment_id );
+			if ( $project_id === absint( get_post_meta( $attachment_id, '_worldgraph_generated_from', true ) ) ) {
+				return $attachment_id;
+			}
+		}
+
+		return 0;
+	}
+
 	/** Import the final MP4 as a Project-owned Media Library attachment. */
 	private static function import_video( string $file, int $project_id, int $batch_id ) {
 		$size = is_file( $file ) ? filesize( $file ) : false;
@@ -1318,8 +2244,14 @@ class Rough_Cut_Assembler {
 
 	/** Execute an FFmpeg command with common noninteractive safety flags. */
 	private static function run_ffmpeg( string $binary, array $arguments, string $work_dir, string $error_code, string $message ) {
+		if ( self::cancellation_requested() ) {
+			return self::cancellation_error();
+		}
 		$command = array_merge( [ $binary, '-hide_banner', '-loglevel', 'error', '-nostdin', '-y' ], array_values( $arguments ) );
 		$result  = self::run_process( $command, $work_dir, self::PROCESS_TIMEOUT );
+		if ( ! empty( $result['cancelled'] ) ) {
+			return self::cancellation_error();
+		}
 		if ( 0 !== $result['exit_code'] ) {
 			$diagnostic = trim( (string) ( $result['stderr'] ?: $result['stdout'] ) );
 			return self::error(
@@ -1340,15 +2272,15 @@ class Rough_Cut_Assembler {
 	/**
 	 * Execute one argv vector directly with proc_open; no command string or shell.
 	 *
-	 * @return array{exit_code:int,stdout:string,stderr:string,timed_out:bool}
+	 * @return array{exit_code:int,stdout:string,stderr:string,timed_out:bool,cancelled:bool}
 	 */
 	private static function run_process( array $command, string $work_dir = '', int $timeout = 60 ): array {
 		if ( empty( $command ) || ! function_exists( 'proc_open' ) ) {
-			return [ 'exit_code' => 127, 'stdout' => '', 'stderr' => 'proc_open is unavailable.', 'timed_out' => false ];
+			return [ 'exit_code' => 127, 'stdout' => '', 'stderr' => 'proc_open is unavailable.', 'timed_out' => false, 'cancelled' => false ];
 		}
 		foreach ( $command as $argument ) {
 			if ( ! is_scalar( $argument ) || preg_match( '/\x00/', (string) $argument ) ) {
-				return [ 'exit_code' => 126, 'stdout' => '', 'stderr' => 'The process argument vector is invalid.', 'timed_out' => false ];
+				return [ 'exit_code' => 126, 'stdout' => '', 'stderr' => 'The process argument vector is invalid.', 'timed_out' => false, 'cancelled' => false ];
 			}
 		}
 		$command = array_map( 'strval', array_values( $command ) );
@@ -1361,7 +2293,7 @@ class Rough_Cut_Assembler {
 		$pipes   = [];
 		$process = @proc_open( $command, $descriptors, $pipes, '' !== $work_dir ? $work_dir : null, null, [ 'bypass_shell' => true, 'suppress_errors' => true ] ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- normalized into diagnostics below.
 		if ( ! is_resource( $process ) ) {
-			return [ 'exit_code' => 127, 'stdout' => '', 'stderr' => 'proc_open could not start FFmpeg.', 'timed_out' => false ];
+			return [ 'exit_code' => 127, 'stdout' => '', 'stderr' => 'proc_open could not start FFmpeg.', 'timed_out' => false, 'cancelled' => false ];
 		}
 		fclose( $pipes[0] );
 		stream_set_blocking( $pipes[1], false );
@@ -1369,8 +2301,10 @@ class Rough_Cut_Assembler {
 		$stdout    = '';
 		$stderr    = '';
 		$timed_out = false;
+		$cancelled = false;
 		$deadline  = microtime( true ) + max( 1, min( self::PROCESS_TIMEOUT, $timeout ) );
 		$heartbeat = microtime( true ) + 30;
+		$cancel_check = microtime( true ) + 1;
 		$exit_code = -1;
 
 		do {
@@ -1397,6 +2331,19 @@ class Rough_Cut_Assembler {
 				}
 				break;
 			}
+			if ( microtime( true ) >= $cancel_check ) {
+				$cancel_check = microtime( true ) + 1;
+				if ( self::cancellation_requested() ) {
+					$cancelled = true;
+					proc_terminate( $process );
+					usleep( 100000 );
+					$status = proc_get_status( $process );
+					if ( ! empty( $status['running'] ) ) {
+						proc_terminate( $process, 9 );
+					}
+					break;
+				}
+			}
 			if ( microtime( true ) >= $heartbeat ) {
 				self::touch_assembly_heartbeat();
 				$heartbeat = microtime( true ) + 30;
@@ -1416,6 +2363,10 @@ class Rough_Cut_Assembler {
 			$exit_code = 124;
 			$stderr   .= "\nFFmpeg exceeded the bounded process timeout.";
 		}
+		if ( $cancelled ) {
+			$exit_code = 130;
+			$stderr   .= "\nFFmpeg was stopped because the generation batch was cancelled.";
+		}
 		self::touch_assembly_heartbeat();
 
 		return [
@@ -1423,7 +2374,24 @@ class Rough_Cut_Assembler {
 			'stdout'    => substr( $stdout, -self::MAX_PROCESS_OUTPUT ),
 			'stderr'    => substr( $stderr, -self::MAX_PROCESS_OUTPUT ),
 			'timed_out' => $timed_out,
+			'cancelled' => $cancelled,
 		];
+	}
+
+	/** Whether the active demonstration batch has a cooperative cancel request. */
+	private static function cancellation_requested(): bool {
+		return self::$current_batch_id > 0
+			&& function_exists( 'get_post_meta' )
+			&& (bool) get_post_meta( self::$current_batch_id, '_worldgraph_gen_cancel_requested', true );
+	}
+
+	/** Create the distinct cancellation result consumed by the batch coordinator. */
+	private static function cancellation_error(): WP_Error {
+		return self::error(
+			'worldgraph_rough_cut_cancelled',
+			__( 'Rough-cut assembly stopped because the generation batch was cancelled.', 'worldgraph' ),
+			[ 'batch_id' => self::$current_batch_id, 'status' => 409 ]
+		);
 	}
 
 	/** Publish liveness so a crashed assembly can recover without duplicating a live FFmpeg run. */

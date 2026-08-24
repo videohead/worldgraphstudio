@@ -132,10 +132,10 @@ JSON denies the request. It does not change which operation Templates are
 provisioned. Lyrics generation has a separate MCP model choice: `default` or
 `remi-v1`.
 
-Suno audio Templates do not appear in the story-post Assets metabox because
-that control currently lists image-output Templates only. They remain active
-generation Templates and can be used through the generic Template-backed
-generation surface.
+Suno music audio Templates can appear in the Project **Demonstration** selector
+when the frozen story plan contains a generated Sound task whose modality they
+can satisfy. They do not appear as direct item outputs. Lyrics Templates return
+text rather than audio and therefore do not satisfy a demonstration Sound task.
 
 ## Asynchronous lifecycle
 

@@ -538,10 +538,34 @@ output values supported by its resolved Template, separately from explicit run
 values. Omitting run values therefore uses compatible Project framing followed
 by the Template sampling and negative-conditioning defaults.
 
+A whole-Project demonstration uses the same parent/child contract with
+`_worldgraph_gen_batch_kind = demonstration_video` and
+`_worldgraph_gen_batch_scope = demonstration`. Its
+`_worldgraph_gen_batch_plan` freezes each task's stable key, phase, required and
+generation-required flags, dependencies, preferred modalities, symbolic media
+input references, fallback, prompt, Template, and run/profile values. Resolved
+generated-media attachment inputs are written back once and then treated as
+immutable. Optional unavailable work is represented by a terminal `skipped`
+child rather than removed from the plan. `_worldgraph_gen_assembly_plan`
+separately freezes editorial timeline order, video/still fallbacks, subtitle
+text, and Sound task keys; `_worldgraph_gen_assembly` stores the verified final
+rough-cut result or assembly error. Audio overrides follow the same validated
+contract as images and video through `audio_template_id` and
+`audio_run_values`.
+
 WP-Cron processes bounded batches, submits or polls the configured adapter,
 supports cancellation, imports completed media for supported Template
 modalities into the WordPress media library, and retains normalized results for
 text-output Templates before marking those jobs complete.
+
+After demonstration children are terminal, the separately scheduled
+`worldgraph_process_rough_cut_assembly` hook advances bounded FFmpeg stages.
+Signed `_worldgraph_rough_cut_state` makes normalization, concatenation,
+subtitle, audio/silence, and import work resumable across cron ticks; assembly
+worker token, heartbeat, attempt, and progress metadata protect recovery and
+cancellation. Successful completion is published only after the resulting
+video attachment and its batch/Project provenance are verified.
+
 The built-in catalogs currently provision text-to-image, VideoDraft image and
 video, ElevenLabs audio, VideoDraft audio, and Suno prompt-music,
 custom-music, and `text_to_lyrics` Templates. Suno

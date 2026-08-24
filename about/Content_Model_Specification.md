@@ -425,12 +425,15 @@ composer also reads the entity's detailed authorial fields and the creative
 objective for the selected representative output.
 In the Assets metabox, one-off directions use a separate blank additive field;
 the composed provider prompt is available only as a collapsed read-only review.
-The conditional top level separates **Image**, **Sequence**, and **Video**.
+The conditional top level separates **Image**, **Sequence**, **Video**, and,
+for Projects, **Demonstration**.
 Each available mode reveals only its own output selector, Template controls,
 explanation, and action; undefined modes remain visibly unavailable. Shots
 expose all three, multi-view Characters/Props/Locations expose Image and
 Sequence, Projects expose key-art Image and Project-wide Sequence, and
-single-output recipes expose Image only.
+single-output recipes expose Image only. Project Demonstration reviews a
+whole-story plan and exposes compatible Image, Video, and generated-audio
+Template selectors when those task types require generation.
 
 The default representative-media model is:
 
@@ -445,13 +448,14 @@ The default representative-media model is:
 | Scene | One filmstrip image summarizing its ordered Shots |
 | Episode | One filmstrip image contrasting its first and last Scenes |
 
-`worldgraph_gen` records represent both individual work and durable
-representative-media batches. A batch record is parented to the requested item
-or Project and retains scope, requester, idempotency key, versioned frozen plan,
-request fingerprint, materialization cursor, aggregate counts, and state. Each child job is parented
-to its source Story Graph item and retains the batch ID, frozen-plan step, and
-creative intent together with the
-Template, Connection, provider, workflow, prompt, inputs, state, remote job
+`worldgraph_gen` records represent individual work and durable
+representative-media or demonstration-video batches. A batch record is parented
+to the requested item or Project and retains batch kind, scope, requester,
+idempotency key, versioned frozen plan, request fingerprint, materialization
+cursor, aggregate counts, and state. Each child job is parented to its source
+Story Graph item and retains the batch ID, frozen-plan step, stable task key,
+and creative intent together with the Template, Connection, provider,
+workflow, prompt, inputs, state, remote job
 identity, results, imported attachment IDs, and provenance.
 
 An item plan covers one entity. A project plan traverses canonical `contains`
@@ -460,6 +464,19 @@ descendant once. Planning does not queue work. Starting first resolves every
 required output, then persists a versioned frozen plan. WP-Cron materializes
 and activates child jobs in bounded groups, allowing the batch to execute and
 report work safely over hours or days without one large start request.
+
+A Project demonstration has batch kind `demonstration_video`. Its task plan
+also freezes phases, dependencies, preferred modalities, symbolic input and
+fallback references, and required/generation-required flags. Completed sibling
+media resolves those symbolic references to immutable attachment inputs;
+unavailable optional enhancements remain visible as `skipped` children. A
+separate frozen assembly plan owns timeline order, video-to-still fallback,
+subtitles, and Sound task placement. Once all children are terminal, the
+`worldgraph_process_rough_cut_assembly` WP-Cron hook advances resumable FFmpeg
+normalization, concatenation, subtitle, audio/silence, and import stages. The
+parent stores assembly progress and finally either a provenance-verified rough
+cut attachment DTO or a terminal assembly error. Cancellation is durable across
+both generation and assembly ticks.
 
 These are internal workflow records, not SCF-backed editorial content types.
 Generated attachment filenames retain the Project slug, source CPT type,

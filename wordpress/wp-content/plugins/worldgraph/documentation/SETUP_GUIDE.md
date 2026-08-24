@@ -281,8 +281,15 @@ For ComfyUI:
 4. use **Check ComfyUI** for a local workflow; and
 5. install any reported models/nodes, then recheck.
 
-The Assets metabox only lists active image Templates with an available
-Connection and resolvable bindings.
+The **World Graph Studio Assets** metabox filters active Templates by the
+selected action, available Connection, compatible modality, and resolvable
+bindings. **Image** and **Video** expose direct outputs supported by the current
+item. **Sequence** reviews and queues the item's multi-output recipe, or all
+representative media for a Project. A Project also exposes **Demonstration**,
+which plans the whole story and provides separate compatible Image, Video, and
+generated-audio Template selectors. The audio selector appears only when the
+frozen demonstration plan contains a Sound task that requires generation;
+audio is not a direct item-output mode.
 
 ### WP-Cron
 
@@ -293,6 +300,12 @@ lando wp cron event run worldgraph_process_generation_batch
 
 In production, use the host scheduler to request `wp-cron.php` or run due
 events with WP-CLI. A queued generation cannot progress if WP-Cron never runs.
+Project Demonstration assembly also uses the separately scheduled
+`worldgraph_process_rough_cut_assembly` event. The PHP runtime must allow
+`proc_open`, have writable temporary/upload storage, and be able to execute
+FFmpeg. The binary defaults to `ffmpeg`; define `WORLDGRAPH_FFMPEG_BINARY` when
+an explicit safe path is required. Missing FFmpeg leaves the generated child
+media available but reports an assembly error instead of a completed rough cut.
 
 ## Generate a test asset
 
@@ -300,10 +313,12 @@ events with WP-CLI. A queued generation cannot progress if WP-Cron never runs.
    Episode, Scene, Shot, Asset, or Editorial Artifact.
 2. Find **World Graph Studio Assets**.
 3. Choose **Image**, then select the exact image intent and active Template.
-   (A Shot also offers **Video**; multi-output recipes offer **Sequence**.)
+   A compatible item such as a Shot also offers **Video**; multi-output recipes
+   offer **Sequence**. A Project additionally offers **Demonstration** with
+   separate Image, Video, and, when required, generated-audio Template choices.
 4. Review the generated prompt and leave the applicable featured-asset and
    linked-Asset choices enabled if desired.
-5. Select the contextual **Create image: …** action.
+5. Select the contextual create, queue, or demonstration-review action.
 6. Confirm the queued job in the Generation Log, run WP-Cron if necessary, and
    reload the post after completion.
 
@@ -370,10 +385,14 @@ REST credit check or required MCP-tool check fails.
 ### No Template appears in the Assets metabox
 
 - Confirm the Template is published with `status = active`.
-- Confirm its modality outputs an image.
+- Confirm its modality and output type match the selected **Image**, **Video**,
+  **Sequence**, or Project **Demonstration** task.
 - Confirm its `connection_id` exists and is not disabled.
 - Confirm Template and Connection have the same `provider_type`.
-- Resolve any required `input_bindings` from the source post.
+- Resolve required `input_bindings` from the source post, or confirm the
+  demonstration plan supplies the required generated media reference.
+- For generated audio, use a Project Demonstration containing a matching Sound
+  task; audio Templates are not direct item actions.
 
 ### Jobs remain queued
 

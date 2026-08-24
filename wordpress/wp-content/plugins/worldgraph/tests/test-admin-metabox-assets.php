@@ -39,6 +39,7 @@ class Test_Admin_Metabox_Assets extends TestCase {
 		$this->assertStringContainsString( 'worldgraph-generate-asset__action-select', $metabox );
 		$this->assertStringContainsString( 'worldgraph-generate-asset__image-template-option', $metabox );
 		$this->assertStringContainsString( 'worldgraph-generate-asset__video-template-option', $metabox );
+		$this->assertStringContainsString( 'worldgraph-generate-asset__audio-template-option', $metabox );
 		$this->assertStringContainsString( 'worldgraph-generate-asset__run-controls', $metabox );
 		$this->assertStringContainsString( '<details class="worldgraph-generate-asset__run-controls"', $metabox );
 		$this->assertStringContainsString( 'Run controls (optional)', $metabox );
@@ -82,6 +83,19 @@ class Test_Admin_Metabox_Assets extends TestCase {
 		$this->assertStringContainsString( 'payload.run_values = runValues', $script );
 		$this->assertStringContainsString( 'payload.image_run_values = imageRunValues', $script );
 		$this->assertStringContainsString( 'payload.video_run_values = videoRunValues', $script );
+		$this->assertStringContainsString( 'payload.audio_run_values = audioRunValues', $script );
+		$this->assertStringContainsString( "'pending' === body.assembly.status", $script );
+		$this->assertStringContainsString( 'body.assembly.progress_percent', $script );
+		$this->assertStringContainsString( 'function clearResult( panel )', $script );
+		$this->assertStringContainsString( 'function renderAssemblyResult( panel, assembly )', $script );
+		$this->assertStringContainsString( 'body.latest_demonstration_batch.assembly.url', $script );
+		$this->assertStringContainsString( 'renderAssemblyResult( panel, body.latest_demonstration_batch.assembly )', $script );
+		$this->assertStringContainsString( 'renderAssemblyResult( panel, body.assembly );', $script );
+		$this->assertStringContainsString( 'clearResult( panel );', $script );
+		$this->assertStringContainsString( "result.dataset.resultKind = 'direct'", $script );
+		$this->assertStringContainsString( "'direct' !== panel.querySelector( '.worldgraph-generate-asset__result' ).dataset.resultKind", $script );
+		$this->assertStringContainsString( "'demonstration' === body.scope", $script );
+		$this->assertStringContainsString( "'audio' === task.type && false !== task.generation_required", $script );
 		$this->assertStringNotContainsString( 'innerHTML', $script );
 		$this->assertStringContainsString( 'panel._worldgraphKnownBatches = activeBatchesFromPrompt( body )', $script );
 		$this->assertStringContainsString( "select.textContent = '';", $script );
@@ -100,7 +114,7 @@ class Test_Admin_Metabox_Assets extends TestCase {
 		$this->assertStringContainsString( 'Template_Run_Controls::profile_defaults( $description, $profile )', $generator );
 		$this->assertStringContainsString( "'_worldgraph_gen_profile_values'", $generator );
 		$this->assertStringContainsString( "isset( \$job_params['width'], \$job_params['height'] )", $generator );
-		$this->assertStringContainsString( "'profile_values' => (array) ( \$task['profile_values'] ?? [] )", $workflows );
+		$this->assertStringContainsString( "'profile_values'           => (array) ( \$task['profile_values'] ?? [] )", $workflows );
 		$this->assertStringContainsString( "'profile_values'     => (array) ( \$task['profile_values'] ?? [] )", $workflows );
 	}
 
@@ -111,7 +125,8 @@ class Test_Admin_Metabox_Assets extends TestCase {
 		$this->assertStringContainsString( 'function rememberTemplateSelection( panel, type )', $script );
 		$this->assertStringContainsString( "rememberTemplateSelection( panel, 'image' );", $script );
 		$this->assertStringContainsString( "rememberTemplateSelection( panel, 'video' );", $script );
-		$this->assertSame( 3, substr_count( $script, 'rememberTemplateSelection(' ) );
+		$this->assertStringContainsString( "rememberTemplateSelection( panel, 'audio' );", $script );
+		$this->assertSame( 4, substr_count( $script, 'rememberTemplateSelection(' ) );
 		$this->assertStringNotContainsString( 'rememberTemplateSelections', $script );
 	}
 }

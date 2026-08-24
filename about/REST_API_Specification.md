@@ -512,7 +512,7 @@ route.
 Story-aware representative-media planning and durable batches use:
 
 ```http
-GET  /wp-json/worldgraph/v1/assets/generate/plan?post_id={id}&scope={item|project}
+GET  /wp-json/worldgraph/v1/assets/generate/plan?post_id={id}&scope={item|project|demonstration}
 POST /wp-json/worldgraph/v1/assets/generate/batches
 GET  /wp-json/worldgraph/v1/assets/generate/batches/{id}
 POST /wp-json/worldgraph/v1/assets/generate/batches/{id}/cancel
@@ -521,30 +521,37 @@ POST /wp-json/worldgraph/v1/assets/generate/batches/{id}/cancel
 `scope=item` plans the default representative outputs for one supported Story
 Graph item. `scope=project` requires a Project and traverses its canonical
 ownership graph to plan the Project plus supported World, Character, Prop,
-Location, Episode, Scene, and Shot descendants. Planning is read-only and does
-not reserve provider capacity or spend provider budget. Plan and start require
+Location, Episode, Scene, and Shot descendants. `scope=demonstration` also
+requires a Project and plans an editorially ordered, dependency-aware
+whole-story pass plus rough-cut assembly. Planning is read-only and does not
+reserve provider capacity or spend provider budget. Plan and start require
 `edit_post` for the root, `upload_files`, and permission for every expanded
-source. Batch status and cancellation are limited to the requester or an editor
-of the root who also has upload permission.
+source. Batch status and cancellation require `upload_files` and are limited to
+the original requester or a user who can edit the root.
 
-The plan response includes `workflow`, `sources`, `total_jobs`, image/video
+The plan response includes `workflow`, `sources`, `total_jobs`, image/video/audio
 `counts`, and a `tasks` array. Each task identifies its source, workflow,
-creative `intent`, output `type`, featured-image behavior, and `prompt_hash`;
-long provider prompts are intentionally omitted from expanded plan lists. It
-also returns `ready`, any Template `blockers`, the Templates runnable across
-the plan as `image_templates` and `video_templates`, including the same
-sanitized `run_controls` object on each Template, resolved
-`default_template_ids`, and `latest_batch` when one exists.
+creative `intent`, output `type`, featured-image behavior, whether it is
+`optional`, its `generation_required` flag, phase and dependencies,
+fallback key, and `prompt_hash`; long provider prompts are intentionally
+omitted from expanded plan lists. It also returns `ready`, required Template
+`blockers`, `optional_unavailable`, and the Templates runnable across the plan
+as `image_templates`, `video_templates`, and `audio_templates`, including the
+same sanitized `run_controls` object on each Template, resolved
+`default_template_ids`, and `latest_batch` when one exists. Existing linked
+media can satisfy a task with `generation_required: false`, so it does not need
+a generation Template.
 
 Starting a batch accepts:
 
 ```json
 {
   "post_id": 42,
-  "scope": "project",
+  "scope": "demonstration",
   "base_prompt": "",
   "image_template_id": 101,
   "video_template_id": 202,
+  "audio_template_id": 303,
   "image_run_values": {
     "steps": 32,
     "seed": 873645
@@ -553,20 +560,25 @@ Starting a batch accepts:
     "duration": 6,
     "fps": 24
   },
+  "audio_run_values": {
+    "duration": 6
+  },
   "idempotency_key": "client-operation-uuid"
 }
 ```
 
 `base_prompt` is optional additional author direction. It applies to the item,
-or to every source in Project scope; saved CPT/SCF context and each source's
-`generation_prompt` remain in the final prompt. The image and video Template
-IDs are optional explicit overrides shared by outputs of that type; without
-them, the server applies the registered preference and fallback cascade.
-`image_run_values` and `video_run_values` are optional scalar objects shared by
-tasks of the matching output type. A non-empty object requires the corresponding
-explicit `image_template_id` or `video_template_id`; the server re-derives and
-validates that one explicitly selected Template contract before freezing the
-values.
+or to every source in Project or demonstration scope; saved CPT/SCF context and
+each source's `generation_prompt` remain in the final prompt. The image, video,
+and audio Template IDs are optional explicit overrides shared by generated
+outputs of that type; without them, the server applies the registered
+preference and fallback cascade. `audio_template_id` does not replace a linked
+Sound Asset already selected as an assembly input.
+`image_run_values`, `video_run_values`, and `audio_run_values` are optional
+scalar objects shared by generated tasks of the matching output type. A
+non-empty object requires the corresponding explicit per-type Template ID; the
+server re-derives and validates that one explicitly selected Template contract
+before freezing the values.
 
 This prevents one map from being interpreted against different per-item
 fallback Templates. Media inputs are not accepted in these objects. Required
@@ -579,28 +591,118 @@ not a per-run REST input.
 requester and root post; repeating it returns the existing batch instead of
 duplicating work. WordPress atomically reserves the key while the parent is
 committed and fingerprints scope, additive prompt, Template overrides, and
-normalized image/video run values, so a concurrent retry cannot create a
+normalized image/video/audio run values, so a concurrent retry cannot create a
 duplicate paid batch or reuse the key for different settings. The normalized
 values are frozen into every affected task in the durable batch plan and later
 copied into its child job; later form or catalog refreshes cannot mutate an
 already accepted batch's values. Starting fails before any child is queued if
-any task lacks a runnable Template, a submitted value is invalid, or the
-requester cannot edit every source. A successful start returns `202 Accepted`
-and a `Location` header for the batch status route. Omitting both run-value
-objects preserves the prior no-values batch behavior.
+a required generated task lacks a runnable Template, a submitted value is
+invalid, or the requester cannot edit every source. Optional demonstration
+motion or audio without a runnable Template is frozen as unavailable fallback
+work rather than promoted to a hard blocker. A successful start returns
+`202 Accepted` and a `Location` header for the batch status route. Omitting all
+three per-type run-value objects preserves Template/provider defaults.
 
-Batch status includes `batch_id`, root `post_id`, `scope`, aggregate `status`,
-planned `total`, `materialized`, `remaining`, `active`, `completed`, `failed`,
-`cancelled`, `progress_percent`, per-state `counts`, creation time, and any
-batch error. Up to 200 child `jobs` are included inline; `jobs_truncated`
-indicates that more exist. Each job reports its source, intent, output type,
-status, attachment ID, and error. Cancellation publishes its parent marker
-before child transitions and staging/activation recheck it on every step. It
-changes children that are still `staged`, `queued`, or claimed as `submitting`
-before the worker's atomic `dispatching` boundary. Work that crossed that
-boundary continues reconciling, polling, and importing because a local request
-cannot reliably revoke paid work across every provider. The response adds
-`stopped_queued` and a `cancel_note` to the refreshed aggregate status.
+The version 2 demonstration snapshot freezes stable task keys, required versus
+optional behavior, reference/audio/video phases, dependencies, symbolic media
+references, preferred modalities, fallbacks, prompts, Templates, run values, and
+the editorial assembly timeline. A Character reference gives
+character-conditioned I2V precedence, with recurring Characters ordered first;
+otherwise a compatible moving task uses
+the current and following Shot stills for first/last-frame video when possible,
+then still-conditioned I2V or text-to-video. Linked or completed generated
+audio is mixed when usable. Missing optional motion or audio becomes a skipped
+enhancement and the frozen timeline uses still cards, subtitle/title text, and
+silence. Stories without Shots can use Scene or Project still cards. The API
+does not claim that provider outputs are artistically final or that FFmpeg and
+provider models are installed on every deployment.
+
+Batch status includes `batch_id`, `batch_kind` (`representative_media` or
+`demonstration_video`), root `post_id`, `scope`, aggregate `status`, planned
+`total`, `materialized`, `remaining`, `active`, `completed`, `failed`,
+`skipped`, `cancelled`, `progress_percent`, per-state `counts`, creation time,
+any batch error, and `assembly`. Up to 200 child `jobs` are included inline;
+`jobs_truncated` indicates that more exist. Each job reports its step, stable
+task key when applicable, source, intent, output type, status, attachment ID,
+and error. A skipped child is terminal and records optional work that used a
+fallback rather than leaving the batch active forever.
+
+Aggregate `status` is `pending`, `active`, `cancelling`, `cancelled`, `failed`,
+`completed`, or `completed_with_errors`.
+
+Before assembly starts, `assembly` can be empty. While the independent,
+resumable FFmpeg worker is running it contains a pending DTO such as:
+
+```json
+{
+  "status": "pending",
+  "batch_id": 9001,
+  "stage": "normalize",
+  "completed_steps": 3,
+  "total_steps": 16,
+  "progress": 18,
+  "progress_percent": 18,
+  "message": "Normalized 3 of 12 planned segments."
+}
+```
+
+The pending stages are `normalize`, `concat`, `subtitle`, `audio`, `silence`,
+and `import`. Assembly runs on a separate WP-Cron hook, checkpoints signed
+batch state and a verified batch-specific temporary directory, and advances a
+bounded stage or segment attempt per tick. Aggregate batch progress remains
+below 100 while assembly is waiting or active.
+
+Successful assembly returns an imported rough-cut description under
+`assembly`; representative fields are:
+
+```json
+{
+  "status": "completed",
+  "batch_id": 9001,
+  "batch_kind": "demonstration_video",
+  "project_id": 42,
+  "attachment_id": 1201,
+  "srt_attachment_id": 1202,
+  "url": "https://example.test/wp-content/uploads/project-rough-cut.mp4",
+  "burned_subtitles": false,
+  "sidecar_srt": true,
+  "segments": 12,
+  "audio_cues": 4,
+  "width": 1920,
+  "height": 1080,
+  "fps": 24,
+  "duration": 72,
+  "warnings": []
+}
+```
+
+If assembly cannot complete, completed child media remains available, the
+aggregate status becomes `completed_with_errors`, and `assembly` has the
+failure contract:
+
+```json
+{
+  "status": "failed",
+  "code": "worldgraph_rough_cut_ffmpeg_unavailable",
+  "error": "FFmpeg is unavailable, so the rough cut could not be assembled.",
+  "data": {
+    "binary": "ffmpeg",
+    "status": 503,
+    "diagnostic": "FFmpeg could not be started."
+  }
+}
+```
+
+Cancellation publishes its parent marker before child transitions, and
+materialization/activation recheck it on every step. It changes children still
+`staged`, `queued`, or claimed as `submitting` before the worker's atomic
+`dispatching` boundary; unmaterialized planned work contributes to the
+cancelled aggregate. It also prevents a new demonstration assembly stage from
+starting. Work that crossed the provider-dispatch boundary continues
+reconciling, polling, and importing because this endpoint cannot reliably
+revoke paid work across every adapter. The response adds `stopped_queued` and
+a `cancel_note` to the refreshed aggregate status; cancelling a terminal batch
+is a no-op reported in that note.
 
 Media imported by these routes is named
 `{project_slug|project-wp-slug}-{cpt-type}-{source-slug?}-{intent?}-job-{job_id}.{ext}`;

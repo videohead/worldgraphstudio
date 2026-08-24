@@ -116,11 +116,13 @@ class Asset_Generator_MetaBox {
 				'reviewDemonstration' => __( 'Review and generate demonstration video', 'worldgraph' ),
 				'chooseImage'       => __( 'Choose an image Template…', 'worldgraph' ),
 				'chooseVideo'       => __( 'Choose a video Template…', 'worldgraph' ),
+				'chooseAudio'       => __( 'Choose an audio Template…', 'worldgraph' ),
 				'configuredPerItem' => __( 'Use each output’s configured Template', 'worldgraph' ),
 				'singleTemplateHelp' => __( 'This Template will be used only for the selected output.', 'worldgraph' ),
 				'batchTemplateHelp' => __( 'Choose a Template to override every matching output, or keep each output’s configured Template.', 'worldgraph' ),
 				'imageRunControls'  => __( 'Image Template controls', 'worldgraph' ),
 				'videoRunControls'  => __( 'Video Template controls', 'worldgraph' ),
+				'audioRunControls'  => __( 'Audio Template controls', 'worldgraph' ),
 				'conditioningGroup' => __( 'Conditioning', 'worldgraph' ),
 				'samplingGroup'     => __( 'Sampling', 'worldgraph' ),
 				'outputGroup'       => __( 'Output', 'worldgraph' ),
@@ -161,6 +163,7 @@ class Asset_Generator_MetaBox {
 				'confirmDemonstration' => __( 'Generate the complete story demonstration and assemble it when ready? Provider charges may apply, and this can run for hours or days. Missing optional motion or audio will fall back to stills, subtitles, and silence.', 'worldgraph' ),
 				'batchQueued'       => __( 'Generation batch queued.', 'worldgraph' ),
 				'batchProgress'     => __( 'Batch progress', 'worldgraph' ),
+				'roughCutProgress'  => __( 'Rough-cut assembly', 'worldgraph' ),
 				'roughCutReady'     => __( 'Rough-cut demonstration ready.', 'worldgraph' ),
 				'cancelBatch'       => __( 'Stop work that has not reached a provider?', 'worldgraph' ),
 				'cancelled'         => __( 'Not-yet-dispatched work was stopped. Already-dispatched jobs will finish and import.', 'worldgraph' ),
@@ -267,6 +270,11 @@ class Asset_Generator_MetaBox {
 					<label for="worldgraph-generate-asset-video-template-<?php echo esc_attr( $post->ID ); ?>"><strong><?php esc_html_e( 'Video Template', 'worldgraph' ); ?></strong></label>
 					<select class="widefat worldgraph-generate-asset__video-template" id="worldgraph-generate-asset-video-template-<?php echo esc_attr( $post->ID ); ?>"></select>
 					<p class="description worldgraph-generate-asset__video-template-help"></p>
+				</div>
+				<div class="worldgraph-generate-asset__template-option worldgraph-generate-asset__audio-template-option" hidden>
+					<label for="worldgraph-generate-asset-audio-template-<?php echo esc_attr( $post->ID ); ?>"><strong><?php esc_html_e( 'Audio Template', 'worldgraph' ); ?></strong></label>
+					<select class="widefat worldgraph-generate-asset__audio-template" id="worldgraph-generate-asset-audio-template-<?php echo esc_attr( $post->ID ); ?>"></select>
+					<p class="description worldgraph-generate-asset__audio-template-help"></p>
 				</div>
 			</div>
 			<details class="worldgraph-generate-asset__run-controls" hidden>

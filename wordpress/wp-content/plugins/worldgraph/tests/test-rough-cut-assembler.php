@@ -164,6 +164,146 @@ class Test_Rough_Cut_Assembler extends TestCase {
 		$this->assertStringContainsString( 'They cross at dawn.', Rough_Cut_Assembler::build_srt( $segments ) );
 	}
 
+	/** Frozen Shot rows retain plan order and become cards when generation fails. */
+	public function test_frozen_shot_timeline_merges_outputs_and_retains_card_rows(): void {
+		$tasks = [
+			[
+				'task_key'    => 'demo-shot-80-video',
+				'source_id'   => 80,
+				'source_type' => 'worldgraph_shot',
+				'source_title' => 'Doorway reveal',
+				'type'        => 'video',
+			],
+			[
+				'task_key'    => 'demo-shot-80-still',
+				'source_id'   => 80,
+				'source_type' => 'worldgraph_shot',
+				'source_title' => 'Doorway reveal',
+				'type'        => 'image',
+			],
+			[
+				'task_key'    => 'demo-shot-12-video',
+				'source_id'   => 12,
+				'source_type' => 'worldgraph_shot',
+				'source_title' => 'Mara reacts',
+				'type'        => 'video',
+			],
+			[
+				'task_key'    => 'demo-shot-12-still',
+				'source_id'   => 12,
+				'source_type' => 'worldgraph_shot',
+				'source_title' => 'Mara reacts',
+				'type'        => 'image',
+			],
+		];
+		$plan = [
+			'timeline' => [
+				[
+					'scene_id'        => 9,
+					'scene_order'     => 0,
+					'scene_title'     => 'Frozen Scene Name',
+					'subtitle_text'   => 'MARA: Stay close.',
+					'sound_task_keys' => [ 'demo-sound-4-audio' ],
+					'segments'        => [
+						[
+							'scene_id'                => 9,
+							'shot_id'                 => 80,
+							'shot_order'              => 0,
+							'video_task_key'          => 'demo-shot-80-video',
+							'fallback_still_task_key' => 'demo-shot-80-still',
+							'duration'                => 'PT2.5S',
+							'subtitle_text'           => 'The door opens.',
+							'audio_task_keys'         => [ 'demo-sound-4-audio' ],
+						],
+						[
+							'scene_id'                => 9,
+							'shot_id'                 => 12,
+							'shot_order'              => 1,
+							'video_task_key'          => 'demo-shot-12-video',
+							'fallback_still_task_key' => 'demo-shot-12-still',
+							'duration'                => 6,
+							'subtitle_text'           => 'Mara sees the visitor.',
+						],
+					],
+				],
+			],
+		];
+		$outputs = [
+			[
+				'task_key'      => 'demo-shot-80-video',
+				'source_id'     => 80,
+				'source_type'   => 'worldgraph_shot',
+				'type'          => 'video',
+				'attachment_id' => 901,
+				'file'          => '/bounded/shot-80.mp4',
+			],
+			// Wrong source provenance must not fill the second planned Shot.
+			[
+				'task_key'      => 'demo-shot-12-still',
+				'source_id'     => 80,
+				'source_type'   => 'worldgraph_shot',
+				'type'          => 'image',
+				'attachment_id' => 902,
+				'file'          => '/bounded/wrong-source.jpg',
+			],
+		];
+
+		$segments = Rough_Cut_Assembler::demonstration_segments_from_plan( $plan, $tasks, $outputs );
+
+		$this->assertCount( 2, $segments );
+		$this->assertSame( [ 80, 12 ], array_column( $segments, 'shot_id' ) );
+		$this->assertSame( 'Frozen Scene Name', $segments[0]['scene_title'] );
+		$this->assertSame( 'Doorway reveal', $segments[0]['shot_title'] );
+		$this->assertSame( 2.5, $segments[0]['duration'] );
+		$this->assertSame( '/bounded/shot-80.mp4', $segments[0]['video_file'] );
+		$this->assertFalse( $segments[0]['card_only'] );
+		$this->assertSame( [ 'The door opens.', 'MARA: Stay close.' ], $segments[0]['dialogue_lines'] );
+		$this->assertSame( [ 'demo-sound-4-audio' ], $segments[0]['audio_task_keys'] );
+		$this->assertSame( 'Mara reacts', $segments[1]['shot_title'] );
+		$this->assertSame( 6.0, $segments[1]['duration'] );
+		$this->assertSame( '', $segments[1]['still_file'] );
+		$this->assertTrue( $segments[1]['card_only'] );
+		$this->assertStringContainsString( 'Mara sees the visitor.', Rough_Cut_Assembler::build_srt( $segments ) );
+	}
+
+	/** Durable progress reports bounded stage completion without claiming 100%. */
+	public function test_durable_state_progress_is_stable_and_bounded(): void {
+		$method = new ReflectionMethod( Rough_Cut_Assembler::class, 'pending_result' );
+		$method->setAccessible( true );
+		$state = [
+			'shots'         => [ [ 'shot_id' => 1 ], [ 'shot_id' => 2 ] ],
+			'segment_index' => 2,
+			'stage'         => 'subtitle',
+		];
+		$result = $method->invoke( null, 77, $state, 'Subtitle stage' );
+
+		$this->assertSame( 'pending', $result['status'] );
+		$this->assertSame( 77, $result['batch_id'] );
+		$this->assertSame( 'subtitle', $result['stage'] );
+		$this->assertSame( 3, $result['completed_steps'] );
+		$this->assertSame( 6, $result['total_steps'] );
+		$this->assertSame( 50, $result['progress'] );
+		$this->assertSame( 50, $result['progress_percent'] );
+		$this->assertSame( 'Subtitle stage', $result['message'] );
+
+		$state['stage'] = 'import';
+		$result = $method->invoke( null, 77, $state, 'Import stage' );
+		$this->assertSame( 5, $result['completed_steps'] );
+		$this->assertSame( 83, $result['progress'] );
+		$this->assertLessThan( 100, $result['progress'] );
+	}
+
+	/** Durable temp state accepts only its fixed generated filenames. */
+	public function test_durable_state_filename_allowlist_rejects_paths(): void {
+		$method = new ReflectionMethod( Rough_Cut_Assembler::class, 'safe_state_filename' );
+		$method->setAccessible( true );
+
+		$this->assertSame( 'segment-0001.mp4', $method->invoke( null, 'segment-0001.mp4', 'segment' ) );
+		$this->assertSame( 'rough-cut-final.mp4', $method->invoke( null, 'rough-cut-final.mp4' ) );
+		$this->assertSame( '', $method->invoke( null, '../rough-cut-final.mp4' ) );
+		$this->assertSame( '', $method->invoke( null, 'unowned.tmp' ) );
+	}
+
 	/** Orchestration keeps execution shell-free and cleanup scoped to owned files. */
 	public function test_orchestration_has_required_safety_and_provenance_contracts(): void {
 		$source = (string) file_get_contents( dirname( __DIR__ ) . '/includes/utils/class-rough-cut-assembler.php' );
@@ -185,6 +325,17 @@ class Test_Rough_Cut_Assembler extends TestCase {
 		$this->assertStringContainsString( 'Asset_Generator::GALLERY_META', $source );
 		$this->assertStringContainsString( 'subtitles=filename=', $source );
 		$this->assertStringContainsString( 'anullsrc=', $source );
+		$this->assertStringContainsString( 'color=c=black:s=', $source );
+		$this->assertStringContainsString( "'_worldgraph_gen_cancel_requested'", $source );
+		$this->assertStringContainsString( "'worldgraph_rough_cut_cancelled'", $source );
+		$this->assertStringContainsString( "const STATE_META = '_worldgraph_rough_cut_state'", $source );
+		$this->assertStringContainsString( 'public static function advance( int $batch_id )', $source );
+		$this->assertStringContainsString( 'public static function cancel( int $batch_id ): void', $source );
+		$this->assertStringContainsString( 'delete_post_meta( $batch_id, self::STATE_META )', $source );
+		$this->assertStringContainsString( 'hash_equals( $signature, self::state_signature( $stored ) )', $source );
+		$this->assertStringContainsString( 'self::state_signature( $state )', $source );
+		$this->assertStringContainsString( 'self::safe_batch_work_dir(', $source );
+		$this->assertStringContainsString( 'self::existing_imported_video(', $source );
 		$this->assertStringContainsString( 'self::$known_files', $source );
 		$this->assertStringContainsString( 'self::path_is_within( $file, $work_dir )', $source );
 	}

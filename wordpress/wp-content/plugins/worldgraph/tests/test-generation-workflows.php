@@ -119,6 +119,20 @@ class Test_Generation_Workflows extends TestCase {
 		$this->assertStringContainsString( "'generation_required'", $workflow );
 	}
 
+	/** Every character occurring in the story gets a still, with recurring continuity first. */
+	public function test_demonstration_character_references_cover_story_occurrences(): void {
+		$planner = $this->method_source( 'demonstration_plan' );
+
+		$this->assertStringContainsString( '$story_characters = $character_usage[\'occurrences\'];', $planner );
+		$this->assertStringContainsString( 'foreach ( $story_characters as $character_id => $occurrence )', $planner );
+		$this->assertStringContainsString( '$left_recurring  = count( $left[\'segment_keys\'] ) > 1 ? 0 : 1;', $planner );
+		$this->assertStringContainsString( 'return $left_recurring <=> $right_recurring;', $planner );
+		$this->assertStringContainsString( "__( 'Character reference still', 'worldgraph' )", $planner );
+		$this->assertStringContainsString( '$primary_image   = (string) ( $character_refs[0] ?? $still_key );', $planner );
+		$this->assertStringContainsString( "[ 'text_image_to_video', 'video_to_video', 'text_to_video' ]", $planner );
+		$this->assertStringNotContainsString( "static fn( array \$occurrence ): bool => count( \$occurrence['segment_keys'] ) > 1", $planner );
+	}
+
 	/** Demonstration retries are isolated by batch kind and freeze the coordinator contract. */
 	public function test_demonstration_idempotency_and_frozen_task_contract(): void {
 		$reflection  = new ReflectionClass( Generation_Workflows::class );
@@ -210,21 +224,77 @@ class Test_Generation_Workflows extends TestCase {
 		$this->assertStringContainsString( "update_post_meta( (int) \$job_id, '_worldgraph_gen_status', \$status )", $placeholder );
 	}
 
-	/** Assembly is claimed atomically and records both terminal outcomes. */
+	/** Assembly is handed to a separately claimed worker and records terminal outcomes. */
 	public function test_demonstration_assembly_state_machine_contract(): void {
-		$process  = $this->method_source( 'process_batches' );
-		$assemble = $this->method_source( 'maybe_assemble_demonstration' );
+		$process = $this->method_source( 'process_batches' );
+		$claim   = $this->method_source( 'maybe_assemble_demonstration' );
+		$worker  = $this->method_source( 'process_assembly_queue' );
+		$finish  = $this->method_source( 'finish_assembly' );
+		$verify  = $this->method_source( 'verified_assembly_result' );
+		$store   = $this->method_source( 'store_assembly_record' );
+		$cleanup = $this->method_source( 'cleanup_cancelled_assembly_state' );
+		$cancel  = $this->method_source( 'cancel_batch' );
 
-		$this->assertStringContainsString( "[ 'batch_waiting_assembly', 'batch_assembling' ]", $process );
+		$this->assertStringContainsString( "'batch_waiting_assembly'", $process );
 		$this->assertStringContainsString( 'self::maybe_assemble_demonstration( (int) $batch_id, $lock_token )', $process );
-		$this->assertStringContainsString( 'self::is_cancel_requested( $batch_id )', $assemble );
-		$this->assertStringContainsString( "'_worldgraph_gen_status', 'value' => self::ACTIVE_JOB_STATES", $assemble );
-		$this->assertStringContainsString( "'batch_assembling', 'batch_waiting_assembly'", $assemble );
-		$this->assertStringContainsString( 'Rough_Cut_Assembler::assemble( $batch_id )', $assemble );
-		$this->assertStringContainsString( "'status' => 'failed'", $assemble );
-		$this->assertStringContainsString( "'batch_assembly_failed', 'batch_assembling'", $assemble );
-		$this->assertStringContainsString( '$record[\'status\'] = \'completed\';', $assemble );
-		$this->assertStringContainsString( "'batch_complete', 'batch_assembling'", $assemble );
+		$this->assertStringContainsString( "'_worldgraph_gen_status', 'value' => self::ACTIVE_JOB_STATES", $claim );
+		$this->assertStringContainsString( "'batch_assembling', 'batch_waiting_assembly'", $claim );
+		$this->assertStringContainsString( 'self::schedule_assembly()', $claim );
+		$this->assertStringContainsString( 'self::acquire_named_lock( self::ASSEMBLY_LOCK', $worker );
+		$this->assertStringContainsString( "'_worldgraph_gen_assembly_worker_token'", $worker );
+		$this->assertStringContainsString( 'hash_equals( $lock_token, (string) get_post_meta( $batch_id, \'_worldgraph_gen_assembly_worker_token\', true ) )', $worker );
+		$this->assertStringContainsString( "method_exists( Rough_Cut_Assembler::class, 'advance' )", $worker );
+		$this->assertStringContainsString( "'pending' === ( \$result['status'] ?? '' )", $worker );
+		$this->assertLessThan( strpos( $worker, "if ( is_array( \$result ) && 'pending'" ), strrpos( $worker, 'hash_equals( $lock_token' ) );
+		$this->assertStringContainsString( 'worldgraph_rough_cut_schedule_failed', $worker );
+		$this->assertStringContainsString( 'self::finish_assembly( $batch_id, $result )', $worker );
+		$this->assertStringContainsString( 'self::cleanup_cancelled_assembly_state()', $worker );
+		$this->assertStringContainsString( 'Rough_Cut_Assembler::cancel( $batch_id )', $cleanup );
+		$this->assertStringContainsString( "'_worldgraph_gen_assembly_worker_token'", $cleanup );
+		$this->assertStringContainsString( '2 * Rough_Cut_Assembler::PROCESS_TIMEOUT', $cleanup );
+		$this->assertStringContainsString( 'Rough_Cut_Assembler::cancel( $batch_id )', $cancel );
+		$this->assertStringContainsString( 'self::schedule_assembly()', $cancel );
+		$this->assertStringContainsString( 'self::verified_assembly_result( $batch_id, $result )', $finish );
+		$this->assertStringContainsString( "'status' => 'failed'", $finish );
+		$this->assertStringContainsString( "'batch_assembly_failed', 'batch_assembling'", $finish );
+		$this->assertStringContainsString( '$record[\'status\'] = \'completed\';', $finish );
+		$this->assertStringContainsString( "'batch_complete', 'batch_assembling'", $finish );
+		$this->assertStringContainsString( 'delete_post_meta( $batch_id, self::ASSEMBLY_META )', $finish );
+		$this->assertStringContainsString( 'worldgraph_rough_cut_result_invalid', $verify );
+		$this->assertStringContainsString( "'attachment' !== \$attachment->post_type", $verify );
+		$this->assertStringContainsString( "str_starts_with( \$mime, 'video/' )", $verify );
+		$this->assertStringContainsString( '$batch_id !== $attachment_batch', $verify );
+		$this->assertStringContainsString( '! $is_rough_cut', $verify );
+		$this->assertStringContainsString( '(int) $batch->post_parent !== (int) $attachment->post_parent', $verify );
+		$this->assertStringContainsString( '$record === get_post_meta( $batch_id, self::ASSEMBLY_META, true )', $store );
+		$this->assertLessThan(
+			strpos( $claim, "update_post_meta( \$batch_id, '_worldgraph_gen_assembly_started_at'" ),
+			strpos( $claim, "update_post_meta( \$batch_id, '_worldgraph_gen_status', 'batch_assembling', 'batch_waiting_assembly'" )
+		);
+	}
+
+	/** An explicit optional Template is never silently discarded as a fallback. */
+	public function test_explicit_template_incompatibility_is_rejected(): void {
+		$queue    = $this->method_source( 'queue_batch' );
+		$runnable = $this->method_source( 'runnable_templates' );
+		$resolve  = $this->method_source( 'resolve_template_id' );
+
+		$this->assertStringContainsString( '$invalid_explicit = [];', $queue );
+		$this->assertStringContainsString( 'if ( $generation_required && $explicit )', $queue );
+		$this->assertStringContainsString( 'worldgraph_generation_template_incompatible', $queue );
+		$this->assertStringContainsString( "'incompatible' => \$invalid_explicit", $queue );
+		$this->assertStringContainsString( 'Local_ComfyUI::endpoint( $connection_id )', $runnable );
+		$this->assertStringContainsString( 'return in_array( $explicit_template_id, $ids, true ) ? $explicit_template_id : 0;', $resolve );
+	}
+
+	/** Resolved media inputs must remain identical when the frozen job is queued. */
+	public function test_frozen_resolved_inputs_are_revalidated_at_job_creation(): void {
+		$persist   = $this->method_source( 'persist_resolved_inputs' );
+		$generator = file_get_contents( dirname( __DIR__ ) . '/includes/utils/class-asset-generator.php' );
+
+		$this->assertNotFalse( $generator );
+		$this->assertStringContainsString( 'worldgraph_generation_input_conflict', $persist );
+		$this->assertStringContainsString( "array_key_exists( 'resolved_inputs', \$task ) && \$inputs !== (array) \$task['resolved_inputs']", $generator );
 	}
 
 	/** Batch summaries expose demonstration progress, skipped work, and assembly. */

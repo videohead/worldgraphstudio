@@ -165,11 +165,21 @@
 	}
 
 	function templateSelect( panel, type ) {
-		return panel.querySelector( 'video' === type ? '.worldgraph-generate-asset__video-template' : '.worldgraph-generate-asset__template' );
+		var selectors = {
+			image: '.worldgraph-generate-asset__template',
+			video: '.worldgraph-generate-asset__video-template',
+			audio: '.worldgraph-generate-asset__audio-template'
+		};
+		return panel.querySelector( selectors[ type ] || selectors.image );
 	}
 
 	function templateContainer( panel, type ) {
-		return panel.querySelector( 'video' === type ? '.worldgraph-generate-asset__video-template-option' : '.worldgraph-generate-asset__image-template-option' );
+		var selectors = {
+			image: '.worldgraph-generate-asset__image-template-option',
+			video: '.worldgraph-generate-asset__video-template-option',
+			audio: '.worldgraph-generate-asset__audio-template-option'
+		};
+		return panel.querySelector( selectors[ type ] || selectors.image );
 	}
 
 	function setTemplateVisibility( panel, type, visible, help ) {
@@ -184,7 +194,7 @@
 		select.textContent = '';
 		var placeholder = document.createElement( 'option' );
 		placeholder.value = allowConfigured ? '0' : '';
-		placeholder.textContent = allowConfigured ? strings.configuredPerItem : ( 'video' === type ? strings.chooseVideo : strings.chooseImage );
+		placeholder.textContent = allowConfigured ? strings.configuredPerItem : ( 'audio' === type ? strings.chooseAudio : ( 'video' === type ? strings.chooseVideo : strings.chooseImage ) );
 		placeholder.disabled = ! allowConfigured;
 		select.appendChild( placeholder );
 
@@ -606,7 +616,9 @@
 		templatePanel._worldgraphRunTemplate = template;
 		templatePanel.setAttribute( 'aria-labelledby', headingId );
 		heading.id = headingId;
-		heading.textContent = ( 'video' === selection.type ? ( strings.videoRunControls || 'Video Template controls' ) : ( strings.imageRunControls || 'Image Template controls' ) ) + ': ' + String( template.name || template.id );
+		heading.textContent = ( 'audio' === selection.type
+			? ( strings.audioRunControls || 'Audio Template controls' )
+			: ( 'video' === selection.type ? ( strings.videoRunControls || 'Video Template controls' ) : ( strings.imageRunControls || 'Image Template controls' ) ) ) + ': ' + String( template.name || template.id );
 		templatePanel.appendChild( heading );
 
 		runControlGroups.forEach( function ( group ) {
@@ -664,7 +676,7 @@
 				selections.push( { type: action.type, template: template } );
 			}
 		} else if ( 'workflow' === info.kind ) {
-			[ 'image', 'video' ].forEach( function ( type ) {
+			[ 'image', 'video', 'audio' ].forEach( function ( type ) {
 				var templateId = templateContainer( panel, type ).hidden ? 0 : parseInt( templateSelect( panel, type ).value, 10 ) || 0;
 				var template = templateId ? templateForId( panel, type, templateId ) : null;
 				if ( template ) {
@@ -812,6 +824,29 @@
 		}
 	}
 
+	function clearResult( panel ) {
+		var result = panel.querySelector( '.worldgraph-generate-asset__result' );
+		clearElement( result );
+		delete result.dataset.resultKind;
+		result.hidden = true;
+	}
+
+	function renderAssemblyResult( panel, assembly ) {
+		var result = panel.querySelector( '.worldgraph-generate-asset__result' );
+		clearElement( result );
+		var video = document.createElement( 'video' );
+		video.controls = true;
+		video.preload = 'metadata';
+		video.src = assembly.url;
+		result.appendChild( video );
+		var caption = document.createElement( 'p' );
+		caption.className = 'description';
+		caption.textContent = strings.roughCutReady;
+		result.appendChild( caption );
+		result.dataset.resultKind = 'assembly';
+		result.hidden = false;
+	}
+
 	function renderSingleSummary( panel, action ) {
 		var workflow = panel.querySelector( '.worldgraph-generate-asset__workflow' );
 		var definition = panel._worldgraphPromptBody.workflow || {};
@@ -893,7 +928,7 @@
 		Array.prototype.forEach.call( panel.querySelectorAll( '.worldgraph-generate-asset__modes input' ), function ( input ) {
 			input.disabled = controlsLocked || '1' !== input.dataset.available;
 		} );
-		[ 'image', 'video' ].forEach( function ( type ) {
+		[ 'image', 'video', 'audio' ].forEach( function ( type ) {
 			var template = templateSelect( panel, type );
 			template.disabled = controlsLocked || templateContainer( panel, type ).hidden || ! selectHasEnabledOption( template );
 		} );
@@ -934,6 +969,7 @@
 
 		setTemplateVisibility( panel, 'image', 'image' === type, strings.singleTemplateHelp );
 		setTemplateVisibility( panel, 'video', 'video' === type, strings.singleTemplateHelp );
+		setTemplateVisibility( panel, 'audio', false, '' );
 		fillTemplateSelect( select, templates, action.default_template_id || 0, false, savedTemplate( panel, target, type ), type );
 		renderRunControlsForSelection( panel );
 
@@ -956,7 +992,7 @@
 	function renderPlanLoading( panel, scope ) {
 		panel._worldgraphDisplayedPlan = null;
 		panel._worldgraphDisplayedPlanScope = '';
-		[ 'image', 'video' ].forEach( function ( type ) {
+		[ 'image', 'video', 'audio' ].forEach( function ( type ) {
 			var select = templateSelect( panel, type );
 			select.textContent = '';
 			var loading = document.createElement( 'option' );
@@ -967,6 +1003,7 @@
 		} );
 		setTemplateVisibility( panel, 'image', false, '' );
 		setTemplateVisibility( panel, 'video', false, '' );
+		setTemplateVisibility( panel, 'audio', false, '' );
 		renderRunControls( panel, [], currentTarget( panel ) );
 		panel.querySelector( '.worldgraph-generate-asset__direct-options' ).hidden = true;
 		panel.querySelector( '.worldgraph-generate-asset__prompt-help' ).textContent = strings.batchPromptHelp;
@@ -982,16 +1019,23 @@
 		var defaults = body.default_template_ids || {};
 		var imageVisible = ( parseInt( counts.image, 10 ) || 0 ) > 0;
 		var videoVisible = ( parseInt( counts.video, 10 ) || 0 ) > 0;
+		var audioVisible = 'demonstration' === body.scope && ( body.tasks || [] ).some( function ( task ) {
+			return 'audio' === task.type && false !== task.generation_required;
+		} );
 		panel._worldgraphDisplayedPlan = body;
 		panel._worldgraphDisplayedPlanScope = body.scope;
 
 		setTemplateVisibility( panel, 'image', imageVisible, strings.batchTemplateHelp );
 		setTemplateVisibility( panel, 'video', videoVisible, strings.batchTemplateHelp );
+		setTemplateVisibility( panel, 'audio', audioVisible, strings.batchTemplateHelp );
 		if ( imageVisible ) {
 			fillTemplateSelect( templateSelect( panel, 'image' ), body.image_templates || [], defaults.image || 0, !! body.ready, savedTemplate( panel, target, 'image' ), 'image' );
 		}
 		if ( videoVisible ) {
 			fillTemplateSelect( templateSelect( panel, 'video' ), body.video_templates || [], defaults.video || 0, !! body.ready, savedTemplate( panel, target, 'video' ), 'video' );
+		}
+		if ( audioVisible ) {
+			fillTemplateSelect( templateSelect( panel, 'audio' ), body.audio_templates || [], defaults.audio || 0, !! body.ready, savedTemplate( panel, target, 'audio' ), 'audio' );
 		}
 		renderRunControlsForSelection( panel );
 
@@ -1135,7 +1179,8 @@
 				panel._worldgraphActions = body.actions || legacyActions( body );
 				panel._worldgraphTemplates = {
 					image: body.image_templates || body.templates || [],
-					video: body.video_templates || []
+					video: body.video_templates || [],
+					audio: []
 				};
 				panel._worldgraphPlanEpoch = ( panel._worldgraphPlanEpoch || 0 ) + 1;
 				panel._worldgraphPlanCache = {};
@@ -1156,6 +1201,12 @@
 				renderTarget( panel );
 				if ( panel._worldgraphKnownBatches.length ) {
 					watchBatch( panel, panel._worldgraphKnownBatches[0] );
+				} else if ( body.latest_demonstration_batch && isTerminal( body.latest_demonstration_batch.status ) && body.latest_demonstration_batch.assembly && body.latest_demonstration_batch.assembly.url ) {
+					if ( 'direct' !== panel.querySelector( '.worldgraph-generate-asset__result' ).dataset.resultKind ) {
+						renderAssemblyResult( panel, body.latest_demonstration_batch.assembly );
+					}
+				} else if ( 'direct' !== panel.querySelector( '.worldgraph-generate-asset__result' ).dataset.resultKind ) {
+					clearResult( panel );
 				}
 				return body;
 			} )
@@ -1197,6 +1248,7 @@
 		caption.className = 'description';
 		caption.textContent = messages.join( ' ' );
 		result.appendChild( caption );
+		result.dataset.resultKind = 'direct';
 		result.hidden = false;
 	}
 
@@ -1267,15 +1319,20 @@
 			base_prompt: panel.querySelector( '.worldgraph-generate-asset__prompt' ).value.trim(),
 			image_template_id: ( parseInt( body.counts.image, 10 ) || 0 ) > 0 ? parseInt( templateSelect( panel, 'image' ).value, 10 ) || 0 : 0,
 			video_template_id: ( parseInt( body.counts.video, 10 ) || 0 ) > 0 ? parseInt( templateSelect( panel, 'video' ).value, 10 ) || 0 : 0,
+			audio_template_id: 'demonstration' === scope && ! templateContainer( panel, 'audio' ).hidden ? parseInt( templateSelect( panel, 'audio' ).value, 10 ) || 0 : 0,
 			idempotency_key: panel[ idempotencyProperty ]
 		};
 		var imageRunValues = payload.image_template_id > 0 ? runValuesForTemplate( panel, 'image', payload.image_template_id ) : null;
 		var videoRunValues = payload.video_template_id > 0 ? runValuesForTemplate( panel, 'video', payload.video_template_id ) : null;
+		var audioRunValues = payload.audio_template_id > 0 ? runValuesForTemplate( panel, 'audio', payload.audio_template_id ) : null;
 		if ( null !== imageRunValues ) {
 			payload.image_run_values = imageRunValues;
 		}
 		if ( null !== videoRunValues ) {
 			payload.video_run_values = videoRunValues;
+		}
+		if ( null !== audioRunValues ) {
+			payload.audio_run_values = audioRunValues;
 		}
 		panel._worldgraphBusy = true;
 		updatePrimaryState( panel );
@@ -1319,24 +1376,23 @@
 		progress.hidden = false;
 		progressBar.value = percent;
 		label.textContent = strings.batchProgress + ': ' + percent + '% — ' + ( body.completed || 0 ) + '/' + ( body.total || 0 ) + ' completed, ' + ( body.active || 0 ) + ' active, ' + ( body.skipped || 0 ) + ' fallback, ' + ( body.failed || 0 ) + ' failed, ' + ( body.cancelled || 0 ) + ' cancelled.';
+		if ( body.assembly && 'pending' === body.assembly.status ) {
+			var assemblyPercent = parseInt( body.assembly.progress_percent, 10 );
+			if ( Number.isFinite( assemblyPercent ) ) {
+				label.textContent += ' ' + strings.roughCutProgress + ': ' + assemblyPercent + '%.';
+			}
+		}
 		var statusText = strings.batchQueued + ' #' + body.batch_id + ' — ' + body.status;
 		if ( body.error ) {
 			statusText += ': ' + body.error;
+		} else if ( body.assembly && 'pending' === body.assembly.status && body.assembly.message ) {
+			statusText += ' — ' + body.assembly.message;
 		}
 		setStatus( panel, statusText, 'failed' === body.status || 'completed_with_errors' === body.status );
 		if ( body.assembly && body.assembly.url ) {
-			var result = panel.querySelector( '.worldgraph-generate-asset__result' );
-			clearElement( result );
-			var video = document.createElement( 'video' );
-			video.controls = true;
-			video.preload = 'metadata';
-			video.src = body.assembly.url;
-			result.appendChild( video );
-			var caption = document.createElement( 'p' );
-			caption.className = 'description';
-			caption.textContent = strings.roughCutReady;
-			result.appendChild( caption );
-			result.hidden = false;
+			renderAssemblyResult( panel, body.assembly );
+		} else {
+			clearResult( panel );
 		}
 		panel.querySelector( '.worldgraph-generate-asset__cancel' ).hidden = terminal || 'cancelling' === body.status;
 		if ( terminal ) {
@@ -1468,6 +1524,12 @@
 			panel.querySelector( '.worldgraph-generate-asset__video-template' ).addEventListener( 'change', function () {
 				rememberRunControls( panel );
 				rememberTemplateSelection( panel, 'video' );
+				renderRunControlsForSelection( panel );
+				updatePrimaryState( panel );
+			} );
+			panel.querySelector( '.worldgraph-generate-asset__audio-template' ).addEventListener( 'change', function () {
+				rememberRunControls( panel );
+				rememberTemplateSelection( panel, 'audio' );
 				renderRunControlsForSelection( panel );
 				updatePrimaryState( panel );
 			} );

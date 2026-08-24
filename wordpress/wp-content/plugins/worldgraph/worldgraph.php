@@ -532,5 +532,6 @@ function activate(): void {
  */
 function deactivate(): void {
 	wp_clear_scheduled_hook( Utils\Generation_Batch::HOOK );
+	wp_clear_scheduled_hook( Utils\Generation_Workflows::ASSEMBLY_HOOK );
 	flush_rewrite_rules();
 }

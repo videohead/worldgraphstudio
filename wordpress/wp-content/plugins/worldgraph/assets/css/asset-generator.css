@@ -120,7 +120,7 @@
 
 .worldgraph-generate-asset__template-options {
 	display: grid;
-	grid-template-columns: repeat(2, minmax(220px, 1fr));
+	grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 	gap: 12px;
 	margin: 12px 0;
 }

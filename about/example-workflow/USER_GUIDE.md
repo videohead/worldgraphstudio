@@ -205,11 +205,26 @@ per-run controls. See [Text to Video with Local ComfyUI](../how-to-text-to-video
 for model matrices, prompt patterns, tuning boundaries, and end-to-end
 verification.
 
-The Assets metabox currently lists image-output Templates. Suno prompt music,
-custom music, and `text_to_lyrics` use the generic Template-backed generation
-API. A Suno Connection requires a SunoAPI.org REST key and a separate AceData
-Cloud MCP token; one cannot authenticate the other. See
-[Suno Integration](../plugins/SUNO.md).
+The Assets metabox offers direct **Image** and Shot **Video** outputs plus an
+item/Project **Sequence** plan. On a Project, **Demonstration** previews an
+ordered whole-story pass, with separate image and video Template selectors and
+an audio Template selector when Sound cues need generation. Choose one Template
+to override all generated work of that type or leave it configured per item;
+declared scalar run controls appear only for the selected Templates. A Character
+still is preferred for character-conditioned I2V, with recurring Characters
+ordered first, while other moving Shots can use first/last Shot stills. Linked
+Sound Assets are reused; unavailable
+motion or audio falls back to stills, subtitle/title graphics, and silence.
+The durable queue can run for hours or days, and **Stop pending work** prevents
+new local dispatch while already-dispatched provider work may finish. When all
+children are terminal, a separate resumable FFmpeg worker assembles and imports
+the demonstration if FFmpeg is installed; otherwise the generated child media
+is retained with an assembly diagnostic.
+
+Suno prompt music, custom music, and `text_to_lyrics` are also available through
+the generic Template-backed generation API. A Suno Connection requires a
+SunoAPI.org REST key and a separate AceData Cloud MCP token; one cannot
+authenticate the other. See [Suno Integration](../plugins/SUNO.md).
 
 A VideoDraft Connection provisions Templates from the provider's live tool
 schemas. Image and video jobs are polled through WP-Cron, completed media is

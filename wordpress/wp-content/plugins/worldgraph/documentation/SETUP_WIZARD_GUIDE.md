@@ -129,6 +129,24 @@ Saving:
 ComfyUI provider-catalog sync and manual materialization remain available on
 the saved Connection.
 
+#### Generation selectors after setup
+
+The wizard provisions or connects Templates; it does not choose a Project's
+creative outputs. In a Story Graph editor, **Image** and **Video** show
+compatible direct item actions, while **Sequence** reviews a multi-output item
+recipe or a Project-wide representative-media queue. Project editors also show
+**Demonstration** for the frozen whole-story plan. Its review step provides
+separate compatible Image, Video, and generated-audio Template selectors; the
+audio selector is shown only when a Sound task needs generation. Audio remains
+unavailable as a direct item-output mode.
+
+All queued work requires a reliable WP-Cron runner. Demonstration stitching
+uses the separate `worldgraph_process_rough_cut_assembly` event and additionally
+requires PHP `proc_open`, writable temporary/upload storage, and an executable
+FFmpeg binary in the PHP runtime. FFmpeg defaults to `ffmpeg` and may be set
+with `WORLDGRAPH_FFMPEG_BINARY`. These deployment prerequisites are not
+installed or configured by the setup wizard.
+
 ### 3. External Generator Workflow
 
 This section explains how to bring media from a provider's web application into
@@ -294,9 +312,10 @@ lando wp cron event run --due-now
 
 Then review the Connection's last catalog sync/error fields.
 
-For Suno, verify that six REST/MCP Templates were provisioned. They do not
-appear in the story-post Assets metabox because that surface currently lists
-image-output Templates only.
+For Suno, verify that six REST/MCP Templates were provisioned. Music audio
+Templates can appear in a Project **Demonstration** review when its frozen plan
+contains a compatible generated Sound task. They do not appear as direct item
+outputs, and lyrics Templates do not supply an audio task.
 
 ### LLM test cannot find models
 

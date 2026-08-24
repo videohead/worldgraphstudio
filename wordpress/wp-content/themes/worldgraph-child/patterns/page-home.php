@@ -403,7 +403,7 @@
 			<!-- /wp:heading -->
 
 			<!-- wp:paragraph {"align":"center","className":"wg-section__summary"} -->
-			<p class="has-text-align-center wg-section__summary"><?php echo esc_html__( 'Formats, provider Connections, and specialist agents adapt to one canonical Story Graph. New capabilities can stay focused because they reuse the context, permissions, and persistence already in WordPress.', 'worldgraph-child' ); ?></p>
+			<p class="has-text-align-center wg-section__summary"><?php echo esc_html__( 'Your struggle should be in the story, the struggle between the protagonists and antagonists, not in the tools, toolchain, or battling with format converters. Stay focused on the work that you want to do and use new capabilities to explore new possibilitiles. Connect  to external tools whenever you want and use story tools however you like.', 'worldgraph-child' ); ?></p>
 			<!-- /wp:paragraph -->
 		</div>
 		<!-- /wp:group -->
