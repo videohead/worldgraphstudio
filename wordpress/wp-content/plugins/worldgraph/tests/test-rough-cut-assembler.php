@@ -32,6 +32,18 @@ if ( ! function_exists( 'get_bloginfo' ) ) {
 	}
 }
 
+if ( ! function_exists( 'sanitize_key' ) ) {
+	function sanitize_key( $key ): string {
+		return strtolower( (string) preg_replace( '/[^a-z0-9_\-]/i', '', (string) $key ) );
+	}
+}
+
+if ( ! function_exists( 'absint' ) ) {
+	function absint( $value ): int {
+		return abs( (int) $value );
+	}
+}
+
 require_once dirname( __DIR__ ) . '/includes/utils/class-rough-cut-assembler.php';
 
 /** Rough-cut helper and orchestration tests. */
@@ -85,6 +97,73 @@ class Test_Rough_Cut_Assembler extends TestCase {
 		$this->assertGreaterThan( Rough_Cut_Assembler::role_volume( 'music' ), Rough_Cut_Assembler::role_volume( 'ambience' ) );
 	}
 
+	/** A frozen no-Shot timeline resolves completed Scene/Project cards by task key. */
+	public function test_frozen_demonstration_timeline_maps_fallback_stills(): void {
+		$segments = Rough_Cut_Assembler::fallback_segments_from_plan(
+			[
+				'assembly' => [
+					'timeline' => [
+						[
+							'scene_id'    => 41,
+							'scene_order' => 0,
+							'scene_title' => 'The Crossing',
+							'segments'    => [
+								[
+									'scene_id'                => 41,
+									'fallback_still_task_key' => 'demo-scene-41-still',
+									'duration'                => 'PT6S',
+									'subtitle_text'           => 'They cross at dawn.',
+								],
+							],
+						],
+						[
+							'scene_id'    => 0,
+							'scene_order' => 1,
+							'scene_title' => 'Project Epilogue',
+							'segments'    => [
+								[
+									'scene_id'                => 0,
+									'fallback_still_task_key' => 'demo-project-7-still',
+									'duration'                => 3,
+									'subtitle_text'           => 'The end.',
+								],
+							],
+						],
+					],
+				],
+			],
+			[
+				[
+					'task_key'      => 'demo-scene-41-still',
+					'source_id'     => 41,
+					'source_type'   => 'worldgraph_scene',
+					'source_title'  => 'The Crossing',
+					'attachment_id' => 901,
+					'still_file'    => '/bounded/scene-41.jpg',
+				],
+				[
+					'task_key'      => 'demo-project-7-still',
+					'source_id'     => 7,
+					'source_type'   => 'worldgraph_project',
+					'source_title'  => 'Project Epilogue',
+					'attachment_id' => 902,
+					'still_file'    => '/bounded/project-7.jpg',
+				],
+			]
+		);
+
+		$this->assertCount( 2, $segments );
+		$this->assertSame( 0, $segments[0]['shot_id'] );
+		$this->assertSame( 41, $segments[0]['scene_id'] );
+		$this->assertSame( 6.0, $segments[0]['duration'] );
+		$this->assertSame( '/bounded/scene-41.jpg', $segments[0]['still_file'] );
+		$this->assertSame( [ 'They cross at dawn.' ], $segments[0]['dialogue_lines'] );
+		$this->assertSame( 0, $segments[1]['scene_id'] );
+		$this->assertSame( '/bounded/project-7.jpg', $segments[1]['still_file'] );
+		$this->assertSame( [ 'The end.' ], $segments[1]['dialogue_lines'] );
+		$this->assertStringContainsString( 'They cross at dawn.', Rough_Cut_Assembler::build_srt( $segments ) );
+	}
+
 	/** Orchestration keeps execution shell-free and cleanup scoped to owned files. */
 	public function test_orchestration_has_required_safety_and_provenance_contracts(): void {
 		$source = (string) file_get_contents( dirname( __DIR__ ) . '/includes/utils/class-rough-cut-assembler.php' );
@@ -96,6 +175,10 @@ class Test_Rough_Cut_Assembler extends TestCase {
 		$this->assertStringNotContainsString( 'system(', $source );
 		$this->assertStringContainsString( "'_worldgraph_gen_batch_id'", $source );
 		$this->assertStringContainsString( "'_worldgraph_gen_job_id'", $source );
+		$this->assertStringContainsString( "'_worldgraph_gen_assembly_plan'", $source );
+		$this->assertStringContainsString( "'_worldgraph_gen_batch_step'", $source );
+		$this->assertStringContainsString( "'fallback_still_task_key'", $source );
+		$this->assertStringContainsString( 'self::direct_fallback_segments( $completed )', $source );
 		$this->assertStringContainsString( "'demonstration_video'", $source );
 		$this->assertStringContainsString( "'representative_media'", $source );
 		$this->assertStringContainsString( 'get_post_thumbnail_id( $shot_id )', $source );

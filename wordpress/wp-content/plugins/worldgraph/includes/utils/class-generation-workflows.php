@@ -764,6 +764,7 @@ class Generation_Workflows {
 			$scene_task    = '';
 			$location_id   = (int) ( $scene_locations[ $scene->ID ] ?? 0 );
 			$location_ref  = (string) ( $location_tasks[ $location_id ] ?? '' );
+			$source_ids[ $scene->ID ] = true;
 
 			if ( empty( $shots ) ) {
 				$scene_task = 'demo-scene-' . $scene->ID . '-still';
@@ -792,6 +793,7 @@ class Generation_Workflows {
 			}
 
 			foreach ( $shots as $shot_index => $shot ) {
+				$source_ids[ $shot->ID ] = true;
 				$task_key       = 'demo-shot-' . $shot->ID . '-still';
 				$character_ids  = (array) ( $character_usage['shot_characters'][ $shot->ID ] ?? [] );
 				$reference_keys = [];
@@ -990,6 +992,7 @@ class Generation_Workflows {
 				'scene_id'        => (int) $scene->ID,
 				'scene_order'     => $scene_index,
 				'scene_title'     => (string) $scene->post_title,
+				'subtitle_text'   => self::demonstration_dialogue_text( (int) $scene->ID ),
 				'sound_task_keys' => array_values( array_unique( (array) ( $all_scene_sounds[ $scene->ID ] ?? [] ) ) ),
 				'segments'        => $scene_segments,
 			];
@@ -1044,6 +1047,7 @@ class Generation_Workflows {
 			],
 			'sources'            => count( $source_ids ),
 			'total_jobs'         => count( $tasks ),
+			'generation_jobs'    => count( array_filter( $tasks, static fn( array $task ): bool => ! empty( $task['generation_required'] ) ) ),
 			'counts'             => [
 				'image' => (int) ( $counts['image'] ?? 0 ),
 				'video' => (int) ( $counts['video'] ?? 0 ),
@@ -1650,9 +1654,11 @@ class Generation_Workflows {
 	 *
 	 * @return array<int, array<string, mixed>>
 	 */
-	public static function runnable_templates( int $post_id, string $type ): array {
+	public static function runnable_templates( int $post_id, string $type, array $task = [] ): array {
 		$type      = sanitize_key( $type );
-		$cache_key = $post_id . ':' . $type;
+		$preferred = array_values( array_filter( array_map( [ Generation_Modality::class, 'sanitize' ], (array) ( $task['preferred_modalities'] ?? [] ) ) ) );
+		$input_refs = is_array( $task['input_refs'] ?? null ) ? $task['input_refs'] : [];
+		$cache_key = $post_id . ':' . $type . ':' . md5( wp_json_encode( [ $preferred, array_keys( $input_refs ) ] ) );
 		if ( isset( self::$template_cache[ $cache_key ] ) ) {
 			return self::$template_cache[ $cache_key ];
 		}
@@ -1670,13 +1676,23 @@ class Generation_Workflows {
 		$options = [];
 		foreach ( $templates as $template ) {
 			$modality = Generation_Modality::sanitize( (string) worldgraph_get_field_value( $template->ID, 'modality' ) );
-			if ( $type !== Generation_Modality::output_type( $modality ) || ! empty( Template_Bindings::missing_required( $template->ID, $post_id ) ) ) {
+			if ( $type !== Generation_Modality::output_type( $modality ) || ( ! empty( $preferred ) && ! in_array( $modality, $preferred, true ) ) ) {
+				continue;
+			}
+			$resolved_inputs = Template_Bindings::resolve( (int) $template->ID, $post_id );
+			$missing_inputs  = array_values( array_filter(
+				array_intersect( Generation_Modality::required_inputs( $modality ), Generation_Modality::MEDIA_SLOTS ),
+				static function ( string $slot ) use ( $resolved_inputs, $input_refs ): bool {
+					return empty( $resolved_inputs[ $slot ] ) && empty( $input_refs[ $slot ] );
+				}
+			) );
+			if ( ! empty( $missing_inputs ) ) {
 				continue;
 			}
 			$connection_id = absint( worldgraph_get_field_value( $template->ID, 'connection_id' ) );
 			$connection    = $connection_id ? Connection_Repository::get( $connection_id ) : null;
 			$provider      = sanitize_key( (string) worldgraph_get_field_value( $template->ID, 'provider_type' ) );
-			if ( ! $connection || ! Connection_Repository::is_available( $connection_id ) || $provider !== ( $connection['provider_type'] ?? '' ) || ! in_array( $provider, [ 'comfyui', 'fal', 'videodraft', 'openrouter' ], true ) ) {
+			if ( ! $connection || ! Connection_Repository::is_available( $connection_id ) || $provider !== ( $connection['provider_type'] ?? '' ) || ! in_array( $provider, [ 'comfyui', 'fal', 'elevenlabs', 'suno', 'videodraft', 'openrouter' ], true ) ) {
 				continue;
 			}
 			$requires_media       = ! empty( Generation_Modality::media_inputs( $modality ) );
@@ -1691,7 +1707,7 @@ class Generation_Workflows {
 			// to surface at submission rather than hiding every Template here.
 			if ( 'comfyui' === $provider && 'local' === ( $connection['environment'] ?? '' ) ) {
 				Connection_Adapters::load( 'comfyui' );
-				$report = Comfy_Manifest::validate( $template->ID );
+				$report = Comfy_Manifest::validate( $template->ID, Local_ComfyUI::endpoint( $connection_id ) );
 				if ( ! is_wp_error( $report ) && empty( $report['ok'] ) ) {
 					continue;
 				}
@@ -1704,11 +1720,16 @@ class Generation_Workflows {
 				'connection_id'  => $connection_id,
 				'requires_media' => $requires_media,
 				'media_inputs'   => Generation_Modality::media_inputs( $modality ),
+				'preference_rank'=> false === array_search( $modality, $preferred, true ) ? count( $preferred ) : (int) array_search( $modality, $preferred, true ),
 				'run_controls'   => Template_Run_Controls::describe( (int) $template->ID ),
 			];
 		}
 
 		usort( $options, static function ( array $left, array $right ): int {
+			$rank = (int) ( $left['preference_rank'] ?? 0 ) <=> (int) ( $right['preference_rank'] ?? 0 );
+			if ( 0 !== $rank ) {
+				return $rank;
+			}
 			$left_media  = empty( $left['requires_media'] ) ? 0 : 1;
 			$right_media = empty( $right['requires_media'] ) ? 0 : 1;
 			return $left_media !== $right_media ? $left_media <=> $right_media : strcasecmp( (string) $left['name'], (string) $right['name'] );
@@ -1723,10 +1744,10 @@ class Generation_Workflows {
 		$common = null;
 		$by_id  = [];
 		foreach ( $tasks as $task ) {
-			if ( $type !== ( $task['type'] ?? '' ) ) {
+			if ( $type !== ( $task['type'] ?? '' ) || ( array_key_exists( 'generation_required', $task ) && empty( $task['generation_required'] ) ) ) {
 				continue;
 			}
-			$options = self::runnable_templates( absint( $task['source_id'] ?? 0 ), $type );
+			$options = self::runnable_templates( absint( $task['source_id'] ?? 0 ), $type, (array) $task );
 			$ids     = array_map( 'intval', array_column( $options, 'id' ) );
 			$common  = null === $common ? $ids : array_values( array_intersect( $common, $ids ) );
 			foreach ( $options as $option ) {
@@ -1741,7 +1762,7 @@ class Generation_Workflows {
 
 	/** Resolve explicit, per-post, site-preferred, managed, then first Template. */
 	public static function resolve_template_id( array $task, int $explicit_template_id = 0 ): int {
-		$options = self::runnable_templates( (int) $task['source_id'], (string) $task['type'] );
+		$options = self::runnable_templates( (int) $task['source_id'], (string) $task['type'], $task );
 		$ids     = array_map( 'intval', array_column( $options, 'id' ) );
 		if ( $explicit_template_id ) {
 			return in_array( $explicit_template_id, $ids, true ) ? $explicit_template_id : 0;

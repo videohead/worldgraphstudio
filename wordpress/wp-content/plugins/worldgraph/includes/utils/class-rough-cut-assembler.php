@@ -119,7 +119,7 @@ class Rough_Cut_Assembler {
 		$binary            = (string) $availability['binary'];
 
 		try {
-			$shots = self::batch_shots( $batch_id, $project_id, $warnings );
+			$shots = self::batch_shots( $batch_id, $project_id, $batch_kind, $warnings );
 			if ( is_wp_error( $shots ) ) {
 				return $shots;
 			}
@@ -380,6 +380,90 @@ class Rough_Cut_Assembler {
 		return implode( '', $entries );
 	}
 
+	/**
+	 * Resolve frozen demonstration timeline cards against completed task outputs.
+	 *
+	 * This helper deliberately accepts already validated local output records so
+	 * the plan-to-timeline projection can be tested without WordPress storage.
+	 * Only Scene and Project image tasks are eligible; real Shot media remains
+	 * the primary assembly path.
+	 *
+	 * @param array<string,mixed>            $plan            Frozen assembly plan or a wrapper containing it.
+	 * @param array<int,array<string,mixed>> $completed_tasks Validated completed image-task outputs.
+	 * @return array<int,array<string,mixed>>
+	 */
+	public static function fallback_segments_from_plan( array $plan, array $completed_tasks ): array {
+		$assembly = isset( $plan['assembly'] ) && is_array( $plan['assembly'] ) ? $plan['assembly'] : $plan;
+		$timeline = isset( $assembly['timeline'] ) && is_array( $assembly['timeline'] ) ? $assembly['timeline'] : [];
+		if ( empty( $timeline ) || empty( $completed_tasks ) ) {
+			return [];
+		}
+
+		$completed_by_key = [];
+		foreach ( array_slice( $completed_tasks, 0, self::MAX_SEGMENTS * 2 ) as $task ) {
+			if ( ! is_array( $task ) ) {
+				continue;
+			}
+			$task_key    = trim( (string) ( $task['task_key'] ?? '' ) );
+			$source_type = sanitize_key( (string) ( $task['source_type'] ?? '' ) );
+			if ( '' === $task_key || ! in_array( $source_type, [ 'worldgraph_scene', 'worldgraph_project' ], true ) || empty( $task['still_file'] ) ) {
+				continue;
+			}
+			$completed_by_key[ $task_key ] = $task;
+		}
+
+		$segments = [];
+		foreach ( array_slice( array_values( $timeline ), 0, self::MAX_SEGMENTS ) as $scene_index => $scene ) {
+			if ( ! is_array( $scene ) ) {
+				continue;
+			}
+			$scene_id    = absint( $scene['scene_id'] ?? 0 );
+			$scene_title = self::subtitle_text( (string) ( $scene['scene_title'] ?? '' ) );
+			$scene_order = isset( $scene['scene_order'] ) ? (int) $scene['scene_order'] : $scene_index;
+			$scene_rows  = isset( $scene['segments'] ) && is_array( $scene['segments'] ) ? $scene['segments'] : [];
+			foreach ( array_slice( array_values( $scene_rows ), 0, self::MAX_SEGMENTS ) as $shot_index => $segment ) {
+				if ( ! is_array( $segment ) || count( $segments ) >= self::MAX_SEGMENTS ) {
+					continue;
+				}
+				$task_key = trim( (string) ( $segment['fallback_still_task_key'] ?? '' ) );
+				$task     = $completed_by_key[ $task_key ] ?? null;
+				if ( ! is_array( $task ) ) {
+					continue;
+				}
+
+				$source_id   = absint( $task['source_id'] ?? 0 );
+				$source_type = sanitize_key( (string) ( $task['source_type'] ?? '' ) );
+				$segment_scene_id = absint( $segment['scene_id'] ?? $scene_id );
+				if ( ( 'worldgraph_scene' === $source_type && ( ! $segment_scene_id || $source_id !== $segment_scene_id ) )
+					|| ( 'worldgraph_project' === $source_type && 0 !== $segment_scene_id ) ) {
+					continue;
+				}
+
+				$source_title = self::subtitle_text( (string) ( $task['source_title'] ?? '' ) );
+				$caption      = self::subtitle_text( (string) ( $segment['subtitle_text'] ?? '' ) );
+				$segments[]   = [
+					'shot_id'             => 0,
+					'shot_title'          => $source_title,
+					'shot_menu_order'     => isset( $segment['shot_order'] ) ? (int) $segment['shot_order'] : $shot_index,
+					'shot_number'         => 0.0,
+					'scene_id'            => $segment_scene_id,
+					'scene_title'         => '' !== $scene_title ? $scene_title : $source_title,
+					'scene_menu_order'    => $scene_order,
+					'scene_sequence_order'=> $scene_order + 1,
+					'scene_number'        => (float) $scene_order,
+					'duration'            => self::bounded_duration( $segment['duration'] ?? self::DEFAULT_SHOT_DURATION ),
+					'video_file'          => '',
+					'still_file'          => (string) $task['still_file'],
+					'still_attachment_id' => absint( $task['attachment_id'] ?? 0 ),
+					'dialogue_lines'      => '' !== $caption ? [ $caption ] : [],
+					'task_key'            => $task_key,
+				];
+			}
+		}
+
+		return $segments;
+	}
+
 	/** Resolve and validate the configured binary without executing a shell. */
 	private static function configured_binary(): string {
 		if ( defined( 'WORLDGRAPH_FFMPEG_BINARY' ) ) {
@@ -473,7 +557,7 @@ class Rough_Cut_Assembler {
 	}
 
 	/** Collect one best video and still for every Shot represented by the batch. */
-	private static function batch_shots( int $batch_id, int $project_id, array &$warnings ) {
+	private static function batch_shots( int $batch_id, int $project_id, string $batch_kind, array &$warnings ) {
 		$job_ids = get_posts( [
 			'post_type'      => 'worldgraph_gen',
 			'post_status'    => 'any',
@@ -537,6 +621,9 @@ class Rough_Cut_Assembler {
 		$shots = array_values( array_filter( $shots, static function ( array $shot ): bool {
 			return ! empty( $shot['video_file'] ) || ! empty( $shot['still_file'] );
 		} ) );
+		if ( empty( $shots ) && 'demonstration_video' === $batch_kind ) {
+			$shots = self::demonstration_fallback_segments( $batch_id, $project_id, $job_ids, $warnings );
+		}
 		usort( $shots, [ __CLASS__, 'compare_editorial_rows' ] );
 		if ( count( $shots ) > self::MAX_SEGMENTS ) {
 			return self::error(
@@ -547,6 +634,152 @@ class Rough_Cut_Assembler {
 		}
 
 		return $shots;
+	}
+
+	/**
+	 * Build Scene/Project still cards when a demonstration story has no Shots.
+	 *
+	 * @param array<int,int|string> $job_ids Child job IDs from the current batch.
+	 */
+	private static function demonstration_fallback_segments( int $batch_id, int $project_id, array $job_ids, array &$warnings ): array {
+		$frozen = get_post_meta( $batch_id, '_worldgraph_gen_batch_plan', true );
+		$frozen = is_array( $frozen ) ? $frozen : [];
+		$assembly = get_post_meta( $batch_id, '_worldgraph_gen_assembly_plan', true );
+		$assembly = is_array( $assembly ) ? $assembly : [];
+		if ( isset( $assembly['assembly'] ) && is_array( $assembly['assembly'] ) ) {
+			$assembly = $assembly['assembly'];
+		}
+
+		$tasks = $frozen;
+		if ( isset( $frozen['tasks'] ) && is_array( $frozen['tasks'] ) ) {
+			$tasks = $frozen['tasks'];
+		}
+		if ( empty( $assembly ) && isset( $frozen['assembly'] ) && is_array( $frozen['assembly'] ) ) {
+			$assembly = $frozen['assembly'];
+		}
+
+		$completed = self::completed_fallback_tasks( $batch_id, $project_id, $job_ids, is_array( $tasks ) ? $tasks : [], $warnings );
+		$segments  = self::fallback_segments_from_plan( [ 'assembly' => $assembly ], $completed );
+		if ( empty( $segments ) ) {
+			$segments = self::direct_fallback_segments( $completed );
+		}
+		if ( ! empty( $segments ) ) {
+			$warnings[] = __( 'No completed Shot media was available; completed Scene or Project stills were used as rough-cut title cards.', 'worldgraph' );
+		}
+
+		return array_slice( $segments, 0, self::MAX_SEGMENTS );
+	}
+
+	/**
+	 * Map completed Scene/Project image children to their frozen task keys.
+	 *
+	 * @param array<int,int|string>          $job_ids Child job IDs.
+	 * @param array<int,array<string,mixed>> $tasks   Flat frozen task list.
+	 * @return array<int,array<string,mixed>>
+	 */
+	private static function completed_fallback_tasks( int $batch_id, int $project_id, array $job_ids, array $tasks, array &$warnings ): array {
+		$tasks_by_step = [];
+		foreach ( array_slice( array_values( $tasks ), 0, 5000 ) as $index => $task ) {
+			if ( ! is_array( $task ) ) {
+				continue;
+			}
+			$step = isset( $task['step'] ) ? (int) $task['step'] : $index;
+			if ( $step >= 0 ) {
+				$tasks_by_step[ $step ] = $task;
+			}
+		}
+
+		$completed = [];
+		foreach ( $job_ids as $job_id ) {
+			$job_id = absint( $job_id );
+			if ( 'completed' !== sanitize_key( (string) get_post_meta( $job_id, '_worldgraph_gen_status', true ) )
+				|| 'image' !== sanitize_key( (string) get_post_meta( $job_id, '_worldgraph_gen_type', true ) ) ) {
+				continue;
+			}
+			$source_id   = absint( get_post_meta( $job_id, '_worldgraph_gen_source_post_id', true ) ?: get_post_field( 'post_parent', $job_id ) );
+			$source_type = sanitize_key( (string) get_post_type( $source_id ) );
+			if ( ! in_array( $source_type, [ 'worldgraph_scene', 'worldgraph_project' ], true )
+				|| ( 'worldgraph_project' === $source_type ? $source_id !== $project_id : self::project_id( $source_id ) !== $project_id ) ) {
+				continue;
+			}
+
+			$step = (int) get_post_meta( $job_id, '_worldgraph_gen_batch_step', true );
+			$task = $tasks_by_step[ $step ] ?? [];
+			if ( ! empty( $task ) ) {
+				$declared_source = absint( $task['source_id'] ?? 0 );
+				$declared_type   = sanitize_key( (string) ( $task['type'] ?? '' ) );
+				$declared_source_type = sanitize_key( (string) ( $task['source_type'] ?? '' ) );
+				if ( ( $declared_source && $declared_source !== $source_id )
+					|| ( '' !== $declared_type && 'image' !== $declared_type )
+					|| ( '' !== $declared_source_type && $declared_source_type !== $source_type ) ) {
+					$warnings[] = sprintf( __( 'Generation job %d was skipped because its frozen demonstration step does not match its source provenance.', 'worldgraph' ), $job_id );
+					continue;
+				}
+			}
+
+			$attachment = self::job_attachment( $job_id, $batch_id, $source_id, 'image' );
+			if ( empty( $attachment ) ) {
+				continue;
+			}
+			$post = get_post( $source_id );
+			$completed[] = [
+				'task_key'      => trim( (string) ( $task['task_key'] ?? '' ) ),
+				'step'          => $step,
+				'timeline_order'=> isset( $task['timeline_order'] ) ? (int) $task['timeline_order'] : $step,
+				'source_id'     => $source_id,
+				'source_type'   => $source_type,
+				'source_title'  => (string) ( $task['source_title'] ?? ( $post instanceof \WP_Post ? $post->post_title : '' ) ),
+				'duration'      => $task['duration'] ?? '',
+				'attachment_id' => (int) $attachment['id'],
+				'still_file'    => (string) $attachment['file'],
+			];
+			if ( count( $completed ) >= self::MAX_SEGMENTS * 2 ) {
+				break;
+			}
+		}
+
+		return $completed;
+	}
+
+	/** Build bounded cards directly when an older frozen plan lacks assembly metadata. */
+	private static function direct_fallback_segments( array $completed ): array {
+		usort( $completed, static function ( array $left, array $right ): int {
+			$order = (int) ( $left['timeline_order'] ?? $left['step'] ?? 0 ) <=> (int) ( $right['timeline_order'] ?? $right['step'] ?? 0 );
+			return 0 !== $order ? $order : (int) ( $left['source_id'] ?? 0 ) <=> (int) ( $right['source_id'] ?? 0 );
+		} );
+
+		$segments = [];
+		foreach ( array_slice( $completed, 0, self::MAX_SEGMENTS ) as $index => $task ) {
+			$source_id   = absint( $task['source_id'] ?? 0 );
+			$source_type = sanitize_key( (string) ( $task['source_type'] ?? '' ) );
+			if ( ! $source_id || ! in_array( $source_type, [ 'worldgraph_scene', 'worldgraph_project' ], true ) || empty( $task['still_file'] ) ) {
+				continue;
+			}
+			$post       = get_post( $source_id );
+			$title      = self::subtitle_text( (string) ( $task['source_title'] ?? ( $post instanceof \WP_Post ? $post->post_title : '' ) ) );
+			$caption    = $post instanceof \WP_Post ? (string) ( $post->post_excerpt ?: $post->post_content ?: $post->post_title ) : $title;
+			$scene_id   = 'worldgraph_scene' === $source_type ? $source_id : 0;
+			$scene_order = isset( $task['timeline_order'] ) ? (int) $task['timeline_order'] : $index;
+			$segments[] = [
+				'shot_id'             => 0,
+				'shot_title'          => $title,
+				'shot_menu_order'     => 0,
+				'shot_number'         => 0.0,
+				'scene_id'            => $scene_id,
+				'scene_title'         => $title,
+				'scene_menu_order'    => $scene_order,
+				'scene_sequence_order'=> $scene_order + 1,
+				'scene_number'        => (float) $scene_order,
+				'duration'            => self::bounded_duration( $task['duration'] ?? '' ),
+				'video_file'          => '',
+				'still_file'          => (string) $task['still_file'],
+				'still_attachment_id' => absint( $task['attachment_id'] ?? 0 ),
+				'dialogue_lines'      => array_values( array_filter( [ self::subtitle_text( $caption ) ] ) ),
+				'task_key'            => (string) ( $task['task_key'] ?? '' ),
+			];
+		}
+
+		return $segments;
 	}
 
 	/** Build sortable Shot and Scene metadata. */

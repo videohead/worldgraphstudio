@@ -16,6 +16,12 @@ if ( ! function_exists( '__' ) ) {
 	}
 }
 
+if ( ! function_exists( 'sanitize_key' ) ) {
+	function sanitize_key( $value ): string {
+		return preg_replace( '/[^a-z0-9_\-]/', '', strtolower( (string) $value ) );
+	}
+}
+
 require_once dirname( __DIR__ ) . '/includes/utils/class-generation-workflows.php';
 
 /** Representative workflow and metabox contract tests. */
@@ -52,6 +58,43 @@ class Test_Generation_Workflows extends TestCase {
 		$this->assertNotContains( 'script_content', Generation_Workflows::INHERITED_PROMPT_FIELDS['worldgraph_scene'] );
 		$this->assertNotContains( 'dialogue', Generation_Workflows::INHERITED_PROMPT_FIELDS['worldgraph_scene'] );
 		$this->assertNotContains( 'frame_rate', Generation_Workflows::PROMPT_FIELDS['worldgraph_project'] );
+	}
+
+	/** Demonstration planning is an explicit Project scope and durable batch kind. */
+	public function test_demonstration_scope_and_batch_kind_are_public(): void {
+		$this->assertSame( [ 'item', 'project', 'demonstration' ], Generation_Workflows::supported_scopes() );
+		$this->assertContains( Generation_Workflows::REPRESENTATIVE_BATCH, Generation_Workflows::supported_batch_kinds() );
+		$this->assertContains( Generation_Workflows::DEMONSTRATION_BATCH, Generation_Workflows::supported_batch_kinds() );
+		$this->assertSame( Generation_Workflows::DEMONSTRATION_BATCH, Generation_Workflows::batch_kind_for_scope( 'demonstration' ) );
+		$this->assertSame( Generation_Workflows::REPRESENTATIVE_BATCH, Generation_Workflows::batch_kind_for_scope( 'project' ) );
+	}
+
+	/** Character-name inference must avoid matching aliases inside other words. */
+	public function test_demonstration_character_mentions_use_name_boundaries(): void {
+		$method = ( new ReflectionClass( Generation_Workflows::class ) )->getMethod( 'character_ids_mentioned' );
+		$method->setAccessible( true );
+		$aliases = [ 10 => [ 'Al' ], 20 => [ 'Alice' ], 30 => [ 'Bob' ] ];
+
+		$this->assertSame( [ 10, 30 ], $method->invoke( null, 'Al crosses frame while Bob looks left; Aliceblue signage stays blurred.', $aliases ) );
+	}
+
+	/** The frozen planner contract must describe dependencies, media bindings, and fallbacks. */
+	public function test_demonstration_plan_declares_durable_media_contract(): void {
+		$workflow = file_get_contents( dirname( __DIR__ ) . '/includes/utils/class-generation-workflows.php' );
+
+		$this->assertNotFalse( $workflow );
+		$this->assertStringContainsString( 'public static function demonstration_plan', $workflow );
+		$this->assertStringContainsString( "'task_key'", $workflow );
+		$this->assertStringContainsString( "'phase'", $workflow );
+		$this->assertStringContainsString( "'dependencies'", $workflow );
+		$this->assertStringContainsString( "'input_refs'", $workflow );
+		$this->assertStringContainsString( "'start_frame'", $workflow );
+		$this->assertStringContainsString( "'end_frame'", $workflow );
+		$this->assertStringContainsString( "'fallback_task_key'", $workflow );
+		$this->assertStringContainsString( "'audio_fallback'    => 'silence'", $workflow );
+		$this->assertStringContainsString( "'subtitle_fallback' => true", $workflow );
+		$this->assertStringContainsString( "'preferred_modalities'", $workflow );
+		$this->assertStringContainsString( "'generation_required'", $workflow );
 	}
 
 	/** Direct REST generation must route the selected output, not hard-code image. */

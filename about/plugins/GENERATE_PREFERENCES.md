@@ -1,15 +1,18 @@
 # Generate Preferences and Generation Intents
 
 > **Delivery status:** the provider-neutral representative-media registry,
-> Template-resolution preferences, detailed Story Graph prompts, durable item
-> and Project batches, Template-conditional per-run controls, and their REST
-> operations are delivered. A dedicated
+> Template-resolution preferences, detailed Story Graph prompts, durable item,
+> Project, and whole-story demonstration batches, dependency-aware fallback
+> planning, FFmpeg rough-cut assembly, Template-conditional per-run controls,
+> and their REST operations are delivered. Provider execution and final assembly
+> still depend on the deployment's Connections, models, and FFmpeg installation.
+> A dedicated
 > graphical site-preferences editor is not required by this contract; sites can
 > manage the versioned option through an integration or filter.
 
 ## Delivered authoring workflow
 
-The **World Graph Studio Assets** Generate surface starts with three conditional
+The **World Graph Studio Assets** Generate surface starts with four conditional
 modes:
 
 - **Image** selects one defined still-image intent, its image Template, and the
@@ -18,7 +21,10 @@ modes:
   all Project representative media, then previews the image/video plan and
   Template behavior before queueing a durable batch; and
 - **Video** selects one defined video intent and its video Template. The default
-  registry enables this mode for Shots.
+  registry enables this mode for Shots; and
+- **Demonstration** appears on a Project and previews and queues an ordered,
+  end-to-end story pass. It plans required reference/still work before optional
+  motion and audio enhancements, then requests a rough-cut assembly.
 
 Modes that are not defined for the current CPT are visibly unavailable. Each
 available mode has its own output selector, contextual explanation, relevant
@@ -36,7 +42,7 @@ declares or that its provider schema/workflow exposes safely. Changing the
 Template replaces that control set and resets values that no longer belong to
 the selected Template.
 
-Planning reports the number of image and video jobs, every source and creative
+Planning reports the number of image, video, and audio jobs, every source and creative
 intent, prompt fingerprints, Templates runnable across the plan, resolved
 defaults, and the latest batch. It performs no writes and spends no provider
 budget.
@@ -71,16 +77,18 @@ The default composer reads this type-specific Story Graph context:
 | Scene | number, summary, script content, dialogue, location, time of day, emotional tone, production notes |
 | Episode | number, synopsis |
 
-When no author-edited base prompt is supplied, composition order is:
+When no author-edited base prompt is supplied, the base composition order is:
 
-1. content type and title;
-2. non-duplicate excerpt and post content;
-3. labeled detailed fields;
-4. dependent Scene-shot or Episode-bookend context where applicable;
-5. the representative intent's creative objective;
-6. `generation_prompt`;
-7. optional `base_prompt` text labeled **Additional request instructions**; and
-8. common continuity, detail, and no-watermark constraints.
+1. for video, a generic motion-first direction and the intent's creative
+   objective;
+2. content type and title, followed by bounded inherited ancestor context;
+3. non-duplicate excerpt and post content;
+4. labeled detailed fields;
+5. dependent Scene-shot or Episode-bookend context where applicable;
+6. for non-video outputs, the intent's creative objective;
+7. `generation_prompt`;
+8. optional `base_prompt` text labeled **Additional request instructions**; and
+9. output-specific continuity, detail, and no-watermark constraints.
 
 The composer removes markup, renders select values and relationships readably,
 deduplicates repeated core/SCF text, and applies one global 2,400-word bound.
@@ -89,6 +97,18 @@ context or saved `generation_prompt`; in Project scope it applies to every
 planned source. The
 `worldgraph_generate_asset_prompt` filter runs last with the prompt, source
 post, and intent.
+
+After the server resolves the video Template, it prepends one idempotent
+Template-family profile to this positive prompt. Wan receives an explicit
+motion-first opening with subject action, camera movement, temporal progression,
+cinematic lighting, and stable identity. LTX receives a one-shot chronological
+action opening covering subject/environment motion, camera, lighting, and color
+through the final frame. The LTX guidance includes dialogue, ambience, music,
+or sound cues only for a workflow that generates audio. Negative suggestions
+remain guidance for a distinct negative-conditioning input; they are never
+silently appended to the positive prompt. These profiles change prompt text,
+not sampler topology, model files, VAE, text encoder, resolution, frame rate,
+steps, CFG, denoise, or motion controls stored in the Template workflow.
 
 Inherited context uses a smaller visual map than the source record. In
 particular, a Shot inherits its Scene summary, location, time of day, and
@@ -144,6 +164,16 @@ left intact, and ambiguous graphs fail before provider submission. Likewise
 checkpoint/model, VAE, and CLIP file selection remains a Template-authoring and
 readiness concern; the Assets form cannot submit arbitrary model or filesystem
 names for one run.
+
+For a local ComfyUI Template, **Template Workflow Test** displays the exact
+model-loader selections found in the saved graph, including the filename,
+models folder, loader node class, and field. This is the authoritative list of
+what that workflow asks that ComfyUI installation to load. Install matching
+files in that specific Connection's ComfyUI model folders or edit/import the
+workflow and recheck readiness. Requests, workflow conversion, uploads,
+history polling, readiness, and output retrieval all use the selected
+Connection's `endpoint_url`; model selections are not inferred from a different
+global ComfyUI endpoint.
 
 For a direct run the client may send a `run_values` object keyed by the
 selected Template's advertised fields. For a Sequence,
