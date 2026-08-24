@@ -515,6 +515,16 @@ retained and batch status exposes a bounded assembly error/diagnostic. The
 repository does not imply that FFmpeg or provider models are installed on a
 particular host.
 
+Automatic local assembly currently runs in the WordPress PHP runtime. Lando
+installs FFmpeg in `appserver` for that reason; `lando ffmpeg` targets the
+separate `cli` container and is not callable by the WP-Cron worker. ComfyUI may
+become the preferred backend only when the selected Connection exposes a
+capability-verified, narrowly scoped assembly Template/node that accepts a
+bounded manifest and constructs fixed FFmpeg argument vectors internally. The
+ordinary `/prompt` API does not expose ComfyUI's FFmpeg executable, and a graph
+that decodes an entire story into IMAGE tensors is not a production assembly
+fallback.
+
 ElevenLabs and VideoDraft audio may return completed results synchronously.
 ComfyUI, fal, Suno, and VideoDraft image/video tools can return asynchronous
 jobs. A local ComfyUI Connection with an MCP endpoint can

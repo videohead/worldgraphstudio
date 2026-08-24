@@ -306,6 +306,11 @@ Project Demonstration assembly also uses the separately scheduled
 FFmpeg. The binary defaults to `ffmpeg`; define `WORLDGRAPH_FFMPEG_BINARY` when
 an explicit safe path is required. Missing FFmpeg leaves the generated child
 media available but reports an assembly error instead of a completed rough cut.
+The default Lando configuration installs FFmpeg in `appserver`, which owns PHP
+and WP-Cron. Run `lando rebuild -y` after adopting that configuration, then
+verify it with `lando exec appserver -- ffmpeg -version`. The FFmpeg executable
+in Lando's separate `cli` service is developer tooling; PHP cannot use it as an
+automatic fallback across the container boundary.
 
 ## Generate a test asset
 

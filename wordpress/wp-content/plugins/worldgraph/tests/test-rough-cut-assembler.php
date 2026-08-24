@@ -59,6 +59,17 @@ class Test_Rough_Cut_Assembler extends TestCase {
 		$this->assertIsString( $availability['error'] );
 	}
 
+	/** Lando installs the automatic assembly binary in the PHP-owned service. */
+	public function test_lando_appserver_owns_the_ffmpeg_runtime(): void {
+		$lando = (string) file_get_contents( dirname( __DIR__, 5 ) . '/.lando.yml' );
+
+		$this->assertNotSame( '', $lando );
+		$this->assertMatchesRegularExpression(
+			'/services:\s+appserver:.*?build_as_root:.*?apt-get install -y --no-install-recommends ffmpeg.*?\n  database:/s',
+			$lando
+		);
+	}
+
 	/** Cue positions accept seconds, ISO durations, and frame timecodes. */
 	public function test_timecode_parsing_is_deterministic(): void {
 		$this->assertSame( 12.5, Rough_Cut_Assembler::parse_timecode( '12.5' ) );

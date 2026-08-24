@@ -62,6 +62,10 @@ metadata, and SCF values can be serialized.
 
 The standard deployment contains WordPress, MariaDB, and the World Graph Studio plugin. WordPress stores generation jobs and uses WP-Cron to process bounded batches.
 A node-driven CLI container is also included for testing and development.
+In the default Lando environment, FFmpeg is installed in the WordPress
+`appserver` because the resumable rough-cut worker executes from PHP. The
+separate CLI FFmpeg tooling cannot serve as an automatic cross-container
+fallback.
 The SCF plugin is also required in order to extend World Graph Studio capabilities.
 
 ## Connection Adapters
@@ -92,6 +96,13 @@ reuse whichever shared services it integrates with, such as Connection records,
 Templates, generation jobs, media import, and provenance.
 
 For reliable production scheduling, invoke `wp-cron.php` from the host scheduler. Local Lando users can run due events with `lando wp-cron`.
+
+After adopting a Lando configuration that newly installs FFmpeg in
+`appserver`, run `lando rebuild -y`, then verify the PHP runtime with
+`lando exec appserver -- ffmpeg -version`. A future ComfyUI-first assembly path
+requires an explicitly installed, capability-checked World Graph assembly
+node/Template; ComfyUI's normal HTTP API does not expose its internal FFmpeg
+binary as a command service.
 
 ## ComfyUI MCP
 
