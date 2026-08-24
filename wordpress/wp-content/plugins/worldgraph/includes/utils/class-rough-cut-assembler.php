@@ -42,6 +42,9 @@ class Rough_Cut_Assembler {
 	/** Generated files owned by the current request and safe to clean up. */
 	private static array $known_files = [];
 
+	/** Demonstration batch whose long-running FFmpeg process should emit a heartbeat. */
+	private static int $current_batch_id = 0;
+
 	/**
 	 * Report whether a usable FFmpeg process can be started.
 	 *
@@ -115,6 +118,8 @@ class Rough_Cut_Assembler {
 		}
 
 		self::$known_files = [];
+		self::$current_batch_id = $batch_id;
+		self::touch_assembly_heartbeat();
 		$warnings          = [];
 		$binary            = (string) $availability['binary'];
 
@@ -285,6 +290,8 @@ class Rough_Cut_Assembler {
 			];
 		} finally {
 			self::cleanup( $work_dir );
+			self::touch_assembly_heartbeat();
+			self::$current_batch_id = 0;
 		}
 	}
 
@@ -1345,6 +1352,7 @@ class Rough_Cut_Assembler {
 			}
 		}
 		$command = array_map( 'strval', array_values( $command ) );
+		self::touch_assembly_heartbeat();
 		$descriptors = [
 			0 => [ 'pipe', 'r' ],
 			1 => [ 'pipe', 'w' ],
@@ -1362,6 +1370,7 @@ class Rough_Cut_Assembler {
 		$stderr    = '';
 		$timed_out = false;
 		$deadline  = microtime( true ) + max( 1, min( self::PROCESS_TIMEOUT, $timeout ) );
+		$heartbeat = microtime( true ) + 30;
 		$exit_code = -1;
 
 		do {
@@ -1388,6 +1397,10 @@ class Rough_Cut_Assembler {
 				}
 				break;
 			}
+			if ( microtime( true ) >= $heartbeat ) {
+				self::touch_assembly_heartbeat();
+				$heartbeat = microtime( true ) + 30;
+			}
 			usleep( 20000 );
 		} while ( true );
 
@@ -1403,6 +1416,7 @@ class Rough_Cut_Assembler {
 			$exit_code = 124;
 			$stderr   .= "\nFFmpeg exceeded the bounded process timeout.";
 		}
+		self::touch_assembly_heartbeat();
 
 		return [
 			'exit_code' => (int) $exit_code,
@@ -1410,6 +1424,13 @@ class Rough_Cut_Assembler {
 			'stderr'    => substr( $stderr, -self::MAX_PROCESS_OUTPUT ),
 			'timed_out' => $timed_out,
 		];
+	}
+
+	/** Publish liveness so a crashed assembly can recover without duplicating a live FFmpeg run. */
+	private static function touch_assembly_heartbeat(): void {
+		if ( self::$current_batch_id > 0 && function_exists( 'update_post_meta' ) ) {
+			update_post_meta( self::$current_batch_id, '_worldgraph_gen_assembly_heartbeat', time() );
+		}
 	}
 
 	/** Record only files created inside the verified request work directory. */
