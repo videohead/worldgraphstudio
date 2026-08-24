@@ -96,6 +96,22 @@ Do not replace it with the 5B workflow's `wan2.2_vae.safetensors` as a blanket
 quality tweak. Also preserve the high- and low-noise branches; one generic run
 control must not collapse intentionally different stage values.
 
+For **Wan2.2 14B FLF2V**, treat the official Quality path as one atomic preset:
+
+- both matching I2V high- and low-noise 14B experts;
+- no Lightning LoRAs;
+- shift 8 on both branches;
+- 20 steps, CFG 4, Euler sampler, and simple scheduler;
+- high noise from step 0 through 10 and low noise from step 10 to the end; and
+- 81 frames at 16 fps, with 1280x720 or 720x1280 used when the local GPU can
+  sustain it.
+
+The two endpoint images should use the same crop, subject identity, lighting,
+and scene geometry. FLF has no generic image-strength control: incompatible
+endpoints invite morphing and continuity artifacts. Keep the workflow's
+negative-conditioning branch intact. A 4-step Lightning workflow is a separate
+Draft preset, not a few independent switches to mix into the Quality graph.
+
 See the [official ComfyUI WAN 2.2 guide](https://docs.comfy.org/tutorials/video/wan/wan2_2)
 for current templates, downloads, and task-specific instructions.
 

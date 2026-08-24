@@ -191,9 +191,10 @@ GET /system_stats
 GET /object_info
 ```
 
-These checks verify that ComfyUI is running and that the nodes and checkpoint
-needed by the built-in text-to-image workflow are installed. A bare HTTP-only
-ComfyUI can therefore run the managed local text-to-image Template.
+These checks verify that ComfyUI is running and that the exact nodes and models
+needed by the managed registry-backed text-to-image workflow are installed. A
+bare HTTP-only ComfyUI can therefore run the converted managed Template without
+falling back to a legacy checkpoint graph.
 
 ## MCP protocol flow
 

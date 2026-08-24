@@ -534,8 +534,12 @@ class Comfy_Graph {
 				if ( isset( $seen[ (string) $consumer_id ] ) || ! is_array( $consumer ) ) {
 					continue;
 				}
-				foreach ( (array) ( $consumer['inputs'] ?? [] ) as $input ) {
+				foreach ( (array) ( $consumer['inputs'] ?? [] ) as $input_name => $input ) {
 					if ( self::is_reference( $input ) && (string) $input[0] === $current ) {
+						$socket_role = self::frame_role_for_input_name( (string) $input_name );
+						if ( '' !== $socket_role ) {
+							$evidence[ $socket_role ] = true;
+						}
 						$queue[] = (string) $consumer_id;
 						break;
 					}
@@ -548,6 +552,27 @@ class Comfy_Graph {
 		}
 
 		return $evidence ? (string) array_key_first( $evidence ) : '';
+	}
+
+	/**
+	 * Infer a frame role from a consumer input socket such as the core WAN
+	 * `start_image` and `end_image` inputs.
+	 *
+	 * @param string $name Consumer input name.
+	 * @return string `start_frame`, `end_frame`, or an empty string.
+	 */
+	private static function frame_role_for_input_name( string $name ): string {
+		$name = strtolower( (string) preg_replace( '/[^a-z0-9]+/i', '_', $name ) );
+		$name = trim( $name, '_' );
+
+		if ( preg_match( '/(?:^|_)(?:start|first|initial|begin|beginning)(?:_|$)/', $name ) ) {
+			return 'start_frame';
+		}
+		if ( preg_match( '/(?:^|_)(?:end|last|final|ending)(?:_|$)/', $name ) ) {
+			return 'end_frame';
+		}
+
+		return '';
 	}
 
 	/**

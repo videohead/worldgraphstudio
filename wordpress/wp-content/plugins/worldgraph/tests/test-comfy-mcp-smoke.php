@@ -9,19 +9,20 @@ use PHPUnit\Framework\TestCase;
 
 class Test_Comfy_MCP_Smoke extends TestCase {
 
-	/**
-	 * Setup guidance must only reference metadata exposed by the current
-	 * fallback checkpoint contract.
-	 */
-	public function test_setup_guidance_matches_the_sd15_fallback(): void {
+	/** Managed setup must use a published modern workflow, never a legacy fallback. */
+	public function test_setup_guidance_uses_the_modern_registry_workflow(): void {
 		require_once dirname( __DIR__ ) . '/includes/utils/comfy-bootstrap.php';
 
+		$bootstrap = (string) file_get_contents( dirname( __DIR__ ) . '/includes/utils/comfy-bootstrap.php' );
 		$wizard    = (string) file_get_contents( dirname( __DIR__ ) . '/includes/admin/setup-wizard.php' );
 		$readiness = (string) file_get_contents( dirname( __DIR__ ) . '/includes/admin/comfy-readiness.php' );
+		$runner    = (string) file_get_contents( dirname( __DIR__ ) . '/includes/utils/local-comfyui.php' );
 
-		$this->assertSame( 'Stable Diffusion 1.5 (FP16)', \WorldGraph\Utils\Comfy_Bootstrap::DEFAULT_CHECKPOINT_LABEL );
-		$this->assertStringNotContainsString( 'DEFAULT_CHECKPOINT_SIZE', $wizard );
-		$this->assertStringNotContainsString( 'SDXL-class', $wizard . $readiness );
+		$this->assertSame( 'registry:image_z_image_turbo', \WorldGraph\Utils\Comfy_Bootstrap::PREFERRED_IMAGE_WORKFLOW );
+		$this->assertSame( 'Z-Image-Turbo: Text to Image', \WorldGraph\Utils\Comfy_Bootstrap::PREFERRED_IMAGE_WORKFLOW_LABEL );
+		$this->assertStringNotContainsString( 'DEFAULT_CHECKPOINT', $bootstrap . $wizard . $readiness . $runner );
+		$this->assertStringNotContainsString( 'v1-5-pruned', $bootstrap . $wizard . $readiness . $runner );
+		$this->assertStringContainsString( 'never silently falls back to a legacy checkpoint', $readiness );
 	}
 
 	/** Bootstrap cleanup must never retire operator or catalog video Templates. */

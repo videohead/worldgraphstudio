@@ -97,4 +97,25 @@ class Test_Comfy_Media_Discovery extends TestCase {
 		$this->assertIsArray( $entry );
 		$this->assertSame( Generation_Modality::VIDEO_TO_VIDEO, $entry['modality'] );
 	}
+
+	/** FLF evidence overrides a provider's overly broad image-to-video task type. */
+	public function test_wan_flf_is_discovered_as_video_to_video(): void {
+		$entry = Comfy_Manifest::normalize_entry( [
+			'id'        => 'video_wan2_2_14B_flf2v',
+			'name'      => 'Wan 2.2 14B First-Last Frame to Video',
+			'task_type' => 'image-to-video',
+			'workflow'  => [
+				'1' => [ 'class_type' => 'LoadImage', 'inputs' => [ 'image' => 'start.png' ] ],
+				'2' => [ 'class_type' => 'LoadImage', 'inputs' => [ 'image' => 'end.png' ] ],
+				'3' => [
+					'class_type' => 'WanFirstLastFrameToVideo',
+					'inputs'     => [ 'start_image' => [ '1', 0 ], 'end_image' => [ '2', 0 ] ],
+				],
+				'4' => [ 'class_type' => 'SaveVideo', 'inputs' => [ 'video' => [ '3', 0 ] ] ],
+			],
+		] );
+
+		$this->assertIsArray( $entry );
+		$this->assertSame( Generation_Modality::VIDEO_TO_VIDEO, $entry['modality'] );
+	}
 }

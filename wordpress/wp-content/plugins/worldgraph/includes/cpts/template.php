@@ -267,7 +267,7 @@ class Template {
 				'format'      => 'json',
 				'label'       => 'ComfyUI API Workflow (optional)',
 				'required'    => false,
-				'description' => 'Leave blank to use the built-in text-to-image workflow with the checkpoint above. To use a custom graph, export it with ComfyUI\'s “Save (API Format)”, then replace prompt values with placeholders such as {{prompt}} and {{negative_prompt}}.',
+				'description' => 'Paste a ComfyUI workflow exported with “Save (API Format)”. Managed Templates receive a published workflow automatically. A manually authored Template may leave this blank only when its checkpoint field defines a compatible simple graph.',
 			],
 			'provider_template_id' => [
 				'type'        => 'text',

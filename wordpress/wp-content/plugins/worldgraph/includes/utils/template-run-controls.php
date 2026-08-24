@@ -359,6 +359,13 @@ class Template_Run_Controls {
 			}
 		}
 
+		$field_semantics = [];
+		foreach ( array_slice( (array) ( $description['fields'] ?? [] ), 0, self::MAX_FIELDS ) as $field ) {
+			if ( is_array( $field ) && isset( $field['key'] ) ) {
+				$field_semantics[] = self::semantic_key( (string) $field['key'] );
+			}
+		}
+
 		$defaults = [];
 		foreach ( array_slice( (array) ( $description['fields'] ?? [] ), 0, self::MAX_FIELDS ) as $field ) {
 			if ( ! is_array( $field ) || ! isset( $field['key'] ) ) {
@@ -367,6 +374,13 @@ class Template_Run_Controls {
 			$key      = (string) $field['key'];
 			$semantic = self::semantic_key( $key );
 			if ( ! in_array( $semantic, [ 'width', 'height', 'aspect_ratio', 'fps' ], true ) ) {
+				continue;
+			}
+			// A fixed-frame workflow such as WAN FLF defines playback duration as
+			// length / fps. Overriding only fps would shorten or lengthen the shot,
+			// so keep the workflow-authored rate unless it also exposes a duration
+			// control that can preserve the intended timing contract.
+			if ( 'fps' === $semantic && in_array( 'length', $field_semantics, true ) && ! in_array( 'duration', $field_semantics, true ) ) {
 				continue;
 			}
 
@@ -1298,18 +1312,29 @@ class Template_Run_Controls {
 
 	/** Find text inputs reachable only from negative conditioning sockets. */
 	private static function negative_prompt_targets( array $workflow ): array {
+		$targets  = self::conditioning_prompt_targets( $workflow, 'negative' );
+		$positive = self::conditioning_prompt_targets( $workflow, 'positive' );
+		foreach ( array_keys( $positive ) as $key ) {
+			unset( $targets[ $key ] );
+		}
+
+		return array_values( $targets );
+	}
+
+	/** Text targets reachable from one sampler conditioning socket. */
+	private static function conditioning_prompt_targets( array $workflow, string $socket ): array {
 		$targets = [];
 		foreach ( $workflow as $node ) {
-			$negative = is_array( $node ) ? ( $node['inputs']['negative'] ?? null ) : null;
-			if ( ! self::is_reference( $negative ) ) {
+			$conditioning = is_array( $node ) ? ( $node['inputs'][ $socket ] ?? null ) : null;
+			if ( ! self::is_reference( $conditioning ) ) {
 				continue;
 			}
-			foreach ( self::find_conditioning_text_targets( $workflow, (string) $negative[0], [], 0 ) as $target ) {
+			foreach ( self::find_conditioning_text_targets( $workflow, (string) $conditioning[0], [], 0 ) as $target ) {
 				$targets[ $target[0] . ':' . $target[1] ] = $target;
 			}
 		}
 
-		return array_values( $targets );
+		return $targets;
 	}
 
 	/** Return encoder/primitive node IDs owned by negative conditioning branches. */

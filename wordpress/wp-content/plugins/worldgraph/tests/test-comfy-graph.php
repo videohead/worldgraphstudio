@@ -440,6 +440,27 @@ class Test_Comfy_Graph extends TestCase {
 		$this->assertSame( 'worldgraph/last.png', $submitted['end_loader']['inputs']['image'] );
 	}
 
+	/** WAN's named consumer sockets prove its otherwise anonymous frame loaders. */
+	public function test_wan_first_last_frame_sockets_bind_both_loaders(): void {
+		$api = [
+			'start_loader' => [ 'class_type' => 'LoadImage', 'inputs' => [ 'image' => 'wan-start.png' ] ],
+			'end_loader'   => [ 'class_type' => 'LoadImage', 'inputs' => [ 'image' => 'wan-end.png' ] ],
+			'conditioning' => [
+				'class_type' => 'WanFirstLastFrameToVideo',
+				'inputs'     => [
+					'start_image' => [ 'start_loader', 0 ],
+					'end_image'   => [ 'end_loader', 0 ],
+				],
+			],
+		];
+
+		$result = Comfy_Graph::apply_media_placeholders( $api, [ 'start_frame', 'end_frame' ] );
+
+		$this->assertIsArray( $result );
+		$this->assertSame( '{{start_frame}}', $result['start_loader']['inputs']['image'] );
+		$this->assertSame( '{{end_frame}}', $result['end_loader']['inputs']['image'] );
+	}
+
 	/** Anonymous two-frame graphs require explicit slot markers. */
 	public function test_two_unlabelled_frame_loaders_fail_closed(): void {
 		$api = [

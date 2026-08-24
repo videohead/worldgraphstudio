@@ -959,7 +959,7 @@ class Generation_Workflows {
 				$character_refs  = array_values( array_filter( array_map( static fn( int $character_id ): string => (string) ( $character_tasks[ $character_id ] ?? '' ), $character_ids ) ) );
 				$location_id     = (int) ( $scene_locations[ $scene->ID ] ?? 0 );
 				$location_ref    = (string) ( $location_tasks[ $location_id ] ?? '' );
-				$primary_image   = (string) ( $character_refs[0] ?? $still_key );
+				$primary_image   = $still_key;
 				$reference_keys  = array_values( array_unique( array_filter( array_merge( $character_refs, [ $location_ref ] ) ) ) );
 				$dependencies    = array_values( array_unique( array_filter( array_merge( [ $still_key, $next_still_key, $primary_image ], $reference_keys ) ) ) );
 				$input_refs      = [
@@ -989,9 +989,9 @@ class Generation_Workflows {
 						'timeline_order'       => self::shot_timeline_order( $scenes, (int) $shot->ID ),
 						'character_ids'        => array_values( array_map( 'intval', $character_ids ) ),
 						'location_id'          => $location_id,
-						'preferred_modalities' => ! empty( $character_refs )
-							? [ 'text_image_to_video', 'video_to_video', 'text_to_video' ]
-							: ( '' !== $next_still_key ? [ 'video_to_video', 'text_image_to_video', 'text_to_video' ] : [ 'text_image_to_video', 'text_to_video' ] ),
+						'preferred_modalities' => '' !== $next_still_key
+							? [ 'video_to_video', 'text_image_to_video', 'text_to_video' ]
+							: [ 'text_image_to_video', 'text_to_video' ],
 						'dependencies'         => $dependencies,
 						'input_refs'           => $input_refs,
 						'fallback_task_key'    => $still_key,

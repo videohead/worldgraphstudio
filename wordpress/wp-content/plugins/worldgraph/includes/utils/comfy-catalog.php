@@ -421,8 +421,8 @@ class Comfy_Catalog {
 	 * The built-in graphs above describe what World Graph Studio can assemble
 	 * unaided, which is deliberately conservative. The published registry is
 	 * where the current generation of models actually lives, so an operator who
-	 * has installed Flux or Qwen-Image should be offered them rather than left
-	 * on the SDXL baseline fallback.
+	 * has installed a current image or video family should be offered its
+	 * published workflows rather than left on a legacy checkpoint graph.
 	 *
 	 * @param string $endpoint ComfyUI base URL.
 	 * @return array<int, array>
@@ -437,6 +437,7 @@ class Comfy_Catalog {
 			Generation_Modality::IMAGE_TO_IMAGE,
 			Generation_Modality::TEXT_TO_VIDEO,
 			Generation_Modality::TEXT_IMAGE_TO_VIDEO,
+			Generation_Modality::VIDEO_TO_VIDEO,
 		];
 
 		$entries = [];

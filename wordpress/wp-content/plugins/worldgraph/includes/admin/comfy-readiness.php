@@ -173,10 +173,9 @@ class Comfy_Readiness {
 		self::respond(
 			Comfy_Bootstrap::status( true ),
 			sprintf(
-				/* translators: 1: Template title, 2: baseline checkpoint label. */
-				__( 'Using %1$s. The fallback local text-to-image graph runs on stock ComfyUI nodes and expects %2$s, or another checkpoint compatible with that workflow. If that model is missing, the checklist above states what to install.', 'worldgraph' ),
-				get_the_title( $template_id ),
-				Comfy_Bootstrap::DEFAULT_CHECKPOINT_LABEL
+				/* translators: %s: Template title. */
+				__( 'Using %s. The managed local image Template is registry-backed and never silently falls back to a legacy checkpoint. If an exact model or node is missing, the checklist above states what to install.', 'worldgraph' ),
+				get_the_title( $template_id )
 			)
 		);
 	}

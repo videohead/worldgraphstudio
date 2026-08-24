@@ -356,7 +356,10 @@ class Local_ComfyUI {
 			}
 		}
 		if ( '' === trim( (string) ( $settings['checkpoint'] ?? '' ) ) ) {
-			$settings['checkpoint'] = Comfy_Bootstrap::DEFAULT_CHECKPOINT;
+			return new WP_Error(
+				'local_comfyui_workflow_missing',
+				__( 'This Template has no ComfyUI workflow or checkpoint. Prepare a published workflow on the Template before generating.', 'worldgraph' )
+			);
 		}
 
 		$workflow = Generation_Modality::default_workflow( $modality, $settings );

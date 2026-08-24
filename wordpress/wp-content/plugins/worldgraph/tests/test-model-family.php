@@ -50,6 +50,21 @@ class Test_Model_Family extends TestCase {
 		$this->assertSame( Model_Family::LTXV, $method->invoke( null, [ 'LTX 2.5' ] ) );
 	}
 
+	/** Published FLF2V workflows require both Project frame bindings. */
+	public function test_registry_maps_first_last_frame_video_to_video_modality(): void {
+		$method = new ReflectionMethod( Comfy_Template_Registry::class, 'modality_for' );
+		$method->setAccessible( true );
+
+		$this->assertSame(
+			\WorldGraph\Utils\Generation_Modality::VIDEO_TO_VIDEO,
+			$method->invoke( null, [ 'FLF2V', 'Video' ], 'video' )
+		);
+		$this->assertSame(
+			\WorldGraph\Utils\Generation_Modality::VIDEO_TO_VIDEO,
+			Comfy_Template_Registry::TAG_MODALITIES['FLF2V']
+		);
+	}
+
 	/** Admin labels and persisted ACF choices stay version-neutral and aligned. */
 	public function test_labels_and_acf_choices_are_generic_and_aligned(): void {
 		$labels = Model_Family::labels();

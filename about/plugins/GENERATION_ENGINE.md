@@ -124,10 +124,13 @@ only for workflows that generate audio. Negative-prompt notes remain separate
 guidance. Prompt profiles do not override workflow model files or sampling,
 resolution, frame-rate, CFG, denoise, or motion values.
 
-For a compatible WAN graph that exposes these controls, the documented quality
-starting point is 1280x720, 24 fps, 20-25 steps, CFG 5-7, and DPM++ 2M/Karras
-or Euler ancestral, with DPM++ 3M SDE only when advertised. The documented LTX
-operator presets are Balanced (DPM++ 2M/Karras, 24, 4.5, 0.60, 0.55,
+For the official WAN 2.2 14B first/last-frame quality graph, preserve the
+authored two-expert bundle: no Lightning LoRAs, shift 8, 20 steps, CFG 4,
+Euler/simple, a high-noise pass over steps 0-10, then low-noise from 10 to the
+end. Its default 81 frames at 16 fps produce about five seconds; Project profile
+projection does not replace that fps while the graph exposes a fixed frame
+count. Other WAN variants keep their own graph-authored values. The documented
+LTX operator presets are Balanced (DPM++ 2M/Karras, 24, 4.5, 0.60, 0.55,
 1920x1080/50 fps), Hero (DPM++ 2M/Karras, 36-40, 4.2, 0.55, 0.45,
 2560x1440/50 fps), and Preview (UniPC, 16, 4.0, 0.65, 0.50,
 768x432/24 fps), where the numbers after steps are CFG, denoise, and motion.
@@ -160,15 +163,18 @@ The separate Project-only `demonstration` scope orders Episodes, Scenes, and
 Shots into a frozen editorial timeline. It requires reusable still references
 for story-occurring Characters and referenced Locations and a durable Shot
 still (or Scene or Project card when there are no Shots). Moving Shots and
-generated Sound cues are optional enhancements. When a Character reference
-exists, a moving task prefers character-reference I2V, with recurring
-Characters ordered first; otherwise it prefers
+generated Sound cues are optional enhancements. A moving task prefers
 first-frame/last-frame video when the next Shot still exists, then
-still-conditioned I2V, then text-to-video. Its symbolic media references
+Shot-still-conditioned I2V, then text-to-video. Recurring Characters remain
+ordered first for reusable reference generation. Its symbolic media references
 identify the current Shot still as `start_frame`, the following Shot still as
-`end_frame`, and the first applicable Character image as the primary I2V
-`image`, with the Shot still as fallback. Only slots required by the selected
-modality are resolved and sent.
+`end_frame`, and the current Shot still as the primary I2V `image`. Character
+and Location reference tasks remain available for editorial review and future
+reference-conditioned still workflows. Scene-ending Shots have no following
+endpoint, so they use the start-image or text fallback rather than forcing an
+FLF graph. The adjacent Shot still is suitable for a rough transition; a final
+production shot should instead use a deliberately authored matching end
+keyframe when it must not morph toward the next composition.
 
 ## Connections and provider adapters
 
@@ -190,10 +196,13 @@ must be reachable from the WordPress runtime. The adapter uses:
 - `GET /object_info` for nodes and installed model choices; and
 - `GET /view` for generated outputs.
 
-World Graph Studio creates a managed text-to-image Template during local setup.
-That Template can use the built-in text-to-image graph or operator-supplied
-ComfyUI API-format workflow JSON. The readiness panel checks for the graph's
-nodes and checkpoint before a job is queued.
+World Graph Studio creates a managed, registry-backed text-to-image Template
+during local setup. It deterministically prefers the published Z-Image-Turbo
+workflow and stores its converted API graph plus exact model requirements. It
+does not silently construct a legacy checkpoint graph when registry conversion
+or readiness fails. Operators can still author separate Templates
+with API-format workflow JSON. The readiness panel checks the selected graph's
+exact nodes and models before a job is queued.
 
 All local HTTP operations use the endpoint resolved from the Template's own
 Connection: workflow submission and conversion, media upload, history polling,

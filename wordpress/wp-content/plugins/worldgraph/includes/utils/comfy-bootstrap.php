@@ -2,12 +2,10 @@
 /**
  * First-run provisioning and readiness probing for a local ComfyUI Connection.
  *
- * ComfyUI normally loads its own default text-to-image workflow the first time
- * it starts, but only if the matching nodes and checkpoint are actually
- * installed. World Graph Studio cannot assume any of that, so this class probes the
- * instance, provisions the single text-to-image Template that the asset
- * generator falls back to, and reports the remaining work as ordered steps an
- * operator can be walked through.
+ * World Graph Studio cannot assume which generation stack a ComfyUI instance
+ * has installed. This class probes the instance, provisions one modern
+ * registry-backed text-to-image Template, and reports its exact node and model
+ * requirements as ordered steps an operator can be walked through.
  *
  * @package WorldGraph
  */
@@ -44,24 +42,17 @@ class Comfy_Bootstrap {
 	const STATUS_TTL = 300;
 
 	/**
-	 * The checkpoint ComfyUI's own default text-to-image workflow loads.
+	 * Modern published workflow used by the managed local image Template.
+	 *
+	 * The workflow body and its download URLs remain owned by ComfyUI's registry;
+	 * the bootstrap stores a converted copy and an exact requirement manifest.
 	 */
-	const DEFAULT_CHECKPOINT = 'v1-5-pruned-emaonly-fp16.safetensors';
+	const PREFERRED_IMAGE_WORKFLOW = 'registry:image_z_image_turbo';
 
 	/**
-	 * Human-readable name of ComfyUI's default checkpoint.
+	 * Human-readable preferred workflow label for setup guidance.
 	 */
-	const DEFAULT_CHECKPOINT_LABEL = 'Stable Diffusion 1.5 (FP16)';
-
-	/**
-	 * Where that checkpoint is published, for the one-click model install.
-	 */
-	const DEFAULT_CHECKPOINT_URL = 'https://huggingface.co/Comfy-Org/stable-diffusion-v1-5-archive/resolve/main/v1-5-pruned-emaonly-fp16.safetensors';
-
-	/**
-	 * The node class ComfyUI's default text-to-image graph loads its model with.
-	 */
-	const CHECKPOINT_NODE = 'CheckpointLoaderSimple';
+	const PREFERRED_IMAGE_WORKFLOW_LABEL = 'Z-Image-Turbo: Text to Image';
 
 	/**
 	 * The readiness report for the configured local ComfyUI instance.
@@ -95,7 +86,7 @@ class Comfy_Bootstrap {
 	}
 
 	/**
-	 * The Template the local text-to-image fallback runs: the provisioned one,
+	 * The Template the local text-to-image path runs: the provisioned one,
 	 * or any other ComfyUI text-to-image Template already on the site.
 	 *
 	 * @return int Template post ID, or 0 when none exists.
@@ -134,8 +125,7 @@ class Comfy_Bootstrap {
 	}
 
 	/**
-	 * Provision the text-to-image Template a local ComfyUI Connection needs,
-	 * pointing it at a checkpoint the instance actually has where possible.
+	 * Provision the text-to-image Template a local ComfyUI Connection needs.
 	 *
 	 * @param int $connection_id Parent worldgraph_conn post ID.
 	 * @return int Template post ID, or 0 when the Template could not be created.
@@ -151,9 +141,6 @@ class Comfy_Bootstrap {
 			worldgraph_update_field_value( $existing, 'provider_type', 'comfyui' );
 			worldgraph_update_field_value( $existing, 'status', 'active' );
 			self::remove_legacy_parameter_defaults( $existing );
-			$checkpoint = self::detect_checkpoint();
-			worldgraph_update_field_value( $existing, 'checkpoint', $checkpoint );
-			worldgraph_update_field_value( $existing, 'model_requirements', (string) wp_json_encode( [ self::download_entry( $checkpoint ) ] ) );
 			if ( $connection_id ) {
 				worldgraph_update_field_value( $existing, 'connection_id', (string) $connection_id );
 			}
@@ -164,19 +151,15 @@ class Comfy_Bootstrap {
 			return $existing;
 		}
 
-		$checkpoint = self::detect_checkpoint();
-
 		$template_id = \WorldGraph\CPT\Template::upsert_managed(
 			self::TEMPLATE_SLOT,
-			__( 'Local ComfyUI Text-to-Image (Baseline)', 'worldgraph' ),
+			__( 'Local ComfyUI Text-to-Image (Modern)', 'worldgraph' ),
 			[
 				'connection_id'        => (string) $connection_id,
 				'generation_structure' => Generation_Modality::output_type( Generation_Modality::TEXT_TO_IMAGE ),
 				'modality'             => Generation_Modality::TEXT_TO_IMAGE,
 				'provider_type'        => 'comfyui',
 				'status'               => 'active',
-				'checkpoint'           => $checkpoint,
-				'model_requirements'   => (string) wp_json_encode( [ self::download_entry( $checkpoint ) ] ),
 			]
 		);
 
@@ -189,21 +172,17 @@ class Comfy_Bootstrap {
 	}
 
 	/**
-	 * Point the provisioned Template at the best published text-to-image
-	 * workflow this instance can already run.
-	 *
-	 * The built-in graph is a Stable Diffusion 1.5 pipeline, which is the only
-	 * thing that can be assumed of an unknown ComfyUI and is no longer close to
-	 * what the model landscape offers. Where the instance already holds the
-	 * files for something better, running the older graph is a choice nobody
-	 * asked for, so the newer workflow is adopted instead. Nothing is downloaded
-	 * here: an instance with nothing installed keeps the built-in fallback.
+	 * Point the provisioned Template at a modern published text-to-image
+	 * workflow. The preferred workflow is deterministic even when its models
+	 * still need installation; any other ready modern workflow is a recovery
+	 * choice when that graph cannot be converted for this ComfyUI version.
 	 *
 	 * @param int $template_id Template post ID.
 	 * @return string The adopted registry entry ID, or '' when none was adopted.
 	 */
 	public static function apply_best_workflow( int $template_id ): string {
-		$endpoint = Local_ComfyUI::endpoint();
+		$connection_id = absint( worldgraph_get_field_value( $template_id, 'connection_id' ) );
+		$endpoint      = Local_ComfyUI::endpoint( $connection_id );
 		if ( '' === $endpoint || ! $template_id ) {
 			return '';
 		}
@@ -217,8 +196,24 @@ class Comfy_Bootstrap {
 			return '';
 		}
 
+		$candidates = [];
+		$preferred  = Comfy_Template_Registry::find( self::PREFERRED_IMAGE_WORKFLOW );
+		if ( is_array( $preferred ) ) {
+			$readiness = Comfy_Template_Registry::readiness( (string) $preferred['id'], $endpoint );
+			if ( ! is_wp_error( $readiness ) ) {
+				$preferred = array_merge( $preferred, $readiness );
+			}
+			$candidates[ (string) $preferred['id'] ] = $preferred;
+		}
 		foreach ( $ranked as $entry ) {
-			if ( empty( $entry['ready'] ) ) {
+			if ( ! isset( $candidates[ (string) $entry['id'] ] ) ) {
+				$candidates[ (string) $entry['id'] ] = $entry;
+			}
+		}
+
+		foreach ( $candidates as $entry ) {
+			$is_preferred = self::PREFERRED_IMAGE_WORKFLOW === (string) $entry['id'];
+			if ( ! $is_preferred && empty( $entry['ready'] ) ) {
 				continue;
 			}
 
@@ -232,15 +227,23 @@ class Comfy_Bootstrap {
 			worldgraph_update_field_value( $template_id, 'provider_template_id', (string) $entry['id'] );
 			worldgraph_update_field_value( $template_id, 'template_name', (string) $entry['name'] );
 			worldgraph_update_field_value( $template_id, 'model_requirements', (string) wp_json_encode( self::registry_requirements( $entry ) ) );
+			worldgraph_delete_field_value( $template_id, 'checkpoint' );
+			wp_update_post( [
+				'ID'         => $template_id,
+				'post_title' => (string) $entry['name'],
+			] );
 			Generation_Log::add( 'info', 'comfy_bootstrap', sprintf( 'Provisioned the published workflow "%s".', (string) $entry['name'] ), [ 'template' => $entry['id'] ] );
 
 			return (string) $entry['id'];
 		}
 
-		// Nothing better was runnable, so fall back to the built-in graph rather
-		// than leaving a stale published workflow in place.
+		// Never replace a failed modern workflow lookup with a legacy checkpoint.
+		// An empty managed Template is intentionally not runnable; readiness tells
+		// the operator to retry registry provisioning.
 		worldgraph_delete_field_value( $template_id, 'workflow_json' );
 		worldgraph_delete_field_value( $template_id, 'provider_template_id' );
+		worldgraph_delete_field_value( $template_id, 'model_requirements' );
+		worldgraph_delete_field_value( $template_id, 'checkpoint' );
 
 		return '';
 	}
@@ -340,27 +343,6 @@ class Comfy_Bootstrap {
 	}
 
 	/**
-	 * A checkpoint the connected ComfyUI can load, preferring the one its own
-	 * default text-to-image workflow uses.
-	 *
-	 * @return string
-	 */
-	public static function detect_checkpoint(): string {
-		$installed = Comfy_Manifest::installed_files( self::CHECKPOINT_NODE, 'ckpt_name' );
-		if ( is_wp_error( $installed ) || empty( $installed ) ) {
-			return self::DEFAULT_CHECKPOINT;
-		}
-
-		foreach ( $installed as $filename ) {
-			if ( false !== stripos( (string) $filename, 'v1-5-pruned-emaonly' ) ) {
-				return (string) $filename;
-			}
-		}
-
-		return self::DEFAULT_CHECKPOINT;
-	}
-
-	/**
 	 * Probe the instance and build the ordered setup steps.
 	 *
 	 * @return array
@@ -420,56 +402,6 @@ class Comfy_Bootstrap {
 		}
 
 		$steps[] = self::step( 'server', __( 'ComfyUI is running', 'worldgraph' ), 'ok', __( 'The API server answered its status request.', 'worldgraph' ) );
-
-		$checkpoints = Comfy_Manifest::installed_files( self::CHECKPOINT_NODE, 'ckpt_name', $endpoint );
-		if ( is_wp_error( $checkpoints ) ) {
-			$steps[] = self::step(
-				'workflow',
-				__( 'Default text-to-image workflow', 'worldgraph' ),
-				'error',
-				sprintf(
-					/* translators: %s: error message from the node catalog read. */
-					__( 'World Graph Studio could not read the ComfyUI node catalog: %s. Without it, ComfyUI has not loaded the nodes its default text-to-image workflow needs.', 'worldgraph' ),
-					$checkpoints->get_error_message()
-				)
-			);
-
-			return self::report( $endpoint, 0, $steps );
-		}
-
-		$steps[] = self::step(
-			'workflow',
-			__( 'Default text-to-image workflow', 'worldgraph' ),
-			'ok',
-			__( 'ComfyUI has loaded the checkpoint, prompt, sampler, and save nodes the built-in text-to-image graph uses.', 'worldgraph' )
-		);
-
-		if ( empty( $checkpoints ) ) {
-			$steps[] = self::step(
-				'models',
-				__( 'Checkpoint installed', 'worldgraph' ),
-				'todo',
-				sprintf(
-					/* translators: 1: checkpoint filename, 2: download URL. */
-					__( 'ComfyUI has no checkpoint installed, so its default text-to-image workflow cannot run. Install one into models/checkpoints — ComfyUI\'s own default is %1$s (%2$s) — or use the Template\'s "Install missing models" button, then re-check.', 'worldgraph' ),
-					self::DEFAULT_CHECKPOINT,
-					self::DEFAULT_CHECKPOINT_URL
-				)
-			);
-		} else {
-			$sample = array_slice( array_map( 'strval', $checkpoints ), 0, 3 );
-			$steps[] = self::step(
-				'models',
-				__( 'Checkpoint installed', 'worldgraph' ),
-				'ok',
-				sprintf(
-					/* translators: 1: number of checkpoints, 2: comma-separated filenames. */
-					_n( 'ComfyUI reports %1$d checkpoint: %2$s.', 'ComfyUI reports %1$d checkpoints, including %2$s.', count( $checkpoints ), 'worldgraph' ),
-					count( $checkpoints ),
-					implode( ', ', $sample )
-				)
-			);
-		}
 
 		$template_id = self::template_id();
 		if ( ! $template_id ) {
@@ -593,18 +525,4 @@ class Comfy_Bootstrap {
 		];
 	}
 
-	/**
-	 * The Model Requirements entry seeded on the provisioned Template, so the
-	 * "Install missing models" action has a source to fetch from.
-	 *
-	 * @param string $checkpoint Checkpoint filename.
-	 * @return array<string, string>
-	 */
-	private static function download_entry( string $checkpoint ): array {
-		return [
-			'filename' => $checkpoint,
-			'folder'   => 'checkpoints',
-			'url'      => self::DEFAULT_CHECKPOINT === $checkpoint ? self::DEFAULT_CHECKPOINT_URL : '',
-		];
-	}
 }

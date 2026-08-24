@@ -109,9 +109,16 @@ class Comfy_Manifest {
 		$modality = Generation_Modality::sanitize( (string) worldgraph_get_field_value( $template_id, 'modality' ) );
 		$custom   = json_decode( (string) worldgraph_get_field_value( $template_id, 'workflow_json' ), true );
 		$is_custom = is_array( $custom ) && ! empty( $custom );
+		$settings  = self::template_settings( $template_id, $modality );
+		if ( ! $is_custom && '' === trim( (string) ( $settings['checkpoint'] ?? '' ) ) ) {
+			return new WP_Error(
+				'worldgraph_template_workflow_missing',
+				__( 'This Template has no ComfyUI workflow or checkpoint. Prepare a published workflow before using it.', 'worldgraph' )
+			);
+		}
 		$workflow = $is_custom
 			? $custom
-			: Generation_Modality::default_workflow( $modality, self::template_settings( $template_id, $modality ) );
+			: Generation_Modality::default_workflow( $modality, $settings );
 
 		return [
 			'template_id'     => $template_id,
@@ -450,7 +457,12 @@ class Comfy_Manifest {
 		) ) );
 		sort( $nodes );
 
-		if ( null === $modality ) {
+		// First/last-frame workflows are sometimes advertised as generic I2V by
+		// MCP providers. Their name and core conditioning node are stronger
+		// evidence because the executable graph requires two distinct endpoints.
+		if ( self::is_first_last_frame_template( $template, $nodes ) ) {
+			$modality = Generation_Modality::VIDEO_TO_VIDEO;
+		} elseif ( null === $modality ) {
 			$modality = self::infer_modality( $template, $nodes );
 		}
 
@@ -848,6 +860,9 @@ class Comfy_Manifest {
 	private static function infer_modality( array $template, array $nodes ): ?string {
 		$name = strtolower( trim( (string) ( $template['name'] ?? $template['id'] ?? '' ) ) );
 		if ( '' !== $name ) {
+			if ( false !== strpos( $name, 'flf2v' ) || false !== strpos( $name, 'first-last frame' ) || false !== strpos( $name, 'first last frame' ) || false !== strpos( $name, 'first frame to last frame' ) ) {
+				return Generation_Modality::VIDEO_TO_VIDEO;
+			}
 			if ( false !== strpos( $name, 'video to video' ) || false !== strpos( $name, 'video-to-video' ) || false !== strpos( $name, 'vid2video' ) ) {
 				return Generation_Modality::VIDEO_TO_VIDEO;
 			}
@@ -876,7 +891,7 @@ class Comfy_Manifest {
 		} );
 
 		if ( $has_video_nodes ) {
-			if ( $has_source_video || ( $load_image_count > 1 && in_array( 'LTXVAddGuide', $nodes, true ) ) ) {
+			if ( $has_source_video || in_array( 'WanFirstLastFrameToVideo', $nodes, true ) || ( $load_image_count > 1 && in_array( 'LTXVAddGuide', $nodes, true ) ) ) {
 				return Generation_Modality::VIDEO_TO_VIDEO;
 			}
 
@@ -892,6 +907,17 @@ class Comfy_Manifest {
 		}
 
 		return null;
+	}
+
+	/** Whether provider metadata identifies a two-endpoint video workflow. */
+	private static function is_first_last_frame_template( array $template, array $nodes ): bool {
+		$name = strtolower( trim( (string) ( $template['name'] ?? $template['id'] ?? '' ) ) );
+
+		return in_array( 'WanFirstLastFrameToVideo', $nodes, true )
+			|| false !== strpos( $name, 'flf2v' )
+			|| false !== strpos( $name, 'first-last frame' )
+			|| false !== strpos( $name, 'first last frame' )
+			|| false !== strpos( $name, 'first frame to last frame' );
 	}
 
 	/**

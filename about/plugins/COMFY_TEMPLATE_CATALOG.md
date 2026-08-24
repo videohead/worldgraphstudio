@@ -96,9 +96,11 @@ when the endpoint is available. This identifies missing node classes for the
 built-in workflow shapes.
 
 The managed local text-to-image Template created by setup is the executable
-zero-MCP path. Synthesized catalog entries primarily communicate what the local
-instance can support; installing models and custom nodes remains an operator
-task unless a real MCP download service is added.
+zero-MCP path. Setup imports the preferred published Z-Image-Turbo graph and
+records its exact requirements; it does not synthesize a legacy checkpoint
+workflow. Other synthesized catalog entries primarily communicate what the
+local instance can support; installing models and custom nodes remains an
+operator task unless a real MCP download service is added.
 
 ## Persistence and status
 

@@ -645,6 +645,24 @@ class Test_Template_Run_Controls extends TestCase {
 		$this->assertNotContains( 'negative_prompt', $this->keys( $description ) );
 	}
 
+	/** A zeroed copy of positive conditioning is not an editable negative prompt. */
+	public function test_shared_zeroed_conditioning_does_not_overwrite_the_positive_prompt(): void {
+		$workflow = [
+			'positive' => [ 'class_type' => 'CLIPTextEncode', 'inputs' => [ 'text' => '{{prompt}}' ] ],
+			'zeroed'   => [ 'class_type' => 'ConditioningZeroOut', 'inputs' => [ 'conditioning' => [ 'positive', 0 ] ] ],
+			'sampler'  => [
+				'class_type' => 'KSampler',
+				'inputs'     => [ 'positive' => [ 'positive', 0 ], 'negative' => [ 'zeroed', 0 ] ],
+			],
+		];
+
+		$description = Template_Run_Controls::describe_configuration( [], [ 'workflow' => $workflow ] );
+		$applied     = Template_Run_Controls::apply_values_to_workflow( $workflow, [ 'negative_prompt' => 'blur' ] );
+
+		$this->assertNotContains( 'negative_prompt', $this->keys( $description ) );
+		$this->assertSame( '{{prompt}}', $applied['positive']['inputs']['text'] );
+	}
+
 	/**
 	 * Project profiles override only declared framing fields, one value at a time.
 	 */
@@ -678,6 +696,24 @@ class Test_Template_Run_Controls extends TestCase {
 		$this->assertSame( '16:9', $defaults['aspect_ratio'] );
 		$this->assertSame( 23.976, $defaults['frame_rate'] );
 		$this->assertArrayNotHasKey( 'steps', $defaults );
+	}
+
+	/** A Project fps cannot retime a workflow whose frame count is fixed. */
+	public function test_profile_defaults_preserve_fps_for_fixed_frame_workflows(): void {
+		$description = Template_Run_Controls::describe_configuration(
+			[
+				'provider_schema' => [
+					'properties' => [
+						'length' => [ 'type' => 'integer', 'default' => 81 ],
+						'fps'    => [ 'type' => 'number', 'default' => 16 ],
+					],
+				],
+			]
+		);
+
+		$defaults = Template_Run_Controls::profile_defaults( $description, [ 'frame_rate' => 24 ] );
+
+		$this->assertArrayNotHasKey( 'fps', $defaults );
 	}
 
 	/**

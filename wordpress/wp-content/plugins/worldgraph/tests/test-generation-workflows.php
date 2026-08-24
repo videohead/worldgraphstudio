@@ -119,7 +119,7 @@ class Test_Generation_Workflows extends TestCase {
 		$this->assertStringContainsString( "'generation_required'", $workflow );
 	}
 
-	/** Every character occurring in the story gets a still, with recurring continuity first. */
+	/** Every character gets a still while two-frame video wins when both anchors exist. */
 	public function test_demonstration_character_references_cover_story_occurrences(): void {
 		$planner = $this->method_source( 'demonstration_plan' );
 
@@ -128,8 +128,9 @@ class Test_Generation_Workflows extends TestCase {
 		$this->assertStringContainsString( '$left_recurring  = count( $left[\'segment_keys\'] ) > 1 ? 0 : 1;', $planner );
 		$this->assertStringContainsString( 'return $left_recurring <=> $right_recurring;', $planner );
 		$this->assertStringContainsString( "__( 'Character reference still', 'worldgraph' )", $planner );
-		$this->assertStringContainsString( '$primary_image   = (string) ( $character_refs[0] ?? $still_key );', $planner );
-		$this->assertStringContainsString( "[ 'text_image_to_video', 'video_to_video', 'text_to_video' ]", $planner );
+		$this->assertStringContainsString( '$primary_image   = $still_key;', $planner );
+		$this->assertStringContainsString( "[ 'video_to_video', 'text_image_to_video', 'text_to_video' ]", $planner );
+		$this->assertStringContainsString( "[ 'text_image_to_video', 'text_to_video' ]", $planner );
 		$this->assertStringNotContainsString( "static fn( array \$occurrence ): bool => count( \$occurrence['segment_keys'] ) > 1", $planner );
 	}
 

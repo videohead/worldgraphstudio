@@ -4,9 +4,9 @@
  *
  * ComfyUI ships several hundred reference workflows covering every model family
  * it supports, and keeps them in a public index rather than inside the plugin.
- * Reading that index is what lets World Graph Studio offer a modern
- * text-to-image graph instead of the minimal Stable Diffusion 1.5 fallback it
- * provisions when nothing else is known to work.
+ * Reading that index is what lets World Graph Studio offer modern image and
+ * video workflows without maintaining legacy checkpoint graphs as product
+ * defaults.
  *
  * The index is metadata only. It names models but not model files, so it can
  * rank on download weight and popularity but cannot honestly say whether a
@@ -76,6 +76,7 @@ class Comfy_Template_Registry {
 	 * workflow that happens to accept an edited frame.
 	 */
 	const TAG_MODALITIES = [
+		'FLF2V'              => Generation_Modality::VIDEO_TO_VIDEO,
 		'Text to Video'      => Generation_Modality::TEXT_TO_VIDEO,
 		'Image to Video'     => Generation_Modality::TEXT_IMAGE_TO_VIDEO,
 		'Reference to Video' => Generation_Modality::TEXT_IMAGE_TO_VIDEO,
@@ -346,9 +347,10 @@ class Comfy_Template_Registry {
 		$entry    = self::find( $id );
 		$modality = is_array( $entry ) ? (string) ( $entry['modality'] ?? '' ) : '';
 		if ( '' !== $modality ) {
-			$media_slots   = Generation_Modality::media_inputs( $modality );
+			$media_slots    = Generation_Modality::media_inputs( $modality );
 			$required_slots = array_values( array_intersect( Generation_Modality::required_inputs( $modality ), $media_slots ) );
-			$api = Comfy_Graph::apply_media_placeholders( $api, $media_slots, $required_slots );
+			$binding_slots  = in_array( 'FLF2V', (array) ( $entry['tags'] ?? [] ), true ) ? $media_slots : $required_slots;
+			$api            = Comfy_Graph::apply_media_placeholders( $api, $media_slots, $binding_slots );
 			if ( is_wp_error( $api ) ) {
 				return $api;
 			}

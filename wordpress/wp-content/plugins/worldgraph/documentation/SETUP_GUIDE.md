@@ -83,10 +83,12 @@ Saving:
 - creates the managed text-to-image Template; and
 - exposes the ComfyUI readiness panel.
 
-The readiness panel checks `/object_info` for the built-in text-to-image nodes
-and an installed checkpoint. A bare HTTP-only ComfyUI works for the managed
-local Template; model downloads remain manual unless a real MCP
-`download_models` tool is configured.
+The managed image Template is imported from ComfyUI's published workflow
+registry, preferring Z-Image-Turbo. The readiness panel checks `/object_info`
+against that graph's exact nodes and model-loader filenames. It never replaces
+a failed modern workflow with a legacy checkpoint graph. A bare HTTP-only
+ComfyUI can execute the converted Template; model downloads remain manual
+unless a real MCP `download_models` tool is configured.
 
 For local video workflows such as LTX or WAN, the optional MCP service discovers
 workflow JSON files from its configured template folder. Add or export the
