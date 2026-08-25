@@ -1,6 +1,7 @@
 export const mainMenu = {
   home: "/",
   story: "/story",
+  projects: "/story/projects",
   posts: "/posts",
   connections: "/connections",
 };

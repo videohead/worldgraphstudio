@@ -1439,6 +1439,14 @@ textarea:focus {
 	justify-content: space-between;
 }
 
+.wg-entity-count-link {
+	display: flex;
+	justify-content: space-between;
+	text-decoration-thickness: 0.08em;
+	text-underline-offset: 0.2em;
+	width: 100%;
+}
+
 /* World atlas. */
 
 .wg-story-item--world.is-card {

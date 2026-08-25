@@ -746,7 +746,14 @@ function worldgraph_child_render_project_story( $post, $payload, $detail ) {
 					<?php if ( ! empty( $analytics['entity_counts'] ) ) : ?>
 						<ul class="wg-entity-counts" aria-label="<?php esc_attr_e( 'Entity counts by type', 'worldgraph-child' ); ?>">
 							<?php foreach ( (array) $analytics['entity_counts'] as $entity_type => $count ) : ?>
-								<li><span><?php echo esc_html( worldgraph_child_story_value_label( str_replace( 'worldgraph_', '', (string) $entity_type ) ) ); ?></span><strong><?php echo esc_html( number_format_i18n( (int) $count ) ); ?></strong></li>
+								<?php
+								$entity_type = sanitize_key( (string) $entity_type );
+								$entity_url  = 'worldgraph_project' === $entity_type ? get_permalink( $post ) : get_post_type_archive_link( $entity_type );
+								$entity_name = worldgraph_child_story_value_label( str_replace( 'worldgraph_', '', $entity_type ) );
+								?>
+								<li>
+									<?php if ( $entity_url ) : ?><a class="wg-entity-count-link" href="<?php echo esc_url( $entity_url ); ?>"><span><?php echo esc_html( $entity_name ); ?></span><strong><?php echo esc_html( number_format_i18n( (int) $count ) ); ?></strong></a><?php else : ?><span><?php echo esc_html( $entity_name ); ?></span><strong><?php echo esc_html( number_format_i18n( (int) $count ) ); ?></strong><?php endif; ?>
+								</li>
 							<?php endforeach; ?>
 						</ul>
 					<?php endif; ?>
