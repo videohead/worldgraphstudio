@@ -112,6 +112,17 @@ final class Test_Generation_Prompt_Policy extends TestCase {
 		$this->assertArrayNotHasKey( 'sources', $preview );
 	}
 
+	/** Multi-panel composites receive a bounded allowance for complete panel clauses. */
+	public function test_filmstrip_policy_has_a_larger_but_bounded_fallback_budget(): void {
+		$policy = Generation_Prompt_Policy::for_template(
+			0,
+			[ 'output_type' => 'image', 'post_type' => 'worldgraph_scene', 'intent' => 'scene-filmstrip' ]
+		);
+
+		$this->assertSame( 140, $policy['limits']['target_words'] );
+		$this->assertSame( 160, $policy['limits']['max_words'] );
+	}
+
 	/** Context insertion order does not alter the canonical effective policy. */
 	public function test_equivalent_context_order_produces_the_same_canonical_policy(): void {
 		$left = Generation_Prompt_Policy::for_template(
@@ -374,25 +385,25 @@ final class Test_Generation_Prompt_Policy extends TestCase {
 		$this->assertContains( 'constraints', $result['omitted_sections'] );
 	}
 
-	/** A useful optional block is compacted instead of disappearing at the soft target. */
-	public function test_optional_section_crossing_soft_target_keeps_a_specific_fragment(): void {
+	/** Compact formats budget the emitted copy, so labels do not crowd out characters. */
+	public function test_compact_budget_uses_emitted_words_and_keeps_complete_character_copy(): void {
 		$result = Generation_Prompt_Policy::render(
 			[
-				[ 'id' => 'primary', 'text' => 'Shot: Red closes the cottage shutters with a thoughtful expression.' ],
-				[ 'id' => 'camera', 'text' => 'Camera: eye-level medium shot.' ],
-				[ 'id' => 'characters', 'text' => 'Characters: Red wears a scarlet hooded cloak over a cream blouse and dark skirt.' ],
+				[ 'id' => 'primary', 'text' => 'Shot description: Red closes shutters.' ],
+				[ 'id' => 'camera', 'text' => 'Framing: eye-level medium shot.' ],
+				[ 'id' => 'characters', 'text' => 'Visible characters: Red wears a small scarlet cloak.' ],
 			],
 			[
-				'limits'   => [ 'target_words' => 20, 'max_words' => 40 ],
+				'limits'   => [ 'target_words' => 12, 'max_words' => 40 ],
 				'sections' => [ 'preferred' => [ 'camera', 'characters' ] ],
-				'hints'    => [ 'format' => 'natural_language' ],
+				'hints'    => [ 'format' => 'chronological_prose' ],
 			]
 		);
 
-		$this->assertSame( 20, $this->word_count( $result['prompt'] ) );
-		$this->assertStringContainsString( 'Characters: Red wears', $result['prompt'] );
+		$this->assertSame( 12, $this->word_count( $result['prompt'] ) );
+		$this->assertStringContainsString( 'Red wears a small scarlet cloak.', $result['prompt'] );
 		$this->assertNotContains( 'characters', $result['omitted_sections'] );
-		$this->assertTrue( $result['truncated'] );
+		$this->assertStringNotContainsString( ',.', $result['prompt'] );
 	}
 
 	/** Template editor fields override JSON policy and participate in cache identity. */

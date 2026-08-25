@@ -243,6 +243,7 @@ class Generation_Prompt_Policy {
 		$preferred = (array) $policy['sections']['preferred'];
 		$forbidden = array_flip( (array) $policy['sections']['forbidden'] );
 		$lead_with = (string) $policy['hints']['lead_with'];
+		$format    = (string) ( $policy['hints']['format'] ?? 'natural_language' );
 		$normalized = [];
 
 		foreach ( $sections as $position => $section ) {
@@ -303,8 +304,9 @@ class Generation_Prompt_Policy {
 		// one verbose earlier block. Verbatim copy is reserved at full length.
 		$protected_sections = array_values( array_filter( $normalized, static fn( array $section ): bool => ! empty( $section['protected'] ) ) );
 		$essential_ids      = [ 'primary', 'motion', 'camera', 'look', 'author_instructions' ];
-		$minimum_words      = static function ( array $section ) use ( $essential_ids ): int {
-			$words = self::word_count( (string) $section['text'] );
+		$minimum_words      = static function ( array $section ) use ( $essential_ids, $format ): int {
+			$formatted = self::format_section_text( (string) $section['text'], $format, (string) $section['id'] );
+			$words     = self::word_count( $formatted );
 			if ( 'verbatim' === $section['id'] ) {
 				return $words;
 			}
@@ -314,7 +316,8 @@ class Generation_Prompt_Policy {
 			if ( ! $section['protected'] ) {
 				continue;
 			}
-			$words = self::word_count( $section['text'] );
+			$formatted = self::format_section_text( (string) $section['text'], $format, (string) $section['id'] );
+			$words     = self::word_count( $formatted );
 			$available = max( 0, $maximum - $protected_used );
 			$reserved           = 0;
 			$verbatim_reserved  = 0;
@@ -334,7 +337,8 @@ class Generation_Prompt_Policy {
 			$minimum = $minimum_words( $section );
 			if ( $minimum > 0 && $available >= $minimum && ( 0 === $verbatim_reserved || $available - $reserved >= $minimum ) ) {
 				$allocation      = min( $words, $available, max( $minimum, $full_capacity ) );
-				$section['text'] = self::trim_words( $section['text'], $allocation );
+				$section['text'] = self::trim_words( $formatted, $allocation );
+				$section['formatted'] = true;
 				$selected[]      = $section;
 				$protected_used += $allocation;
 				$selected_words += $allocation;
@@ -351,7 +355,8 @@ class Generation_Prompt_Policy {
 			if ( $section['protected'] ) {
 				continue;
 			}
-			$words = self::word_count( $section['text'] );
+			$formatted = self::format_section_text( (string) $section['text'], $format, (string) $section['id'] );
+			$words     = self::word_count( $formatted );
 			// The target is creative guidance, not a reservation that crowds out
 			// protected instructions. Complete optional sections may fill it while
 			// remaining beneath the actual hard capacity left after protected picks.
@@ -361,23 +366,6 @@ class Generation_Prompt_Policy {
 				$optional_used  += $words;
 				continue;
 			}
-
-			// Do not discard an otherwise useful subject, character, or setting
-			// block merely because it crosses the soft target by a word or two.
-			// Fill the remaining target at a word boundary; the hard maximum still
-			// governs every rendered prompt.
-			$remaining_target   = max( 0, $target - $selected_words );
-			$remaining_capacity = max( 0, $optional_capacity - $optional_used );
-			$allocation         = min( $words, $remaining_target, $remaining_capacity );
-			if ( $allocation >= 3 ) {
-				$section['text'] = self::trim_words( $section['text'], $allocation );
-				$selected[]      = $section;
-				$selected_words += $allocation;
-				$optional_used  += $allocation;
-				$truncated       = $truncated || $allocation < $words;
-				continue;
-			}
-
 			$omitted[] = $section['id'];
 		}
 
@@ -391,9 +379,10 @@ class Generation_Prompt_Policy {
 			}
 		);
 
-		$format = (string) ( $policy['hints']['format'] ?? 'natural_language' );
 		$texts  = array_map(
-			static fn( array $section ): string => self::format_section_text( (string) $section['text'], $format, (string) $section['id'] ),
+			static fn( array $section ): string => ! empty( $section['formatted'] )
+				? (string) $section['text']
+				: self::format_section_text( (string) $section['text'], $format, (string) $section['id'] ),
 			$selected
 		);
 		$prompt = implode( 'concise_phrases' === $format ? ', ' : ( 'chronological_prose' === $format ? ' ' : "\n\n" ), array_filter( $texts ) );
@@ -519,7 +508,8 @@ class Generation_Prompt_Policy {
 			}
 		} elseif ( in_array( $intent, [ 'scene-filmstrip', 'episode-bookend-filmstrip' ], true ) ) {
 			$preferred = [ 'primary', 'setting', 'camera', 'look', 'characters', 'author_instructions', 'continuity', 'objective', 'constraints', 'identity', 'ancestor_context', 'other' ];
-			$target    = 120;
+			$target    = $is_reference_conditioned ? 90 : 140;
+			$maximum   = $is_reference_conditioned ? 110 : 160;
 		}
 
 		return self::normalize(
@@ -952,6 +942,7 @@ class Generation_Prompt_Policy {
 		if ( 'concise_phrases' === $format ) {
 			return rtrim( $text, " \t\n\r\0\x0B.;," );
 		}
+		$text = rtrim( $text, " \t\n\r\0\x0B,;:" );
 		return preg_match( '/[.!?]$/u', $text ) ? $text : $text . '.';
 	}
 

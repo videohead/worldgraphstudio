@@ -489,10 +489,10 @@ class WorldGraph_JSON_Exporter {
 			'start_date'        => $this->date_field( $project->ID, 'start_date' ),
 			'end_date'          => $this->date_field( $project->ID, 'end_date' ),
 			'genres'            => $this->taxonomy_slugs( $project->ID, 'worldgraph_genre' ),
-			'team_members'      => $this->relationship_external_ids(
+			'associates'      => $this->relationship_external_ids(
 				$project->ID,
 				'worldgraph_project',
-				'team_members',
+				'associates',
 				'worldgraph_character',
 				'contains'
 			),

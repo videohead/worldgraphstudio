@@ -82,14 +82,15 @@ Represents a top-level creative project.
 - Project Name
 - Project Slug
 - Description
-- Generation Prompt Instructions
+- Project Visual Direction (about 12 words, with the most important medium,
+  lighting, palette, contrast, and texture first)
 - Genre
 - Target Medium
 - Production Status
 - Owner
 - Start Date
 - End Date
-- Team Members
+- Associates
 - Production Stage
 - Frame Width and Height
 - Aspect Ratio
@@ -97,8 +98,9 @@ Represents a top-level creative project.
 
 ## Relationships
 
-- Linked from Story Worlds and Episodes through their Project fields
-- Contains the Character records selected as Team Members
+- Linked from Story Worlds, Episodes, and standalone Scenes through their
+  Project fields
+- Contains the Character records selected as Associates
 
 ---
 
@@ -110,7 +112,7 @@ Represents a fictional universe.
 
 - World Name
 - Synopsis
-- Generation Prompt Instructions
+- Visual Generation Instructions
 - Timeline
 - Rules
 - Themes
@@ -121,6 +123,7 @@ Represents a fictional universe.
 
 - Contains Characters
 - Contains Locations
+- Contains Props
 - Contains Organizations
 - Belongs To Project
 
@@ -134,7 +137,7 @@ Represents a fictional universe.
 - Biography
 - Age
 - Visual Description
-- Generation Prompt Instructions
+- Visual Generation Instructions
 - Voice Description
 - Personality Traits
 - Motivation
@@ -162,7 +165,7 @@ Represents a fictional universe.
 
 - Name
 - Description
-- Generation Prompt Instructions
+- Visual Generation Instructions
 - Geography
 - Environment Type
 - Mood
@@ -183,15 +186,19 @@ Represents a fictional universe.
 
 - Name
 - Description
-- Generation Prompt Instructions
+- Visual Generation Instructions
 - Purpose
 - Owner Character
+- Story World (optional fallback for an unowned or shared Prop; it must agree
+  with the Owner Character's World when both are set)
 - Notes
 
 ## Relationships
 
 - Used In Scenes
 - Appears In Assets
+- Belongs To its Owner Character's Story World, or directly to the selected
+  Story World when no Owner Character is set
 
 ---
 
@@ -219,7 +226,7 @@ Represents a fictional universe.
 - Episode Number
 - Title
 - Synopsis
-- Generation Prompt Instructions
+- Visual Generation Instructions
 - Status
 
 ## Relationships
@@ -236,11 +243,12 @@ Represents a fictional universe.
 - Scene Number
 - Title
 - Summary
-- Scene Look & Lighting Changes (only differences from the Project Visual
-  Direction baseline; Scene values take precedence inside the Scene)
-- Sound & Music Direction (Scene-wide ambience, music, and sonic palette
-  inherited by linked Sound generation; not dialogue, lyrics, or individual
-  cue events)
+- Scene Look & Lighting Changes (about 8 words containing only differences from
+  the Project Visual Direction baseline; Scene values take precedence inside
+  the Scene)
+- Sound & Music Direction (about 16 words of Scene-wide ambience, music, and
+  sonic palette inherited by linked Sound generation; not dialogue, lyrics, or
+  individual cue events)
 - Default Lens / Lens Family (optional Scene camera-continuity default; a Shot
   lens takes precedence)
 - Default Camera Movement (optional Scene video-camera default; a Shot movement
@@ -252,10 +260,14 @@ Represents a fictional universe.
 - Emotional Tone
 - Production Notes
 - Sequence
+- Project (optional direct owner for a standalone Scene without an Episode; it
+  must agree with the Episode's Project when both are set)
 
 ## Relationships
 
 - Belongs To Episode
+- Belongs To the Episode's Project, or directly to Project when no Episode is
+  set; Episode ownership takes precedence
 - Contains Shots
 - Contains Sounds
 - Located In a Location
@@ -274,11 +286,13 @@ Represents a fictional universe.
 - Shot Type
 - Camera Angle
 - Lens
+- Camera Movement
+- Motion Direction
 - Duration
 - Take Number
 - Slate ID
 - Shot Description
-- Generation Prompt Instructions
+- Additional Generation Constraints
 - Editorial Notes
 - Sequence
 
@@ -316,6 +330,14 @@ the same audio Asset can be reused by multiple cues.
 
 Ordinary dialogue continues to live in structured Scene dialogue metadata and
 is not mirrored into Sound records.
+
+Sound participates directly in representative-media generation through the
+`sound-cue` audio intent. Its semantic prompt begins with the cue and role,
+inherits concise Scene Location/time/tone and Sound & Music Direction, and adds
+duration, story-world relation, description, and production notes only when
+useful. Authored spoken text and lyrics are emitted verbatim; a selected
+Template whose prompt limit cannot contain the required verbatim block is
+rejected instead of receiving truncated or paraphrased words.
 
 ## Schema.org Alignment
 
@@ -394,10 +416,15 @@ internal status `active` can be submitted.
 - Connection ID and Provider Type
 - Provider Template / Model Endpoint ID
 - Checkpoint and Model Family
+- Prompt Lead, Format, Target Words, and Maximum Words
 - Workflow JSON and Configuration JSON
 - Input Bindings and Default Values
 - Model Requirements
 - Version and Status
+
+The safe default for an otherwise empty Configuration JSON field is `{}`.
+Common prompt ordering, format, target-length, and maximum-length guidance is
+edited through first-class Template fields; advanced JSON remains optional.
 
 ---
 
@@ -426,20 +453,34 @@ environment reference.
 
 # Internal Generation Job
 
-The optional **Generation Prompt Instructions** field on Project, Story World,
-Character, Prop, Location, Shot, Scene, and Episode contains media-generation
-constraints specific to that entity. It is additive context: the prompt
-composer also reads the entity's detailed authorial fields and the creative
-objective for the selected representative output.
+The optional field stored as `generation_prompt` has scope-specific editorial
+meaning. Project Visual Direction defines the production-wide look. Scene Look
+& Lighting Changes contains only differences from that baseline, while Scene
+Location, time, tone, lens, camera movement, and Sound & Music Direction form a
+continuity boundary. A Shot supplies its own description, structured camera
+and motion values, and exceptional generation constraints. Other visual
+entities may supply concise item-specific visual direction. The composer also
+uses only the detailed authorial fields and output objective relevant to the
+selected representation.
+
+The complete specificity chain is **Template → Project profile → Project →
+Scene when applicable → item → one-off**. Scene is an inherited semantic layer
+for linked Shots and Sounds, not a separately stored scalar run-default row.
+Run-control save targets remain Template, exact Connection+Template Project
+overrides, and exact-pair item overrides; compatible Project dimensions/frame
+rate and source-authored Shot or Sound duration are projected into their
+appropriate positions before a one-off value wins.
+
 In the Assets metabox, one-off directions use a separate blank additive field;
 the composed provider prompt is available only as a collapsed read-only review.
-The conditional top level separates **Image**, **Sequence**, **Video**, and,
-for Projects, **Demonstration**.
+The conditional top level separates **Image**, **Sequence**, **Video**,
+**Audio**, and, for Projects, **Demonstration**.
 Each available mode reveals only its own output selector, Template controls,
 explanation, and action; undefined modes remain visibly unavailable. Shots
-expose all three, multi-view Characters/Props/Locations expose Image and
-Sequence, Projects expose key-art Image and Project-wide Sequence, and
-single-output recipes expose Image only. Project Demonstration reviews a
+expose Image, Sequence, and Video; Sounds expose Audio;
+multi-view Characters/Props/Locations expose Image and Sequence, Projects
+expose key-art Image and Project-wide Sequence, and other single-image recipes
+expose Image only. Project Demonstration reviews a
 whole-story plan and exposes compatible Image, Video, and generated-audio
 Template selectors when those task types require generation.
 
@@ -453,8 +494,12 @@ The default representative-media model is:
 | Prop | Full, front, three-quarter, profile, back, and close-up images |
 | Location | Full establishing, front, three-quarter, profile, back, and detail close-up images |
 | Shot | One representative still and one video |
-| Scene | One filmstrip image summarizing its ordered Shots |
-| Episode | One filmstrip image contrasting its first and last Scenes |
+| Scene | One filmstrip image using up to three ordered Shot beats under the shared Scene boundary |
+| Episode | One filmstrip image contrasting the first Shot of its opening Scene with the last Shot of its final Scene |
+| Sound | One rendered speech, music, ambience, or sound-effect cue |
+
+Scene and Episode composites use a bounded Scene summary only when the
+corresponding panel has no Shot beat.
 
 `worldgraph_gen` records represent individual work and durable
 representative-media or demonstration-video batches. A batch record is parented

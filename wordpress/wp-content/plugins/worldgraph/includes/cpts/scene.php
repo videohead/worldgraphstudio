@@ -82,13 +82,13 @@ class Scene {
 			'type'        => 'textarea',
 			'label'       => 'Scene Look & Lighting Changes',
 			'required'    => false,
-			'description' => 'Project Visual Direction is the baseline. Enter only Scene-specific differences (about 20 words): lighting, palette, atmosphere, weather, or texture. These Scene values take precedence inside this Scene. Do not repeat the Project style or add plot, characters, camera, or sound.',
+			'description' => 'Project Visual Direction is the baseline. Enter only Scene-specific differences (about 8 words): lighting, palette, atmosphere, weather, or texture. These Scene values take precedence inside this Scene. Do not repeat the Project style or add plot, characters, camera, or sound.',
 		],
 		'audio_direction' => [
 			'type'        => 'textarea',
 			'label'       => 'Sound & Music Direction',
 			'required'    => false,
-			'description' => 'Optional Scene-wide ambience, music, and sonic palette (about 20 words) inherited by linked Sound generation. Describe tone, instrumentation, texture, rhythm, or acoustic space—not dialogue, lyrics, or individual cue events.',
+			'description' => 'Optional Scene-wide ambience, music, and sonic palette (about 16 words) inherited by linked Sound generation. Describe tone, instrumentation, texture, rhythm, or acoustic space—not dialogue, lyrics, or individual cue events.',
 		],
 		'lens'            => [
 			'type'        => 'text',
@@ -178,17 +178,39 @@ class Scene {
 
 		$episode_id = self::relationship_id( self::scf_request_value( 'episode', $submitted, $post_id ) );
 		$project_id = self::relationship_id( self::scf_request_value( 'project', $submitted, $post_id ) );
+		$validation = self::validate_parent_pair( $episode_id, $project_id );
+		if ( is_wp_error( $validation ) ) {
+			$data = $validation->get_error_data();
+			self::add_scf_error( (string) ( is_array( $data ) ? ( $data['field'] ?? 'project' ) : 'project' ), $validation->get_error_message() );
+		}
+	}
+
+	/**
+	 * Validate the canonical Episode/Project ownership pair at any write boundary.
+	 *
+	 * @return true|\WP_Error
+	 */
+	public static function validate_parent_pair( int $episode_id, int $project_id ) {
+		if ( $episode_id && 'worldgraph_episode' !== get_post_type( $episode_id ) ) {
+			return new \WP_Error( 'worldgraph_scene_episode_invalid', __( 'Select a valid Episode.', 'worldgraph' ), [ 'field' => 'episode', 'status' => 400 ] );
+		}
+		if ( $project_id && 'worldgraph_project' !== get_post_type( $project_id ) ) {
+			return new \WP_Error( 'worldgraph_scene_project_invalid', __( 'Select a valid Project.', 'worldgraph' ), [ 'field' => 'project', 'status' => 400 ] );
+		}
 		if ( ! $episode_id || ! $project_id ) {
-			return;
+			return true;
 		}
 
 		$episode_project_id = self::episode_project_id( $episode_id );
 		if ( $episode_project_id && $episode_project_id !== $project_id ) {
-			self::add_scf_error(
-				'project',
-				__( "This Scene's Project must match the selected Episode's Project, or be left empty.", 'worldgraph' )
+			return new \WP_Error(
+				'worldgraph_scene_project_conflict',
+				__( "This Scene's Project must match the selected Episode's Project, or be left empty.", 'worldgraph' ),
+				[ 'field' => 'project', 'status' => 400 ]
 			);
 		}
+
+		return true;
 	}
 
 	/** Whether the current SCF validation request edits a Scene. */

@@ -4,7 +4,8 @@
 > Template-resolution preferences, bounded Story Graph prompts, durable item,
 > Project, and whole-story demonstration batches, dependency-aware fallback
 > planning, FFmpeg rough-cut assembly, Template-conditional per-run controls,
-> explicit Template/Project/item run-default layers, and their REST operations are
+> explicit Template/Project/item run-default layers, direct Sound-cue
+> generation, and their REST operations are
 > delivered. Provider execution and final assembly
 > still depend on the deployment's Connections, models, and FFmpeg installation.
 > A dedicated
@@ -13,16 +14,18 @@
 
 ## Delivered authoring workflow
 
-The **World Graph Studio Assets** Generate surface starts with four conditional
+The **World Graph Studio Assets** Generate surface starts with five conditional
 modes:
 
 - **Image** selects one defined still-image intent, its image Template, and the
   applicable featured/Asset-record behavior;
 - **Sequence** selects a complete multi-output item workflow or, on a Project,
-  all Project representative media, then previews the image/video plan and
-  Template behavior before queueing a durable batch; and
+  all Project representative media, then previews the image/video/audio plan and
+  Template behavior before queueing a durable batch;
 - **Video** selects one defined video intent and its video Template. The default
-  registry enables this mode for Shots; and
+  registry enables this mode for Shots;
+- **Audio** selects the Sound record's `sound-cue` intent and a compatible
+  speech, dialogue, music, or sound-effect Template; and
 - **Demonstration** appears on a Project and previews and queues an ordered,
   end-to-end story pass. It plans required reference/still work before optional
   motion and audio enhancements, then requests a rough-cut assembly. Its plan
@@ -33,14 +36,14 @@ modes:
 
 Modes that are not defined for the current CPT are visibly unavailable. Each
 available mode has its own output selector, contextual explanation, relevant
-Template controls, and primary action; image, Sequence, and video operations
-are not mixed in one ambiguous output menu.
+Template controls, and primary action; image, Sequence, video, and audio
+operations are not mixed in one ambiguous output menu.
 
 The editable textarea contains only optional **Additional instructions for
 this run**. The complete automatically composed provider prompt is available
 in a collapsed read-only preview. For a Sequence, that preview lists the
 planned outputs because each job receives a separately composed prompt.
-Template selections are retained per selected image, video, Sequence, or
+Template selections are retained per selected image, video, audio, Sequence, or
 Demonstration target and survive the read-only planning refresh before
 confirmation.
 Selecting a Template also reveals only the per-run controls that Template
@@ -65,14 +68,20 @@ POST /wp-json/worldgraph/v1/assets/generate
 ## Bounded prompt contract
 
 Project, Story World, Character, Prop, Location, Shot, Scene, and Episode expose
-an optional SCF textarea named `generation_prompt`. It contains additional
-media-generation instructions such as a house style, wardrobe or material
-constraint, camera movement, or "no watermark." It is not a negative-prompt
-transport field and does not replace the entity's authorial description.
+an optional SCF textarea stored as `generation_prompt`, but its meaning depends
+on the entity. On a Project it is the production-wide **Visual Direction**.
+The current editor recommends about 12 words, with the most important traits
+first. On a Scene it contains only about 8 words of **Look & Lighting Changes**
+from that baseline. On a Shot it contains only exceptional generation
+constraints; framing, camera movement, and visible motion belong in their
+structured Shot fields. On a Character, Prop, Location, Story World, or
+Episode it contains concise visual
+direction local to that item. It is not a negative-prompt transport field and
+does not replace authorial description.
 
-The composer starts with the requested shot or asset, not the enclosing story.
-It assigns source data to semantic sections and uses only the smallest visual
-vocabulary needed for that output:
+The composer starts with the requested source and output, not the enclosing
+story. It assigns source data to semantic sections and uses only the smallest
+visual or sonic vocabulary needed for that output:
 
 | Content type | Detailed fields included when populated |
 | --- | --- |
@@ -81,15 +90,16 @@ vocabulary needed for that output:
 | Character | visible appearance, age, and distinguishing traits |
 | Prop | description, purpose, and visible notes |
 | Location | first useful description sentence, environment, geography, and mood |
-| Shot | description first; framing, angle, lens, and the still-frame or timed-motion beat |
-| Scene | summary, location, time of day, and mood |
-| Episode | synopsis |
+| Shot | description first; effective framing, angle, lens, and the still-frame or timed-motion beat |
+| Scene | up to three ordered Shot beats sharing one Location, time, tone, look, and camera-continuity boundary; Scene summary only when no Shot exists |
+| Episode | opening and closing Shot beats from its first and final Scenes, with bounded Scene-summary fallback when a bookend has no Shot |
+| Sound | cue title and role; compact Scene context, Scene sound direction, exact supplied copy, duration, story-world relation, and cue notes |
 
-The semantic composition order is:
+The provider-neutral semantic composition order is:
 
 1. the source description or requested action as `primary`;
 2. the intent's concise `objective`;
-3. only relevant identity, subject, action, setting, character, camera, motion,
+3. only relevant identity, subject, action, setting, character, motion, camera,
    look, and continuity sections;
 4. minimal ancestor or dependent context when it changes what should be
    visible;
@@ -98,10 +108,30 @@ The semantic composition order is:
 6. concise output constraints.
 
 The composer removes markup, renders select values and relationships readably,
-and deduplicates repeated core/SCF text. A Shot inherits its Scene location,
-time, mood, and a compact setting cue, not the Project description, Episode
-synopsis, complete Scene script, or dialogue transcript. Related Characters
-are included only when relevant to the described shot.
+and deduplicates repeated core/SCF text. A Shot inherits its Project Visual
+Direction plus the Scene Location, time, tone, Look & Lighting Changes, lens,
+and camera-movement defaults that apply to it. It does not inherit the Project
+description, Episode synopsis, complete Scene summary/script, dialogue
+transcript, production notes, or Sound prose. Related Characters are included
+only when relevant to the described Shot.
+
+Project ancestry follows explicit editorial ownership. A Scene normally
+resolves through its Episode but may use its direct Project fallback when
+standalone. A Prop normally resolves through its Owner Character and may use
+its direct Story World fallback when shared or unowned. The primary path wins
+when both fields are populated, and SCF rejects values that point to different
+Projects or Story Worlds.
+
+A Sound prompt is composed through the same Template-aware semantic policy. It
+starts with the cue, identifies its soundtrack role, and may add only compact
+Scene Location/time/tone context, Scene Sound & Music Direction, target
+duration, the diegetic relationship in plain language, cue description, and
+production notes. The Scene editor recommends about 16 words for its shared
+sound direction. Supplied narration/dialogue and lyrics are protected as
+verbatim sections. If the required verbatim block cannot fit the selected
+Template's word, character, or byte ceiling, preview/submission returns an
+error rather than silently truncating or paraphrasing it.
+
 `base_prompt` adds instructions without removing the assembled Story Graph
 context or saved `generation_prompt`; in Project scope it applies to every
 planned source. The
@@ -129,7 +159,8 @@ immediately afterward. The target is a creative composition goal; the maximum
 is a hard ceiling and cannot loosen a stricter inherited provider/model bound.
 The saved Template's **Effective Prompt Guidance** box shows the resolved
 profile, order, format, and lengths, so common tuning does not require editing
-`configuration_json`.
+`configuration_json`. That advanced field defaults to the valid empty object
+`{}`; a user is not required to author JSON for a Template with no overrides.
 
 Prompt-policy precedence is core output/modality/intent fallback, trusted
 adapter-manifest `generation.prompt_policy`, trusted Connection policy filter,
@@ -145,12 +176,44 @@ Template policy are retained; generation does not consult MCP for prompt prose.
 Negative suggestions remain a separate negative-conditioning run value and
 are never appended silently to the positive prompt.
 
+The reviewed built-in starting profiles are intentionally different by output
+and model. These values apply before a stricter adapter, Connection, Template,
+or provider-schema ceiling:
+
+| Profile | Target / maximum words | Priority and form |
+| --- | ---: | --- |
+| Provider-neutral image | 80 / 120; reference-conditioned 60 / 90 | subject-first natural language |
+| Provider-neutral video | 140 / 200; reference-conditioned 70 / 100 | action-first chronological prose |
+| Provider-neutral audio | 2400 / 2400 | cue/role plus protected verbatim copy |
+| SCAIL video | 45 / 80 | concise action and motion refinement |
+| WAN text-to-video | 100 / 200 | motion-first chronological prose |
+| WAN reference-conditioned video | 75 / 100 | motion-first chronological prose |
+| LTX video | 140 / 200 | chronological action |
+| MiniMax/Hailuo video | 100 / 140; reference-conditioned 60 / 100 | direct chronological motion; 2,000-character ceiling |
+| FLUX image | 70 / 120 | subject-first natural language |
+| Midjourney image | 50 / 90 | concise phrases; inherited ancestor prose omitted |
+| Veo video | 120 / 180 | chronological Shot sequence |
+
+Targets guide section selection; maxima are hard bounds. A Template's editor
+fields may tighten those values, while a later provider-schema character/byte
+limit can tighten the result again. Shot-still and composite-filmstrip intents
+request a 120-word neutral-image target when the effective ceiling permits it.
+The Effective Prompt Guidance preview is the authority for the exact selected
+Template.
+
+The selected-Template prompt preview also reports its final word count and hard
+limits plus `truncated` and `omitted_sections` diagnostics, so an operator can
+see when the policy simplified a request instead of guessing from provider
+output.
+
 For compatible WAN graphs that expose the corresponding scalar controls, a
 practical starting point is 1280x720, 24 fps, 20-25 steps, CFG 5-7, and either
 DPM++ 2M with Karras or Euler ancestral; DPM++ 3M SDE is a higher-cost option
 only when the graph advertises it. These values are suggestions, not automatic
 defaults. Preserve a workflow's high/low-noise routing and custom sampler
-topology.
+topology. When a WAN video graph exposes frame count and playback FPS instead
+of duration, an authored Shot duration projects to the nearest valid `4n+1`
+frame count while the Template-authored FPS remains authoritative.
 
 The following LTX presets are operator starting points, not official
 LTX 2.5 defaults. Apply one only when the imported graph declares safely
@@ -224,11 +287,21 @@ current value. Runtime precedence, from lowest to highest, is:
 2. compatible owning-Project profile values (`frame_width`, `frame_height`,
    `aspect_ratio`, and `frame_rate`);
 3. the owning Project's saved override for the exact Connection + Template;
-4. the source item's saved override for that exact pair; and
+4. source-authored values that map to a declared control, currently Shot or
+   Sound duration, followed by the source item's saved override for that exact
+   pair; and
 5. a one-off value submitted for the current direct run or batch.
 
+For the complete creative request, the corresponding specificity order is
+**Template → Project profile → Project → Scene when applicable → item →
+one-off**. The Scene position is a semantic authoring layer: its Location,
+time, tone, visual changes, camera defaults, and sound direction shape linked
+Shot or Sound prompts. It is not a separately persisted
+`_worldgraph_generation_run_defaults` row or save target. Scalar run-control
+storage remains Template, Project, and item scoped as listed above.
+
 The same item layer applies to every supported source type, including Shot,
-Character, Location, Prop, Scene, Episode, and Story World; it is not a
+Sound, Character, Location, Prop, Scene, Episode, and Story World; it is not a
 Shot-specific schema. Template, Project, and item saves are explicit actions.
 Generating media never changes a default. **Save current values as Template
 defaults** changes the baseline for every Project and item that uses that exact
@@ -335,18 +408,20 @@ shapes may expose a different subset, so the saved graph and Workflow Test
 remain authoritative. Prompt keywords never alter any loader field.
 
 For a direct run the client may send a `run_values` object keyed by the
-selected Template's advertised fields. For a Sequence or Demonstration,
-`image_run_values`, `video_run_values`, and, for generated demonstration audio,
-`audio_run_values` may accompany the corresponding explicit per-type Template
-override and apply to every generated task of that output type. Audio controls
-are not exposed for direct image or video runs. WordPress re-derives the v1
+selected Template's advertised fields. A Sequence or Demonstration request may
+send `image_run_values`, `video_run_values`, or `audio_run_values` with the
+corresponding explicit per-type Template override, applying the map to every
+generated task of that output type. The shipped UI exposes audio controls for a
+direct Sound run and for generated Demonstration audio, not for a direct image
+or video run or a Project Sequence. WordPress re-derives the v1
 contract from the selected Template at submission time, rejects unknown,
 nested, wrongly typed, out-of-range, or non-allowlisted values, and passes only
 normalized scalar values to generation.
 A non-empty batch values object without its matching Template ID is invalid.
-An omitted or empty values object still resolves the selected Template's
-Project-profile, Project-pair, and per-source item-pair defaults. An explicit
-per-type batch value is the one-off highest layer for every matching task.
+An omitted or empty values object still resolves the selected Template
+baseline, Project profile, Project-pair, source-authored timing, and per-source
+item-pair defaults. An explicit per-type batch value is the one-off highest
+layer for every matching task.
 
 ## Delivered intent vocabulary
 
@@ -364,14 +439,17 @@ is executed.
 | Shot | `shot-still-and-video` | `shot-representative-still` (image), `shot-video` (video) |
 | Scene | `scene-filmstrip` | `scene-filmstrip` (image) |
 | Episode | `episode-bookend-filmstrip` | `episode-bookend-filmstrip` (image) |
+| Sound | `sound-cue` | `sound-cue` (audio) |
 
 The first image in a recipe is eligible to become the source post's featured
-image. Each view and each Shot output is an independent child job, so failures
-and retries remain attributable. Scene filmstrips receive textual context from
-ordered child Shots; Episode filmstrips receive context from the opening and
-final Scenes. These composite prompts do not imply that the engine waits for or
-automatically binds newly generated child images. Other generator-supported
-post types retain the generic representative-image fallback.
+image. Each view, Shot output, and Sound cue is an independent child job, so
+failures and retries remain attributable. Scene filmstrips use up to three
+ordered child-Shot beats; Episode filmstrips use the first Shot of the opening
+Scene and last Shot of the final Scene, with compact Scene boundaries. A Scene
+summary is used only when the corresponding composite has no Shot beat. These
+composite prompts do not imply that the engine waits for or automatically binds
+newly generated child images. Only CPTs in this registry expose representative
+generation.
 
 The Project-only `demonstration` scope is a separate orchestration recipe. It
 orders Story Graph Scenes and Shots and declares stable task keys for:
@@ -606,8 +684,9 @@ intent label, falling back to the media type when no intent exists.
   remain hard blockers.
 - An image-only installation can use Project, World, look-set, Scene, and
   Episode recipes. A representative Shot batch still requires its video
-  output, while a demonstration can fall back from optional Shot motion and
-  audio to its required stills, subtitles, and silence.
+  output, and a representative Sound run requires a compatible audio Template.
+  A demonstration can fall back from optional Shot motion and audio to its
+  required stills, subtitles, and silence.
 - World Graph Studio remains usable with no generation provider.
 
 ## Implementation references

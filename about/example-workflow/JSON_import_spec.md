@@ -119,12 +119,21 @@ reader may silently ignore:
 - `characters[].story_world`, `locations[].story_world`, and
   `organizations[].story_world` must equal `world.id`. They become each
   resource's World relationship and the reciprocal World containment edge.
+- Props do not repeat the single top-level World ID in portable version 1.2
+  JSON. The importer still creates the World containment edge and hydrates each
+  Prop's optional `story_world` editor relationship. At runtime an Owner
+  Character is the primary ancestry path; this direct World slot is the
+  fallback for a shared or unowned Prop.
 - `organizations[].members` contains Character external IDs and becomes
   Organization-to-Character membership relationships.
 - `episodes[].scenes` is the Episode's ordered Scene declaration. Every listed
   Scene must name the same Episode in `scenes[].episode`; the importer persists
   both Episode containment and each Scene's Episode relationship. Explicit
   `scene_number` values retain editorial order.
+- Scenes likewise do not repeat `project.id` in portable version 1.2 JSON. The
+  importer hydrates the optional direct Project relationship from the document
+  root so a Scene can retain Project ancestry without an Episode. When an
+  Episode is assigned, its Project path takes precedence.
 - `scenes[].sequence` must equal `sequence.id`, and each Scene must also occur
   in `sequence.order`. The importer persists the taxonomy assignment;
   `sequence.order` is authoritative for Scene order.
@@ -190,7 +199,9 @@ and lighting changes, Scene camera and audio direction, and Shot camera
 movement, motion direction, and exceptional generation constraints are
 portable. Connections, Templates, generation jobs, WordPress users/status, the
 non-existent Storyboard CPT, and other fields outside the actual importer
-contract are excluded.
+contract are excluded. Prop `story_world` and standalone Scene `project` are
+not repeated per record because this single-Project/single-World format derives
+and hydrates them from the document root during import.
 
 ## Top-Level Document
 
@@ -233,7 +244,7 @@ project -> worldgraph_project
 | `production_status` | string | `worldgraph_status` term | Existing taxonomy slug. |
 | `start_date` | string | `meta.start_date` | ISO `YYYY-MM-DD`. |
 | `end_date` | string | `meta.end_date` | ISO `YYYY-MM-DD`. |
-| `team_members` | string[] | `meta.team_members`, relationships | Character external IDs. |
+| `associates` | string[] | `meta.associates`, relationships | Character external IDs. |
 | `production_stage` | string | `meta.production_stage` | `concept`, `development`, `pre_production`, `production`, `post_production`, or `released`. |
 | `frame_width` | number | `meta.frame_width` | Positive pixel width. |
 | `frame_height` | number | `meta.frame_height` | Positive pixel height. |
@@ -331,6 +342,7 @@ props[] -> worldgraph_prop
 | `purpose` | string | `meta.purpose` | Narrative or production purpose. |
 | `owner_character` | string | `meta.owner_character`, relationship | Optional Character external ID. |
 | `notes` | string | `meta.notes` | Continuity and handling notes. |
+| derived from `world.id` | — | `meta.story_world`, relationship | Hydrates the optional shared/unowned-Prop fallback. `owner_character` remains the primary ancestry path when present. |
 
 Scene use is declared by `scenes[].props`.
 
@@ -407,6 +419,7 @@ scenes[] -> worldgraph_scene
 | `tags` | string[] | `worldgraph_scene_tag` terms | Existing taxonomy slugs. |
 | `sequence` | string | `worldgraph_sequence` term | Sequence external ID; must agree with `sequence.id` and `sequence.order`. |
 | `episode` | string | `meta.episode`, relationship | Optional Episode external ID. |
+| derived from `project.id` | — | `meta.project`, relationship | Hydrates the optional standalone-Scene Project fallback. An assigned Episode's Project path takes precedence. |
 
 ### Dialogue Rows
 
@@ -419,8 +432,9 @@ scenes[] -> worldgraph_scene
 
 Ordinary dialogue remains canonical Scene metadata and must not be duplicated as
 Sound records. Narration, voice-over, ADR, music, ambience, and effects belong
-in `sounds[]`. Scene-wide sound and music direction remains represented by those
-linked Sound records; there is no second Scene sound-prose field.
+in `sounds[]`. Scene-wide ambience, music, and sonic-palette continuity belongs
+in `scenes[].audio_direction`; dialogue, lyrics, and individual cue events
+remain on linked Sound records.
 
 ## Shots
 
@@ -483,6 +497,13 @@ or planned media encoding is a linked audio-typed Asset.
 
 Seeded Sound type slugs include `narration`, `voiceover`, `music`,
 `sound-effect`, `ambience`, `foley`, `silence`, and `adr`.
+
+For representative audio generation, the cue title and type establish the
+request; compact Scene context and `audio_direction` supply continuity;
+`duration` and `diegetic` retain their production meanings; and description or
+production notes add cue-specific direction. `spoken_text` and `lyrics` are
+emitted verbatim. A Template whose prompt ceiling cannot contain the required
+verbatim block is rejected rather than receiving truncated text.
 
 ## Planned Assets
 
@@ -566,12 +587,15 @@ Scenes and Shots that name the Sequence external ID are assigned to the term.
 Before creating posts or terms, readers validate that:
 
 - `world.project` resolves to `project.id`;
-- Project `team_members` resolve to Characters;
+- Project `associates` resolve to Characters;
 - Character and Location World relationships resolve;
 - Character avatars and Location visual references resolve to Assets;
-- Prop owners resolve to Characters;
+- Prop owners resolve to Characters; persistence derives the top-level World
+  as each imported Prop's direct shared/unowned fallback;
 - Organization leadership/members resolve to Characters and its World resolves;
-- Episode Project and Scene references resolve, and Scene `episode` values agree;
+- Episode Project and Scene references resolve and Scene `episode` values
+  agree; persistence derives the top-level Project as each imported Scene's
+  standalone fallback;
 - Scene Location, Character, Prop, Sequence, and Episode references resolve;
 - Shot Scene and Sequence references resolve;
 - Sound Scene, Shot, Character, and Asset references resolve, and a referenced

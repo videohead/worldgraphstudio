@@ -135,14 +135,15 @@ Top-level container for all story assets.
 - `project_name` (text)
 - `project_slug` (text)
 - `description` (wysiwyg)
-- `generation_prompt` (textarea; **Project Visual Direction**, a concise production-wide rendering style, lighting, palette, contrast, and texture baseline)
+- `generation_prompt` (textarea; **Project Visual Direction**, about 12 words
+  of production-wide rendering style, lighting, palette, contrast, and texture)
 - `genre` (taxonomy: `worldgraph_genre`, multiple)
 - `target_medium` (select)
 - `status` (taxonomy: `worldgraph_status`)
 - `owner` (user)
 - `start_date` (date)
 - `end_date` (date)
-- `team_members` (relationship to `worldgraph_character`, multiple)
+- `associates` (relationship to `worldgraph_character`, multiple)
 - `production_stage` (select)
 - `frame_width` (number)
 - `frame_height` (number)
@@ -153,6 +154,7 @@ Top-level container for all story assets.
 
 - has_many Story Worlds
 - has_many Episodes
+- has_many standalone Scenes through their direct Project fallback
 - has_many Assets
 
 ---
@@ -175,6 +177,7 @@ Top-level container for all story assets.
 - belongs_to Project
 - has_many Characters
 - has_many Locations
+- has_many Props
 - has_many Organizations
 
 ---
@@ -236,12 +239,16 @@ Top-level container for all story assets.
 - generation_prompt
 - purpose
 - owner_character
+- story_world (optional relationship fallback for a shared or unowned Prop;
+  `owner_character` takes precedence and both paths must resolve to the same
+  World when populated)
 - notes
 
 ## Relationships
 
 - appears_in Scenes
 - linked_to Assets
+- belongs_to Story World directly when it has no Owner Character
 
 ---
 
@@ -286,12 +293,12 @@ Top-level container for all story assets.
 - scene_number
 - title
 - summary
-- generation_prompt (textarea; **Scene Look & Lighting Changes** only; Project
-  Visual Direction is the baseline and Scene-specific differences take
-  precedence inside the Scene)
-- audio_direction (textarea; **Sound & Music Direction**, concise Scene-wide
-  ambience, music, and sonic palette inherited by linked Sound generation—not
-  dialogue, lyrics, or individual cue events)
+- generation_prompt (textarea; **Scene Look & Lighting Changes**, about 8 words
+  containing only differences from the Project Visual Direction baseline;
+  Scene-specific differences take precedence inside the Scene)
+- audio_direction (textarea; **Sound & Music Direction**, about 16 words of
+  Scene-wide ambience, music, and sonic palette inherited by linked Sound
+  generation—not dialogue, lyrics, or individual cue events)
 - script_content
 - dialogue (structured importer-managed entries: speaker, line, description, sequence)
 - location
@@ -301,12 +308,17 @@ Top-level container for all story assets.
 - camera_movement (select; optional Scene default inherited by generated Shot video with no movement)
 - production_notes
 - sequence
+- project (optional relationship to `worldgraph_project` for a standalone
+  Scene; `episode` ownership takes precedence and both paths must resolve to
+  the same Project when populated)
 
 ## Relationships
 
 - belongs_to Episode
+- belongs_to Project directly when no Episode is assigned
 - contains Shots
 - contains Sounds
+- located_in Location
 - references Characters
 - references Assets
 - references Storyboards
@@ -368,9 +380,13 @@ Generation direction follows a specificity hierarchy. Project Visual Direction
 defines the house look. A Scene keeps one authoritative Location/time boundary,
 may specify only look and lighting differences from that Project baseline, and
 supplies lens and camera-movement defaults. Those Scene-specific values take
-precedence inside the Scene. Optional Sound & Music Direction defines the
-Scene-wide ambience, music, and sonic palette inherited by linked Sound
-generation; dialogue, lyrics, and individual cue events remain on Sound records.
+precedence inside the Scene. The Scene normally reaches its Project through its
+Episode; the optional direct Project relationship supports a standalone Scene,
+and Episode ownership wins when both are populated; SCF rejects conflicting
+Project values. Optional Sound & Music
+Direction defines the Scene-wide ambience, music, and sonic palette inherited
+by linked Sound generation; dialogue, lyrics, and individual cue events remain
+on Sound records.
 A nonblank Shot lens or camera movement replaces its Scene default, while Shot
 motion is never inherited. Scene summary, script, dialogue, production notes,
 and linked Sound prose are not copied into Shot visual prompts. Scene-wide music,
@@ -410,6 +426,14 @@ The WordPress title and content are the canonical cue title and description.
 
 When a Shot is selected, it must belong to the selected Scene. One Sound record
 represents one cue occurrence; repeated cues may link to the same Asset.
+
+Sound has the `sound-cue` representative-media workflow and produces audio.
+Its Template-aware semantic prompt starts with cue identity and role, inherits
+only compact Scene Location/time/tone plus `audio_direction`, and may include
+duration, a human-readable `diegetic` meaning, description, and production
+notes. `spoken_text` and `lyrics` are sent verbatim. If the required verbatim
+block cannot fit the selected Template's prompt ceiling, preview and submission
+fail instead of truncating it.
 
 Schema.org alignment uses `CreativeWork` for a planned Sound and
 `MusicComposition` for a music cue. Audio-typed Assets remain `AudioObject`
@@ -521,6 +545,10 @@ SCF/post-meta binding rather than from scalar run values. Checkpoint/model,
 VAE, and CLIP file selection remains Template-authoring metadata validated by
 catalog and readiness flows, not an Assets-run input.
 
+For a WAN video workflow that exposes frame count and FPS but no duration
+control, an authored Shot duration is converted to the nearest valid `4n+1`
+frame count. The Template's fixed playback FPS remains authoritative.
+
 ## Delivered Generation Contract
 
 Project, Story World, Character, Prop, Location, Shot, Scene, and Episode expose
@@ -548,13 +576,17 @@ intents:
 | Prop | `prop-look-set` | full, front, three-quarter, profile, back, and close-up images |
 | Location | `location-look-set` | full establishing, front, three-quarter, profile, back, and detail close-up images |
 | Shot | `shot-still-and-video` | `shot-representative-still` image and `shot-video` video |
-| Scene | `scene-filmstrip` | `scene-filmstrip` image using its shot progression |
-| Episode | `episode-bookend-filmstrip` | `episode-bookend-filmstrip` image using its opening and final scenes |
+| Scene | `scene-filmstrip` | `scene-filmstrip` image using up to three ordered Shot beats under the shared Scene boundary |
+| Episode | `episode-bookend-filmstrip` | `episode-bookend-filmstrip` image using the first Shot of its opening Scene and last Shot of its final Scene |
+| Sound | `sound-cue` | `sound-cue` audio using a compatible speech, dialogue, music, or sound-effect Template |
 
 Each output becomes a separate generation job so it can be retried, inspected,
 and attributed independently. A plan may cover one item or, for a Project, the
 Project and all supported descendants reachable through canonical ownership
 relationships.
+
+Scene and Episode composites use a bounded Scene summary only when the
+corresponding panel has no Shot beat.
 
 The Assets workflow resolves an active `worldgraph_template` and its associated
 `worldgraph_conn` for each output. A queued internal `worldgraph_gen` child
@@ -573,17 +605,21 @@ requester-scoped idempotency key, and aggregate status. The current workflow
 version is stored in `_worldgraph_gen_workflow_version`. Children reference the
 batch and frozen-plan position through `_worldgraph_gen_batch_id` and
 `_worldgraph_gen_batch_step`. Planning is read-only;
-starting first verifies that every required image and video output has a
-runnable Template and re-derives and validates all submitted
-`image_run_values` and `video_run_values` against their corresponding explicit
-per-type Template override. A non-empty values object without that Template ID
-is invalid. The plan then persists the normalized values frozen per task, and
-those values are included in the idempotency request fingerprint. WP-Cron
-materializes and activates children in bounded groups instead of holding one
-request open for the complete Project run. Each task also freezes the Project
-output values supported by its resolved Template, separately from explicit run
-values. Omitting run values therefore uses compatible Project framing followed
-by the Template sampling and negative-conditioning defaults.
+starting first verifies that every required image, video, or audio output has a
+runnable Template and re-derives and validates submitted
+`image_run_values`, `video_run_values`, and `audio_run_values` against their
+corresponding explicit per-type Template override. A non-empty values object
+without that Template ID is invalid. The plan then persists the normalized
+values frozen per task, and those values are included in the idempotency
+request fingerprint. WP-Cron materializes and activates children in bounded
+groups instead of holding one
+request open for the complete Project run. Each task separately freezes its
+Template baseline, compatible Project-profile values, Project-pair overrides,
+source-authored timing, item-pair overrides, and explicit one-off values. The
+complete creative specificity order is **Template → Project profile → Project
+→ Scene when applicable → item → one-off**. Scene is a prompt-context layer for
+linked Shots and Sounds, not a separate persisted run-control scope; scalar
+save targets remain Template, Project, and item.
 
 A whole-Project demonstration uses the same parent/child contract with
 `_worldgraph_gen_batch_kind = demonstration_video` and

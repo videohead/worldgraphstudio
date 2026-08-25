@@ -316,7 +316,8 @@ class Generation_Run_Defaults {
 
 	/** Split broad Project framing from source-authored timing defaults. */
 	private static function profile_layers( int $source_id, array $description ): array {
-		$values  = Template_Run_Controls::profile_defaults( $description, Asset_Generator::project_media_profile( $source_id ) );
+		$media_profile = Asset_Generator::project_media_profile( $source_id );
+		$values  = Template_Run_Controls::profile_defaults( $description, $media_profile );
 		$item    = [];
 		$fields  = [];
 		foreach ( (array) ( $description['fields'] ?? [] ) as $field ) {
@@ -326,7 +327,9 @@ class Generation_Run_Defaults {
 		}
 		foreach ( $values as $key => $value ) {
 			$semantic = $fields[ (string) $key ] ?? '';
-			if ( 'duration' === $semantic || in_array( (string) $key, [ 'duration', 'duration_seconds' ], true ) ) {
+			$is_source_timing = array_key_exists( 'duration', $media_profile )
+				&& in_array( (string) $key, [ 'length', 'num_frames', 'frame_count' ], true );
+			if ( 'duration' === $semantic || in_array( (string) $key, [ 'duration', 'duration_seconds' ], true ) || $is_source_timing ) {
 				$item[ (string) $key ] = $value;
 				unset( $values[ $key ] );
 			}

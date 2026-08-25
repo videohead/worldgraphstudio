@@ -73,10 +73,12 @@ every media shape a registered generation modality. Custom or future adapters
 must register and validate their own executable contract rather than relying on
 unused modality names.
 
-The story-post **World Graph Studio Assets** metabox exposes an explicit direct
-still-image/text-to-video selector and the Story Graph item's
-representative-media plan. Direct video is available for a Shot, whose plan can
-therefore require both an image-output Template and a video-output Template.
+The story-post **World Graph Studio Assets** metabox exposes conditional direct
+Image, Video, and Audio choices plus the Story Graph item's representative-media
+Sequence. Direct video is available for a Shot, whose plan can require both an
+image-output Template and a video-output Template. Direct audio is available
+for a Sound and resolves a compatible speech, dialogue, music, or sound-effect
+Template for its `sound-cue` intent.
 The generic generation REST endpoint accepts `image`,
 `video`, `audio`, or `text` as a requested result type, but the selected active
 Template and provider adapter still determine whether a request can run.
@@ -85,8 +87,8 @@ queues a dependency-aware whole-story pass with image, video, and audio tasks
 and still, subtitle, and silence fallbacks. Demonstration provides separate
 image and video Template selectors and shows an audio Template selector only
 when its plan contains audio that must be generated. Each may remain configured
-per item (`0`) or override generated tasks of its type; direct image/video runs
-do not expose audio controls.
+per item (`0`) or override generated tasks of its type; direct audio controls
+appear only for Sound, while direct image/video runs do not expose them.
 
 ## Story-aware prompts and representative workflows
 
@@ -103,10 +105,19 @@ explicit `locked_off` is therefore a meaningful override. Shot
 `motion_direction` contains one visible action in temporal order, while Shot
 `generation_prompt` is reserved for exceptional constraints.
 
-The composer starts with the requested Shot or asset description and then adds
-only visual details that identify the subject, action, setting, characters,
-camera, motion, look, or continuity. A still receives the decisive frame moment
-and never receives movement prose. A video receives the one Shot action,
+An Episode is the primary Project ancestry path for a Scene. A Scene without
+an Episode may use its optional direct Project relationship; when both are
+present they must agree and the Episode path wins. A Prop likewise follows its
+Owner Character's Story World first and may use its optional direct Story World
+relationship when it is shared or unowned; both paths must agree when
+populated. These fallbacks let the same Project baseline and exact-pair
+defaults resolve without inventing duplicate story prose.
+
+The composer starts with the requested source description and output, then adds
+only relevant visual or sonic details. For a visual output those may identify
+the subject, action, setting, characters, camera, motion, look, or continuity.
+A still receives the decisive frame moment and never receives movement prose.
+A video receives the one Shot action,
 effective camera settings, duration, and relevant ending. Completed setup beats
 are removed, so a character mentioned only in an earlier action is not added to
 the frame. Shot prompts inherit the compact Scene setting and style boundary,
@@ -121,6 +132,15 @@ instructions, constraints, and verbatim text. Markup is removed, relationship
 titles are rendered readably, and duplicate source text is removed.
 `base_prompt` remains additive and does not erase the saved Story Graph context
 or `generation_prompt`.
+
+Sound uses the same Template-aware semantic renderer instead of a flat prompt
+bypass. Its prompt starts with the cue and soundtrack role, then includes only
+compact Scene Location/time/tone context, Scene Sound & Music Direction,
+duration, a plain-language diegetic relationship, and useful cue description
+or production notes. Supplied spoken text and lyrics are protected verbatim.
+If the required verbatim block cannot fit the selected Template's word,
+character, or byte limit, preview and submission fail with an actionable error
+rather than truncating or paraphrasing the authored performance text.
 
 After Template selection, `Generation_Prompt_Policy` orders, omits, and bounds
 those sections using a normalized non-executable policy. It accepts numeric
@@ -166,8 +186,11 @@ authored two-expert bundle: no Lightning LoRAs, shift 8, 20 steps, CFG 4,
 Euler/simple, a high-noise pass over steps 0-10, then low-noise from 10 to the
 end. Its default 81 frames at 16 fps produce about five seconds; Project profile
 projection does not replace that fps while the graph exposes a fixed frame
-count. Other WAN variants keep their own graph-authored values. The documented
-LTX operator presets are Balanced (DPM++ 2M/Karras, 24, 4.5, 0.60, 0.55,
+count. When such a WAN graph exposes frame count and FPS instead of duration,
+an authored Shot duration maps to the nearest valid `4n+1` frame count while
+the Template-authored FPS remains authoritative. Other WAN variants keep their
+own graph-authored values. The documented LTX operator presets are Balanced
+(DPM++ 2M/Karras, 24, 4.5, 0.60, 0.55,
 1920x1080/50 fps), Hero (DPM++ 2M/Karras, 36-40, 4.2, 0.55, 0.45,
 2560x1440/50 fps), and Preview (UniPC, 16, 4.0, 0.65, 0.50,
 768x432/24 fps), where the numbers after steps are CFG, denoise, and motion.
@@ -187,8 +210,9 @@ recipes:
 | Prop | `prop-look-set` | full, front, three-quarter, profile, back, and close-up images |
 | Location | `location-look-set` | full establishing, front, three-quarter, profile, back, and detail close-up images |
 | Shot | `shot-still-and-video` | `shot-representative-still` image and `shot-video` video |
-| Scene | `scene-filmstrip` | one filmstrip image informed by ordered Shot descriptions |
-| Episode | `episode-bookend-filmstrip` | one filmstrip image informed by the opening and final Scenes |
+| Scene | `scene-filmstrip` | one filmstrip image using up to three ordered Shot action/framing beats under one Scene boundary; Scene-summary fallback when no Shot exists |
+| Episode | `episode-bookend-filmstrip` | one filmstrip image using the first Shot of the opening Scene and last Shot of the final Scene, with bounded Scene-summary fallback |
+| Sound | `sound-cue` | one audio cue using the compatible speech, dialogue, music, or sound-effect modality |
 
 Each output is independently queued and records its stable intent slug. An item
 plan contains one content item's recipe. Project scope walks canonical ownership
@@ -325,6 +349,10 @@ template ID, optional workflow JSON, model/checkpoint information, and default
 configuration. Templates are WordPress configuration records, not permission
 to run arbitrary server code.
 
+`configuration_json` defaults to the valid empty object `{}`. Managed catalogs
+populate it when provider data is required, and ordinary Template editors do
+not need to write JSON merely to save or run a Template.
+
 A Template may also store a reviewed normalized prompt policy. Provider
 discovery writes only bounded numeric or enumerated values to
 `configuration.provider_prompt_policy`; an advanced operator declaration may
@@ -406,18 +434,17 @@ own transformer, text encoder, video/audio VAE, and optional latent-upscaler
 selections. The Workflow Test display—not a prompt keyword or family label—is
 the exact list the selected Connection must provide.
 
-The author first chooses a conditional **Image**, **Sequence**, **Video**, or
-Project-only **Demonstration** mode. Image and video each reveal only their own
-defined output selector,
+The author first chooses a conditional **Image**, **Sequence**, **Video**,
+**Audio**, or Project-only **Demonstration** mode. Image, video, and audio each
+reveal only their own defined output selector,
 matching active runnable Template, applicable featured/linked-Asset choices,
 and contextual action. Sequence reveals the complete item or Project workflow,
-image/video counts, and only the Template controls needed by that plan before
-confirming a durable batch. Demonstration shows image, video, and audio work,
-separate applicable Template selectors, fallback behavior, and the latest
+image/video/audio counts, and only the Template controls needed by that plan
+before confirming a durable batch. Demonstration shows image, video, and audio
+work, separate applicable Template selectors, fallback behavior, and the latest
 whole-story batch before confirmation. Its audio selector and scalar run
 controls appear only for generated audio tasks; linked audio needs no provider
-override. Modes
-not defined for the current CPT are disabled.
+override. Modes not defined for the current CPT are disabled.
 The complete prompt for a single output remains server-composed and appears in
 a collapsed read-only preview; a Sequence instead previews its distinct jobs.
 Template-conditional fields live in a separate collapsed **Run controls
@@ -427,12 +454,21 @@ Template-conditional fields live in a separate collapsed **Run controls
 1. Template defaults;
 2. compatible owning-Project profile values;
 3. an owning-Project override for the exact Connection + Template pair;
-4. a source-item override for that exact pair; and
+4. source-authored values that map to a declared control, currently Shot or
+   Sound duration, followed by a source-item override for that exact pair; and
 5. explicit one-off direct or batch values.
 
-The generic item layer works for Shot, Character, Location, Prop, Scene,
-Episode, Story World, and other supported sources. Generation never saves a
-default implicitly. The editor provides explicit Template, Project, and item
+Across prompt direction and controls, the complete specificity order is
+**Template → Project profile → Project → Scene when applicable → item →
+one-off**. Scene is the inherited semantic layer for linked Shots and Sounds:
+Location, time, tone, look/lighting changes, camera defaults, and sound
+direction affect composition there. It is not an independently persisted
+`_worldgraph_generation_run_defaults` scope; scalar default save targets remain
+Template, Project, and item.
+
+The generic item layer works for Shot, Sound, Character, Location, Prop, Scene,
+Episode, and Story World. Generation never saves a default implicitly. The
+editor provides explicit Template, Project, and item
 save and reset actions. Saving Template defaults changes the baseline for every
 Project and item using that exact Template; Project and item
 saves remain scoped to their exact pair. A save posts the complete current
@@ -476,11 +512,11 @@ Template override. Values must be scalar, use advertised keys, and match the
 advertised types, bounds, and allowed choices. A non-empty batch map without
 its matching Template ID, unknown keys, and nested arrays/objects are errors;
 they are not silently forwarded. Omitting these maps still resolves each
-task's saved Project and item pair overrides after compatible Project framing.
+task's Template baseline, compatible Project profile, Project pair, applicable
+source-authored timing, and item pair.
 An explicit per-type map is the highest one-off layer for every applicable
-task. Omitting `seed`
-specifically preserves the existing randomization behavior; integer `0` is not
-treated as omission.
+task. Omitting `seed` specifically preserves the existing randomization
+behavior; integer `0` is not treated as omission.
 
 For each task, Template resolution follows this cascade:
 
@@ -710,10 +746,10 @@ The canonical REST base is `/wp-json/worldgraph/v1/`.
 
 | Method and route | Purpose |
 | --- | --- |
-| `GET /assets/generate/prompt?post_id={id}` | Direct image/Shot-video actions, read-only prompts and prompt-policy diagnostics, and runnable Templates with sanitized run controls/defaults |
+| `GET /assets/generate/prompt?post_id={id}` | Direct image, Shot-video, or Sound-audio actions; read-only prompts and prompt-policy diagnostics; and runnable Templates with sanitized run controls/defaults |
 | `POST /assets/generate/prompt-preview` | Recompose one output for an explicitly selected Template and return bounded prompt-policy diagnostics |
-| `POST /assets/generate` | Queue one story-aware image or Shot video with optional `run_values` |
-| `GET /assets/generate/defaults?post_id={id}&template_id={id}&scope=template\|project\|item` | Inspect effective Template, Project-profile, Project-pair, and item-pair values |
+| `POST /assets/generate` | Queue one story-aware image, Shot video, or Sound cue with optional `run_values` |
+| `GET /assets/generate/defaults?post_id={id}&template_id={id}&scope=template\|project\|item` | Inspect effective Template, Project-profile, Project-pair, source-authored item, and item-pair values |
 | `POST /assets/generate/defaults` | Explicitly save the complete current form as Template defaults or sparse Project/item pair defaults; requires the current fingerprint |
 | `DELETE /assets/generate/defaults` | Reset the Template baseline or one Project/item pair override; requires the current fingerprint |
 | `GET /assets/generate/plan?post_id={id}&scope=item\|project\|demonstration` | Preview representative or whole-story outputs, prompt hashes, runnable Templates and contextual run defaults, fallbacks, and the latest batch |

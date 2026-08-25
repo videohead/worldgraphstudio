@@ -152,9 +152,9 @@
             "first_day": 1
         },
         {
-            "key": "field_worldgraph_project_team_members",
-            "label": "Team Members",
-            "name": "team_members",
+            "key": "field_worldgraph_project_associates",
+            "label": "Associates",
+            "name": "associates",
             "aria-label": "",
             "type": "relationship",
             "instructions": "",
@@ -246,7 +246,7 @@
             "name": "generation_prompt",
             "aria-label": "",
             "type": "textarea",
-            "instructions": "One concise, pervasive visual language (about 20 words) for every generated image and video. Describe medium or rendering style, lighting, palette, contrast, and texture—not plot, characters, camera movement, or resolution. Example: \"hand-painted 2D storybook animation; high-key warm interiors; cool moonlit forest; soft cel shading; muted earth palette.\"",
+            "instructions": "One concise, pervasive visual language (about 12 words) for every generated image and video. Put the most important medium or rendering style, lighting, palette, contrast, and texture first—not plot, characters, camera movement, or resolution. Example: \"hand-painted storybook animation; high-key lighting; soft cel shading; muted earth palette.\"",
             "required": 0,
             "conditional_logic": 0,
             "wrapper": { "width": "", "class": "", "id": "" },

@@ -1204,6 +1204,7 @@
 			lines.push( '… ' + ( tasks.length - 24 ) + ' ' + strings.moreOutputs );
 		}
 		panel.querySelector( '.worldgraph-generate-asset__context-preview' ).textContent = lines.join( '\n' );
+		renderPromptPolicySummary( panel, null );
 	}
 
 	function activeBatch( panel ) {
@@ -1281,6 +1282,35 @@
 		}
 	}
 
+	function renderPromptPolicySummary( panel, policy ) {
+		var summary = panel.querySelector( '.worldgraph-generate-asset__prompt-policy' );
+		if ( ! summary ) {
+			return;
+		}
+		if ( ! policy ) {
+			summary.textContent = '';
+			summary.hidden = true;
+			summary.classList.remove( 'has-warning' );
+			return;
+		}
+
+		var parts = [ String( policy.word_count || 0 ) + ' ' + ( strings.promptWords || 'words' ) ];
+		if ( policy.profile ) {
+			parts.push( String( policy.profile ).replace( /[-_]+/g, ' ' ) );
+		}
+		var omitted = Array.isArray( policy.omitted_sections ) ? policy.omitted_sections.filter( Boolean ) : [];
+		if ( omitted.length ) {
+			parts.push( ( strings.promptOmitted || 'omitted' ) + ': ' + omitted.map( function ( section ) {
+				return String( section ).replace( /_/g, ' ' );
+			} ).join( ', ' ) );
+		} else if ( policy.truncated ) {
+			parts.push( strings.promptTrimmed || 'trimmed to the Template limit' );
+		}
+		summary.textContent = parts.join( ' · ' );
+		summary.hidden = false;
+		summary.classList.toggle( 'has-warning', !! policy.truncated || omitted.length > 0 );
+	}
+
 	function refreshSinglePromptPreview( panel ) {
 		var info = targetInfo( currentTarget( panel ) );
 		var action = 'single' === info.kind ? actionForIntent( panel, info.intent ) : null;
@@ -1294,6 +1324,7 @@
 		var preview = panel.querySelector( '.worldgraph-generate-asset__context-preview' );
 		panel._worldgraphPreviewToken = token;
 		preview.textContent = strings.previewingPrompt || 'Composing the selected Template prompt…';
+		renderPromptPolicySummary( panel, null );
 		request( settings.restUrl + '/prompt-preview', {
 			method: 'POST',
 			body: JSON.stringify( {
@@ -1312,9 +1343,11 @@
 				preview.dataset.promptWords = String( body.prompt_policy.word_count || 0 );
 				preview.dataset.promptProfile = String( body.prompt_policy.profile || '' );
 			}
+			renderPromptPolicySummary( panel, body.prompt_policy || null );
 		} ).catch( function ( error ) {
 			if ( token === panel._worldgraphPreviewToken && target === currentTarget( panel ) ) {
 				preview.textContent = ( strings.promptPreviewError || 'The selected Template prompt could not be previewed.' ) + ' ' + error.message;
+				renderPromptPolicySummary( panel, null );
 			}
 		} );
 	}
@@ -1353,6 +1386,7 @@
 		panel.querySelector( '.worldgraph-generate-asset__prompt-help' ).textContent = strings.singlePromptHelp;
 		panel.querySelector( '.worldgraph-generate-asset__choice-description' ).textContent = strings.singleChoiceHelp;
 		panel.querySelector( '.worldgraph-generate-asset__context-preview' ).textContent = action.prompt || '';
+		renderPromptPolicySummary( panel, null );
 		panel.querySelector( '.worldgraph-generate-asset__run' ).textContent = ( 'video' === type ? strings.createVideo : ( 'audio' === type ? strings.createAudio : strings.createImage ) ) + ' ' + action.label;
 		renderSingleSummary( panel, action );
 		selectionStatus( panel, action.configured ? '' : ( 'video' === type ? strings.unconfiguredVideo : ( 'audio' === type ? strings.unconfiguredAudio : strings.unconfiguredImage ) ), ! action.configured );
@@ -1380,6 +1414,7 @@
 		panel.querySelector( '.worldgraph-generate-asset__prompt-help' ).textContent = strings.batchPromptHelp;
 		panel.querySelector( '.worldgraph-generate-asset__choice-description' ).textContent = 'demonstration' === scope ? strings.demoChoiceHelp : ( 'project' === scope ? strings.projectChoiceHelp : strings.itemChoiceHelp );
 		panel.querySelector( '.worldgraph-generate-asset__context-preview' ).textContent = strings.planning;
+		renderPromptPolicySummary( panel, null );
 		panel.querySelector( '.worldgraph-generate-asset__run' ).textContent = 'demonstration' === scope ? strings.reviewDemonstration : ( 'project' === scope ? strings.reviewProject : strings.reviewQueue );
 		selectionStatus( panel, strings.planning );
 		updatePrimaryState( panel );

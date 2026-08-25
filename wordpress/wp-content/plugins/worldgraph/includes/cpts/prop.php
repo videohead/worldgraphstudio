@@ -97,17 +97,39 @@ class Prop {
 
 		$owner_id = self::relationship_id( self::scf_request_value( 'owner_character', $submitted, $post_id ) );
 		$world_id = self::relationship_id( self::scf_request_value( 'story_world', $submitted, $post_id ) );
+		$validation = self::validate_parent_pair( $owner_id, $world_id );
+		if ( is_wp_error( $validation ) ) {
+			$data = $validation->get_error_data();
+			self::add_scf_error( (string) ( is_array( $data ) ? ( $data['field'] ?? 'story_world' ) : 'story_world' ), $validation->get_error_message() );
+		}
+	}
+
+	/**
+	 * Validate the canonical owner/Story World pair at any write boundary.
+	 *
+	 * @return true|\WP_Error
+	 */
+	public static function validate_parent_pair( int $owner_id, int $world_id ) {
+		if ( $owner_id && 'worldgraph_character' !== get_post_type( $owner_id ) ) {
+			return new \WP_Error( 'worldgraph_prop_owner_invalid', __( 'Select a valid Owner Character.', 'worldgraph' ), [ 'field' => 'owner_character', 'status' => 400 ] );
+		}
+		if ( $world_id && 'worldgraph_world' !== get_post_type( $world_id ) ) {
+			return new \WP_Error( 'worldgraph_prop_world_invalid', __( 'Select a valid Story World.', 'worldgraph' ), [ 'field' => 'story_world', 'status' => 400 ] );
+		}
 		if ( ! $owner_id || ! $world_id ) {
-			return;
+			return true;
 		}
 
 		$owner_world_id = self::character_world_id( $owner_id );
 		if ( $owner_world_id && $owner_world_id !== $world_id ) {
-			self::add_scf_error(
-				'story_world',
-				__( "This Prop's Story World must match its Owner Character's Story World, or be left empty.", 'worldgraph' )
+			return new \WP_Error(
+				'worldgraph_prop_world_conflict',
+				__( "This Prop's Story World must match its Owner Character's Story World, or be left empty.", 'worldgraph' ),
+				[ 'field' => 'story_world', 'status' => 400 ]
 			);
 		}
+
+		return true;
 	}
 
 	/** Whether the current SCF validation request edits a Prop. */

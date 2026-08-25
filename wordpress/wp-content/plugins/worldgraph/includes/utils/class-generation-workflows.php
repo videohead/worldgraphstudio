@@ -934,7 +934,7 @@ class Generation_Workflows {
 	 * treating it as a distinct look section keeps medium, lighting, palette, and
 	 * texture separate from story action and Shot motion.
 	 */
-	private static function project_visual_direction( int $post_id, int $maximum_words = 10 ): string {
+	private static function project_visual_direction( int $post_id, int $maximum_words = 12 ): string {
 		$project = 'worldgraph_project' === get_post_type( $post_id ) ? get_post( $post_id ) : null;
 		if ( ! $project instanceof \WP_Post ) {
 			foreach ( self::ancestors( $post_id ) as $ancestor ) {
@@ -969,7 +969,7 @@ class Generation_Workflows {
 
 	/** Combine broad Project style with the closest Scene refinement exactly once. */
 	private static function visual_direction_context( int $post_id, bool $reference_conditioned ): string {
-		$project = self::project_visual_direction( $post_id, $reference_conditioned ? 6 : 10 );
+		$project = self::project_visual_direction( $post_id, $reference_conditioned ? 8 : 12 );
 		$scene   = self::scene_visual_direction( $post_id, $reference_conditioned ? 6 : 8 );
 		if ( '' === $project && '' === $scene ) {
 			return '';
@@ -1165,7 +1165,10 @@ class Generation_Workflows {
 			$count     += $clause_count;
 		}
 
-		$phrase = $selected ? implode( ', ', $selected ) : self::clean_text( $value, $maximum_words );
+		$minimum_complete = min( $maximum_words, max( 3, (int) ceil( $maximum_words / 2 ) ) );
+		$phrase = $selected && $count >= $minimum_complete
+			? implode( ', ', $selected )
+			: self::clean_text( $value, $maximum_words );
 		$phrase = rtrim( trim( $phrase ), " \t\n\r\0\x0B,;:-" );
 		while ( preg_match( '/\s+(?:a|an|the|and|or|but|with|without|on|in|at|to|from|of|for|by|over|under|into|onto|beside|near|toward|towards|between|across|through|as)$/iu', $phrase ) ) {
 			$phrase = trim( (string) preg_replace( '/\s+\S+$/u', '', $phrase ) );
@@ -1228,15 +1231,15 @@ class Generation_Workflows {
 			$shots = array_values( array_filter( self::ownership_children( $post_id, $post_type ), static function ( \WP_Post $post ): bool {
 				return 'worldgraph_shot' === $post->post_type;
 			} ) );
-			$frames = [];
-			foreach ( self::representative_items( $shots, 3 ) as $index => $shot ) {
-				$description = self::panel_description( (string) worldgraph_get_field_value( $shot->ID, 'shot_description' ), 8 );
-				$details     = array_filter( [ self::shot_panel_framing( $shot ), self::panel_character_context( $shot, 1, 3 ) ] );
+			$representatives = self::representative_items( $shots, 3 );
+			$frames          = [];
+			foreach ( $representatives as $index => $shot ) {
+				$description = self::panel_description( (string) worldgraph_get_field_value( $shot->ID, 'shot_description' ), 20 );
+				$details     = array_filter( [ self::shot_panel_framing( $shot ) ] );
 				$line        = sprintf(
-					/* translators: 1: panel number, 2: Shot title, 3: Shot description. */
-					__( 'Panel %1$d: %2$s — %3$s', 'worldgraph' ),
+					/* translators: 1: panel number, 2: compact visible Shot action. */
+					__( 'Panel %1$d: %2$s', 'worldgraph' ),
 					$index + 1,
-					self::clean_text( (string) $shot->post_title, 2 ),
 					$description
 				);
 				$frames[] = $line . ( $details ? ' (' . implode( '; ', $details ) . ')' : '' );
@@ -1244,8 +1247,10 @@ class Generation_Workflows {
 			if ( empty( $frames ) ) {
 				return '';
 			}
-			$boundary = self::scene_panel_boundary( get_post( $post_id ), false );
+			$characters = self::filmstrip_character_continuity( $representatives );
+			$boundary   = self::scene_panel_boundary( get_post( $post_id ), false );
 			return __( 'One horizontal filmstrip showing these panels', 'worldgraph' ) . "\n- " . implode( "\n- ", $frames )
+				. ( '' !== $characters ? "\n" . $characters : '' )
 				. ( '' !== $boundary ? "\n" . __( 'Shared Scene continuity', 'worldgraph' ) . ': ' . $boundary : '' );
 		}
 
@@ -1260,16 +1265,23 @@ class Generation_Workflows {
 			if ( count( $scenes ) > 1 ) {
 				$bookends[] = $scenes[ count( $scenes ) - 1 ];
 			}
-			$parts = [];
+			$parts       = [];
+			$panel_shots = [];
 			foreach ( $bookends as $index => $scene ) {
 				$closing  = count( $bookends ) > 1 && $index === count( $bookends ) - 1;
 				$action   = self::scene_bookend_action( $scene, $closing );
 				$boundary = self::scene_panel_boundary( $scene, true );
+				$shot     = self::scene_bookend_shot( $scene, $closing );
+				if ( $shot instanceof \WP_Post ) {
+					$panel_shots[] = $shot;
+				}
 				$parts[]  = ( 0 === $index ? __( 'Left panel', 'worldgraph' ) : __( 'Right panel', 'worldgraph' ) ) . ': '
-					. self::clean_text( (string) $scene->post_title, 3 ) . ' — ' . $action
+					. $action
 					. ( '' !== $boundary ? ' ' . $boundary : '' );
 			}
-			return __( 'One two-panel horizontal filmstrip showing', 'worldgraph' ) . "\n" . implode( "\n", $parts );
+			$characters = self::filmstrip_character_continuity( $panel_shots );
+			return __( 'One two-panel horizontal filmstrip showing', 'worldgraph' ) . "\n" . implode( "\n", $parts )
+				. ( '' !== $characters ? "\n" . $characters : '' );
 		}
 
 		return '';
@@ -1294,54 +1306,73 @@ class Generation_Workflows {
 		return implode( ', ', array_filter( [ $type, $angle, $lens ] ) );
 	}
 
-	/** Add only characters visibly named or directly attached to a panel Shot. */
-	private static function panel_character_context( \WP_Post $shot, int $maximum_characters = 1, int $appearance_words = 3 ): string {
+	/** Resolve visibly named or directly attached Characters for one panel Shot. */
+	private static function panel_character_ids( \WP_Post $shot ): array {
 		$ids = self::related_character_ids( (int) $shot->ID, 'worldgraph_shot' );
-		if ( empty( $ids ) ) {
-			$scene = self::scene_for_source( (int) $shot->ID );
-			if ( $scene instanceof \WP_Post ) {
-				$haystack = (string) worldgraph_get_field_value( (int) $shot->ID, 'shot_description' );
-				$mentioned = [];
-				foreach ( self::related_character_ids( (int) $scene->ID, 'worldgraph_scene' ) as $character_id ) {
-					$character = get_post( $character_id );
-					$position  = $character instanceof \WP_Post ? self::character_mention_position( $character, $haystack, true ) : null;
-					if ( null !== $position ) {
-						$mentioned[ $character_id ] = $position;
-					}
-				}
-				asort( $mentioned, SORT_NUMERIC );
-				$ids = array_map( 'intval', array_keys( $mentioned ) );
+		$scene = self::scene_for_source( (int) $shot->ID );
+		if ( empty( $ids ) && $scene instanceof \WP_Post ) {
+			$ids = self::related_character_ids( (int) $scene->ID, 'worldgraph_scene' );
+		}
+		$haystack = (string) worldgraph_get_field_value( (int) $shot->ID, 'shot_description' );
+		$mentioned = [];
+		foreach ( $ids as $character_id ) {
+			$character = get_post( $character_id );
+			$position  = $character instanceof \WP_Post ? self::character_mention_position( $character, $haystack, true ) : null;
+			if ( null !== $position ) {
+				$mentioned[ $character_id ] = $position;
+			}
+		}
+		if ( $mentioned ) {
+			asort( $mentioned, SORT_NUMERIC );
+			$ids = array_map( 'intval', array_keys( $mentioned ) );
+		}
+
+		return array_values( array_unique( array_map( 'intval', $ids ) ) );
+	}
+
+	/** Emit each filmstrip Character's compact appearance once, not in every panel. */
+	private static function filmstrip_character_continuity( array $shots ): string {
+		$ids = [];
+		foreach ( $shots as $shot ) {
+			if ( ! $shot instanceof \WP_Post ) {
+				continue;
+			}
+			foreach ( self::panel_character_ids( $shot ) as $character_id ) {
+				$ids[ $character_id ] = true;
 			}
 		}
 
 		$parts = [];
-		foreach ( array_slice( $ids, 0, max( 1, $maximum_characters ) ) as $character_id ) {
+		foreach ( array_slice( array_keys( $ids ), 0, 2 ) as $character_id ) {
 			$character = get_post( (int) $character_id );
 			if ( ! $character instanceof \WP_Post ) {
 				continue;
 			}
-			$appearance = $appearance_words > 0
-				? self::clean_text( (string) worldgraph_get_field_value( (int) $character_id, 'appearance' ), $appearance_words )
-				: '';
-			$parts[] = self::clean_text( (string) $character->post_title, 4 ) . ( '' !== $appearance ? ' — ' . $appearance : '' );
+			$appearance = rtrim( self::complete_phrase( (string) worldgraph_get_field_value( (int) $character_id, 'appearance' ), 10 ), '.; ' );
+			$parts[]    = self::clean_text( (string) $character->post_title, 6 ) . ( '' !== $appearance ? ' — ' . $appearance : '' );
 		}
 
-		return $parts ? __( 'characters', 'worldgraph' ) . ': ' . implode( ', ', $parts ) : '';
+		return $parts ? __( 'Character continuity', 'worldgraph' ) . ': ' . implode( '; ', $parts ) : '';
 	}
 
 	/** Use a Scene's first/last Shot beat instead of broad synopsis prose. */
 	private static function scene_bookend_action( \WP_Post $scene, bool $closing ): string {
-		$shots = array_values( array_filter( self::ownership_children( (int) $scene->ID, 'worldgraph_scene' ), static function ( \WP_Post $post ): bool {
-			return 'worldgraph_shot' === $post->post_type;
-		} ) );
-		$shot  = $shots ? ( $closing ? $shots[ count( $shots ) - 1 ] : $shots[0] ) : null;
+		$shot = self::scene_bookend_shot( $scene, $closing );
 		if ( $shot instanceof \WP_Post ) {
-			$action  = self::panel_description( (string) worldgraph_get_field_value( (int) $shot->ID, 'shot_description' ), 8 );
-			$details = array_filter( [ self::shot_panel_framing( $shot ), self::panel_character_context( $shot, 1, 3 ) ] );
+			$action  = self::panel_description( (string) worldgraph_get_field_value( (int) $shot->ID, 'shot_description' ), 20 );
+			$details = array_filter( [ self::shot_panel_framing( $shot ) ] );
 			return trim( $action . ( $details ? ' (' . implode( '; ', $details ) . ')' : '' ) );
 		}
 
-		return self::panel_description( (string) worldgraph_get_field_value( (int) $scene->ID, 'summary' ), 8 );
+		return self::panel_description( (string) worldgraph_get_field_value( (int) $scene->ID, 'summary' ), 20 );
+	}
+
+	/** Resolve a Scene's first or last ordered Shot for episode bookends. */
+	private static function scene_bookend_shot( \WP_Post $scene, bool $closing ): ?\WP_Post {
+		$shots = array_values( array_filter( self::ownership_children( (int) $scene->ID, 'worldgraph_scene' ), static function ( \WP_Post $post ): bool {
+			return 'worldgraph_shot' === $post->post_type;
+		} ) );
+		return $shots ? ( $closing ? $shots[ count( $shots ) - 1 ] : $shots[0] ) : null;
 	}
 
 	/** Describe the location/time/tone boundary, plus per-Scene style for bookends. */
@@ -1352,7 +1383,7 @@ class Generation_Workflows {
 		$parts    = [];
 		$location = self::clean_text( self::scene_location_prompt_value( (int) $scene->ID, 0 ), 8 );
 		$time     = self::clean_text( (string) worldgraph_get_field_value( (int) $scene->ID, 'time_of_day' ), 2 );
-		$tone     = rtrim( self::complete_phrase( (string) worldgraph_get_field_value( (int) $scene->ID, 'emotional_tone' ), 4 ), '.; ' );
+		$tone     = rtrim( self::complete_phrase( (string) worldgraph_get_field_value( (int) $scene->ID, 'emotional_tone' ), 8 ), '.; ' );
 		if ( '' !== $location ) {
 			$parts[] = __( 'Location', 'worldgraph' ) . ': ' . $location;
 		}

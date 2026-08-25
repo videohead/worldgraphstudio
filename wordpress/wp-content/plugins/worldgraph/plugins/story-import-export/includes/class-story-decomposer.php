@@ -27,7 +27,7 @@ class Story_Decomposer {
 	private const MIN_USABLE_CONTEXT    = 2_048;
 	private const LIST_FIELDS       = [
 		'genres',
-		'team_members',
+		'associates',
 		'roles',
 		'relations',
 		'members',
@@ -741,12 +741,12 @@ PROMPT;
 			}
 		}
 
-		$team = [];
+		$associate = [];
 		foreach ( $documents as $chunk_index => $document ) {
-			$team = array_merge( $team, $this->chunk_references( $document['project']['team_members'] ?? [], $maps, $chunk_index, 'characters' ) );
+			$associate = array_merge( $associate, $this->chunk_references( $document['project']['associates'] ?? [], $maps, $chunk_index, 'characters' ) );
 		}
-		if ( ! empty( $team ) ) {
-			$merged['project']['team_members'] = array_values( array_unique( $team ) );
+		if ( ! empty( $associate ) ) {
+			$merged['project']['associates'] = array_values( array_unique( $associate ) );
 		}
 
 		return $merged;
@@ -1188,8 +1188,8 @@ PROMPT;
 		foreach ( [ 'target_medium', 'production_status', 'start_date', 'end_date', 'production_stage', 'frame_width', 'frame_height', 'aspect_ratio', 'frame_rate' ] as $production_field ) {
 			unset( $project[ $production_field ] );
 		}
-		if ( isset( $project['team_members'] ) ) {
-			$project['team_members'] = $this->map_many( $project['team_members'], $aliases, 'characters' );
+		if ( isset( $project['associates'] ) ) {
+			$project['associates'] = $this->map_many( $project['associates'], $aliases, 'characters' );
 		}
 
 		$world = &$document['world'];

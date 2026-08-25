@@ -28,6 +28,16 @@ class Project_Cascade_Delete {
 	/** Provenance meta key that ties generated Media Library attachments to a Story Graph entity. */
 	private const GENERATED_FROM_META_KEY = '_worldgraph_generated_from';
 
+	/** Editorial CPT keys that may exist in legacy datasets. */
+	private const EDITORIAL_POST_TYPES = [
+		'worldgraph_editorial',
+		'worldgraph_editorial_artifact',
+		'worldgraph_editorial_ar',
+		'storyos_editorial_artifact',
+		'storyos_editorial_ar',
+		'storyos_editorial',
+	];
+
 	/** Register hooks. */
 	public static function init(): void {
 		add_filter( 'post_row_actions', [ __CLASS__, 'add_row_action' ], 20, 2 );
@@ -60,7 +70,7 @@ class Project_Cascade_Delete {
 
 		$warning = sprintf(
 			/* translators: %s: project title. */
-			__( 'Permanently delete "%s" and every World Graph Studio entity scoped to it (episodes, scenes, shots, assets, characters, locations, props, sounds, editorial artifacts, and their generated media)? This cannot be undone.', 'worldgraph' ),
+			__( 'Permanently delete "%s" and every World Graph Studio entity scoped to it (episodes, scenes, shots, sequences, assets, characters, locations, props, sounds, editorial artifacts, and their generated media)? This cannot be undone.', 'worldgraph' ),
 			$post->post_title
 		);
 
@@ -94,6 +104,7 @@ class Project_Cascade_Delete {
 			'worldgraph_cascade_delete_nonce' => wp_create_nonce( self::NOTICE_NONCE_ACTION ),
 			'deleted_posts'                   => $result['posts'],
 			'deleted_attachments'             => $result['attachments'],
+			'deleted_sequences'               => $result['sequences'],
 			'project_title'                   => rawurlencode( $result['project_title'] ),
 		];
 
@@ -105,7 +116,7 @@ class Project_Cascade_Delete {
 	 * Delete a project, every Story Graph entity scoped to it, and their generated media.
 	 *
 	 * @param int $project_id Project post ID.
-	 * @return array{posts:int,attachments:int,project_title:string}
+	 * @return array{posts:int,attachments:int,sequences:int,project_title:string}
 	 */
 	private static function delete_project_and_assets( int $project_id ): array {
 		$project_title = (string) get_the_title( $project_id );
@@ -119,7 +130,13 @@ class Project_Cascade_Delete {
 			}
 		}
 		$entity_ids[ $project_id ] = true;
+
+		foreach ( self::project_editorial_entity_ids( $project_id ) as $editorial_id ) {
+			$entity_ids[ $editorial_id ] = true;
+		}
+
 		$entity_ids                = array_keys( $entity_ids );
+		$sequence_ids              = self::project_sequence_term_ids( $entity_ids );
 
 		$attachments_deleted = self::delete_generated_attachments( $entity_ids );
 
@@ -137,11 +154,96 @@ class Project_Cascade_Delete {
 			++$posts_deleted;
 		}
 
+		$sequences_deleted = self::delete_orphaned_sequence_terms( $sequence_ids );
+
 		return [
 			'posts'         => $posts_deleted,
 			'attachments'   => $attachments_deleted,
+			'sequences'     => $sequences_deleted,
 			'project_title' => $project_title,
 		];
+	}
+
+	/**
+	 * Return editorial artifact IDs scoped to the project, including legacy CPT aliases.
+	 *
+	 * @param int $project_id Project post ID.
+	 * @return array<int, int>
+	 */
+	private static function project_editorial_entity_ids( int $project_id ): array {
+		$ids = get_posts(
+			[
+				'post_type'      => self::EDITORIAL_POST_TYPES,
+				'post_status'    => 'any',
+				'posts_per_page' => -1,
+				'fields'         => 'ids',
+				'meta_query'     => [
+					[
+						'key'     => 'project',
+						'value'   => $project_id,
+						'compare' => '=',
+					],
+				],
+			]
+		);
+
+		return array_values( array_filter( array_map( 'absint', (array) $ids ) ) );
+	}
+
+	/**
+	 * Return Sequence taxonomy term IDs attached to project-scoped Scenes and Shots.
+	 *
+	 * @param array<int, int> $entity_ids Story Graph entity IDs scoped to the project.
+	 * @return array<int, int>
+	 */
+	private static function project_sequence_term_ids( array $entity_ids ): array {
+		if ( [] === $entity_ids || ! function_exists( 'wp_get_object_terms' ) ) {
+			return [];
+		}
+
+		$sequence_ids = wp_get_object_terms(
+			$entity_ids,
+			\WorldGraph\Taxonomies\Sequence::TAXONOMY,
+			[ 'fields' => 'ids' ]
+		);
+
+		if ( is_wp_error( $sequence_ids ) ) {
+			return [];
+		}
+
+		return array_values( array_filter( array_map( 'absint', (array) $sequence_ids ) ) );
+	}
+
+	/**
+	 * Delete project-related Sequence terms that are unassigned after post cleanup.
+	 *
+	 * @param array<int, int> $sequence_ids Candidate sequence term IDs.
+	 * @return int
+	 */
+	private static function delete_orphaned_sequence_terms( array $sequence_ids ): int {
+		if ( [] === $sequence_ids ) {
+			return 0;
+		}
+
+		$deleted = 0;
+		foreach ( array_values( array_unique( $sequence_ids ) ) as $sequence_id ) {
+			$term = get_term( $sequence_id, \WorldGraph\Taxonomies\Sequence::TAXONOMY );
+			if ( ! $term || is_wp_error( $term ) ) {
+				continue;
+			}
+
+			$objects = get_objects_in_term( $sequence_id, \WorldGraph\Taxonomies\Sequence::TAXONOMY );
+			if ( is_wp_error( $objects ) || ! empty( $objects ) ) {
+				continue;
+			}
+
+			$term_deleted = wp_delete_term( $sequence_id, \WorldGraph\Taxonomies\Sequence::TAXONOMY );
+			if ( ! is_wp_error( $term_deleted ) && false !== $term_deleted ) {
+				++$deleted;
+			}
+		}
+
+		return $deleted;
 	}
 
 	/**
@@ -194,17 +296,19 @@ class Project_Cascade_Delete {
 
 		$posts       = isset( $_GET['deleted_posts'] ) ? absint( $_GET['deleted_posts'] ) : 0;
 		$attachments = isset( $_GET['deleted_attachments'] ) ? absint( $_GET['deleted_attachments'] ) : 0;
+		$sequences   = isset( $_GET['deleted_sequences'] ) ? absint( $_GET['deleted_sequences'] ) : 0;
 		$title       = isset( $_GET['project_title'] ) ? sanitize_text_field( rawurldecode( wp_unslash( $_GET['project_title'] ) ) ) : '';
 
 		printf(
 			'<div class="notice notice-success is-dismissible"><p>%s</p></div>',
 			esc_html(
 				sprintf(
-					/* translators: 1: project title, 2: number of related entities deleted, 3: number of attachments deleted. */
-					__( '"%1$s" and its Story Graph data were deleted (%2$d entities, %3$d generated media files).', 'worldgraph' ),
+					/* translators: 1: project title, 2: number of related entities deleted, 3: number of attachments deleted, 4: number of sequence terms deleted. */
+					__( '"%1$s" and its Story Graph data were deleted (%2$d entities, %3$d generated media files, %4$d sequences).', 'worldgraph' ),
 					$title,
 					$posts,
-					$attachments
+					$attachments,
+					$sequences
 				)
 			)
 		);

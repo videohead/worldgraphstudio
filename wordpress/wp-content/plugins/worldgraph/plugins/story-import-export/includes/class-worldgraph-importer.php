@@ -358,7 +358,7 @@ class WorldGraph_Importer {
 
 		$array_fields = [
 			[ $data['project'], 'genres', 'Project' ],
-			[ $data['project'], 'team_members', 'Project' ],
+			[ $data['project'], 'associates', 'Project' ],
 		];
 		foreach ( $data['characters'] as $character ) {
 			$array_fields[] = [ $character, 'roles', 'Character ' . ( $character['id'] ?? '(unknown)' ) ];
@@ -631,7 +631,7 @@ class WorldGraph_Importer {
 			$errors[] = sprintf( 'Story World references unknown project id "%s".', $data['world']['project'] );
 		}
 
-		foreach ( (array) ( $data['project']['team_members'] ?? [] ) as $character_id ) {
+		foreach ( (array) ( $data['project']['associates'] ?? [] ) as $character_id ) {
 			$this->validate_reference( $character_id, 'characters', 'Project team member', $id_sets, $errors );
 		}
 
@@ -1912,19 +1912,19 @@ class WorldGraph_Importer {
 			}
 		}
 
-		if ( $project_id && ! $this->entity_was_skipped( (string) $this->document['project']['id'] ) && array_key_exists( 'team_members', $this->document['project'] ) ) {
-			$team_member_ids = [];
-			foreach ( $this->document['project']['team_members'] as $character_external_id ) {
+		if ( $project_id && ! $this->entity_was_skipped( (string) $this->document['project']['id'] ) && array_key_exists( 'associates', $this->document['project'] ) ) {
+			$associate_ids = [];
+			foreach ( $this->document['project']['associates'] as $character_external_id ) {
 				$character_id = $this->id_map[ (string) $character_external_id ] ?? 0;
 				if ( $character_id ) {
-					$team_member_ids[] = $character_id;
+					$associate_ids[] = $character_id;
 				}
 			}
-			$result = \WorldGraph\Utils\set_relationships_for_field( $project_id, 'worldgraph_project', $team_member_ids, 'worldgraph_character', 'contains', 'team_members', true );
+			$result = \WorldGraph\Utils\set_relationships_for_field( $project_id, 'worldgraph_project', $associate_ids, 'worldgraph_character', 'contains', 'associates', true );
 			if ( is_wp_error( $result ) ) {
-				$this->report['errors'][] = 'Project Team Members: ' . $result->get_error_message();
+				$this->report['errors'][] = 'Project Associates: ' . $result->get_error_message();
 			} else {
-				\WorldGraph\Utils\worldgraph_update_field_value( $project_id, 'team_members', $team_member_ids );
+				\WorldGraph\Utils\worldgraph_update_field_value( $project_id, 'associates', $associate_ids );
 			}
 		}
 
@@ -2307,11 +2307,14 @@ class WorldGraph_Importer {
 		}
 
 		foreach ( $this->document['props'] as $prop ) {
+			$prop_id = (int) ( $this->id_map[ (string) $prop['id'] ] ?? 0 );
+			if ( ! $this->relationship_slot_matches( $prop_id, 'worldgraph_prop', 'story_world', $world_id, 'worldgraph_world' ) ) {
+				$this->report['errors'][] = sprintf( 'Prop %s did not retain its Story World relationship.', $prop['id'] );
+			}
 			if ( ! array_key_exists( 'owner_character', $prop ) ) {
 				continue;
 			}
 
-			$prop_id      = (int) ( $this->id_map[ (string) $prop['id'] ] ?? 0 );
 			$character_id = (int) ( $this->id_map[ (string) ( $prop['owner_character'] ?? '' ) ] ?? 0 );
 			if ( ! $this->relationship_field_targets_match( $prop_id, 'worldgraph_prop', 'owner_character', array_filter( [ $character_id ] ), 'worldgraph_character' ) ) {
 				$this->report['errors'][] = sprintf( 'Prop %s did not retain its owner Character relationship.', $prop['id'] );
@@ -2365,13 +2368,13 @@ class WorldGraph_Importer {
 			}
 		}
 
-		if ( array_key_exists( 'team_members', $this->document['project'] ) ) {
-			$team_member_ids = array_map(
+		if ( array_key_exists( 'associates', $this->document['project'] ) ) {
+			$associate_ids = array_map(
 				fn( string $external_id ): int => (int) ( $this->id_map[ $external_id ] ?? 0 ),
-				array_map( 'strval', $this->document['project']['team_members'] )
+				array_map( 'strval', $this->document['project']['associates'] )
 			);
-			if ( ! $this->relationship_field_targets_match( $project_id, 'worldgraph_project', 'team_members', $team_member_ids, 'worldgraph_character' ) ) {
-				$this->report['errors'][] = 'Project did not retain its Team Members relationships.';
+			if ( ! $this->relationship_field_targets_match( $project_id, 'worldgraph_project', 'associates', $associate_ids, 'worldgraph_character' ) ) {
+				$this->report['errors'][] = 'Project did not retain its Associate relationships.';
 			}
 		}
 

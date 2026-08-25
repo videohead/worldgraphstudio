@@ -109,8 +109,8 @@ class Test_WorldGraph_SCF_Alignment extends TestCase {
 		$this->assertSame( 'taxonomy', $project['genre']['type'] );
 		$this->assertSame( 1, $project['genre']['load_terms'] );
 		$this->assertSame( 1, $project['genre']['save_terms'] );
-		$this->assertSame( 'relationship', $project['team_members']['type'] );
-		$this->assertSame( [ 'worldgraph_character' ], $project['team_members']['post_type'] );
+		$this->assertSame( 'relationship', $project['associates']['type'] );
+		$this->assertSame( [ 'worldgraph_character' ], $project['associates']['post_type'] );
 		$this->assertSame( 'repeater', $scene['dialogue']['type'] );
 		$this->assertSame(
 			[ 'speaker', 'line', 'description', 'sequence' ],

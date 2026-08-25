@@ -221,6 +221,21 @@ the visual `generation_prompt`. These optional fields remain valid in version
 1.2, so older 1.0–1.2 documents and integrations that omit them continue to
 import.
 
+Because a canonical document contains one root Project and one root Story
+World, portable records do not repeat those IDs on every fallback relationship.
+Import hydrates each Prop's optional `story_world` relationship from the root
+World for shared or unowned-Prop ancestry; an Owner Character remains primary
+when present. It likewise hydrates each Scene's optional direct `project`
+relationship from the root Project so a standalone Scene has Project ancestry;
+an assigned Episode's Project path takes precedence.
+
+Sound records are also direct representative-media sources. Their generated
+audio prompt uses cue identity and type, compact Scene context and
+`audio_direction`, duration, diegetic meaning, description, and production
+notes. Imported `spoken_text` and `lyrics` remain exact performance copy; a
+selected Template that cannot contain the required verbatim block must be
+changed or the copy shortened rather than silently truncating it.
+
 See the [JSON Import Specification](../example-workflow/JSON_import_spec.md) for
 the complete field and relationship contract.
 
@@ -245,7 +260,9 @@ the non-existent Storyboard CPT, and fields not in the importer version 1.2
 contract are intentionally excluded. Project visual direction and Shot camera,
 motion, and exceptional generation fields are included, as are Scene-specific
 look and lighting changes, audio direction, lens, and camera defaults. The
-WordPress download name is `<project>.worldgraph.json`.
+derived Prop `story_world` and standalone Scene `project` fallback fields are
+not repeated because the format reconstructs them from its single root World
+and Project. The WordPress download name is `<project>.worldgraph.json`.
 
 ## Markdown export
 

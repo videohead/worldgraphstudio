@@ -173,6 +173,9 @@ class Asset_Generator_MetaBox {
 				'disabled'          => __( 'Disabled', 'worldgraph' ),
 				'previewingPrompt'  => __( 'Composing the selected Template prompt…', 'worldgraph' ),
 				'promptPreviewError' => __( 'The selected Template prompt could not be previewed.', 'worldgraph' ),
+				'promptWords'       => __( 'words', 'worldgraph' ),
+				'promptOmitted'     => __( 'omitted', 'worldgraph' ),
+				'promptTrimmed'     => __( 'trimmed to the Template limit', 'worldgraph' ),
 				'singlePromptHelp'  => __( 'These one-off instructions will be added to this output’s generated prompt.', 'worldgraph' ),
 				'batchPromptHelp'   => __( 'These one-off instructions will be added to every generated prompt in this workflow.', 'worldgraph' ),
 				'workflowPrompts'   => __( 'This workflow composes a separate detailed prompt for every output:', 'worldgraph' ),
@@ -344,6 +347,7 @@ class Asset_Generator_MetaBox {
 			<details class="worldgraph-generate-asset__context">
 				<summary><?php esc_html_e( 'Review the generated prompt or workflow plan', 'worldgraph' ); ?></summary>
 				<pre class="worldgraph-generate-asset__context-preview"></pre>
+				<p class="description worldgraph-generate-asset__prompt-policy" hidden></p>
 				<button type="button" class="button-link worldgraph-generate-asset__refresh-context"><?php esc_html_e( 'Refresh from saved fields', 'worldgraph' ); ?></button>
 			</details>
 			<div class="worldgraph-generate-asset__actions">

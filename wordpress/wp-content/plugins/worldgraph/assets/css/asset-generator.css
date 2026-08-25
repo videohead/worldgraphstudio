@@ -118,6 +118,15 @@
 	line-height: 1.5;
 }
 
+.worldgraph-generate-asset__prompt-policy {
+	margin: -2px 0 8px;
+}
+
+.worldgraph-generate-asset__prompt-policy.has-warning {
+	color: #8a4b08;
+	font-weight: 600;
+}
+
 .worldgraph-generate-asset__template-options {
 	display: grid;
 	grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));

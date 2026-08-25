@@ -363,9 +363,14 @@ class Template_Run_Controls {
 		}
 
 		$field_semantics = [];
+		$semantic_fields = [];
 		foreach ( array_slice( (array) ( $description['fields'] ?? [] ), 0, self::MAX_FIELDS ) as $field ) {
 			if ( is_array( $field ) && isset( $field['key'] ) ) {
-				$field_semantics[] = self::semantic_key( (string) $field['key'] );
+				$semantic = self::semantic_key( (string) $field['key'] );
+				$field_semantics[] = $semantic;
+				if ( null !== $semantic && ! isset( $semantic_fields[ $semantic ] ) ) {
+					$semantic_fields[ $semantic ] = $field;
+				}
 			}
 		}
 
@@ -409,7 +414,61 @@ class Template_Run_Controls {
 			}
 		}
 
+		// Some video workflows expose only frame count and playback FPS. Convert
+		// an authored Shot duration into their actual timing control so the model
+		// does not receive a ten-second instruction while rendering five seconds.
+		// The Template-authored FPS remains authoritative for fixed-frame graphs;
+		// model-specific field steps (for example WAN's 4n+1 cadence) are honored.
+		if ( in_array( 'length', $field_semantics, true ) && ! in_array( 'duration', $field_semantics, true ) && isset( $semantic_fields['length'] ) ) {
+			$duration = self::profile_numeric_value( $sources, [ 'duration', 'duration_seconds' ] );
+			$fps      = isset( $semantic_fields['fps']['default'] ) && is_numeric( $semantic_fields['fps']['default'] )
+				? (float) $semantic_fields['fps']['default']
+				: self::profile_numeric_value( $sources, [ 'fps', 'frame_rate' ] );
+			if ( null !== $duration && $duration > 0 && null !== $fps && $fps > 0 ) {
+				$length_field = $semantic_fields['length'];
+				$length_key   = (string) $length_field['key'];
+				$frame_count  = self::nearest_valid_integer( $duration * $fps, $length_field );
+				$validated    = self::validate_description( [ 'fields' => [ $length_field ] ], [ $length_key => $frame_count ] );
+				if ( ! self::is_error( $validated ) && array_key_exists( $length_key, $validated ) ) {
+					$defaults[ $length_key ] = $validated[ $length_key ];
+				}
+			}
+		}
+
 		return $defaults;
+	}
+
+	/** Return the first finite numeric value for a set of profile aliases. */
+	private static function profile_numeric_value( array $sources, array $aliases ): ?float {
+		foreach ( $sources as $source ) {
+			if ( ! is_array( $source ) ) {
+				continue;
+			}
+			foreach ( $aliases as $alias ) {
+				if ( array_key_exists( $alias, $source ) && is_scalar( $source[ $alias ] ) && is_numeric( $source[ $alias ] ) ) {
+					$value = (float) $source[ $alias ];
+					if ( is_finite( $value ) ) {
+						return $value;
+					}
+				}
+			}
+		}
+
+		return null;
+	}
+
+	/** Snap a derived frame count to one field's integer range and cadence. */
+	private static function nearest_valid_integer( float $value, array $field ): int {
+		$minimum = isset( $field['min'] ) && is_numeric( $field['min'] ) ? (int) ceil( (float) $field['min'] ) : 1;
+		$maximum = isset( $field['max'] ) && is_numeric( $field['max'] ) ? (int) floor( (float) $field['max'] ) : 10000;
+		$step    = isset( $field['step'] ) && is_numeric( $field['step'] ) ? max( 1, (int) round( (float) $field['step'] ) ) : 1;
+		$value   = min( $maximum, max( $minimum, $value ) );
+		$snapped = $minimum + (int) round( ( $value - $minimum ) / $step ) * $step;
+		if ( $snapped > $maximum ) {
+			$snapped = $minimum + (int) floor( ( $maximum - $minimum ) / $step ) * $step;
+		}
+
+		return max( $minimum, $snapped );
 	}
 
 	/**
@@ -1077,6 +1136,14 @@ class Template_Run_Controls {
 						continue;
 					}
 				}
+				if ( 'length' === $semantic && self::is_wan_video_node( $node ) ) {
+					$field['min']  = max( 1, (int) ( $field['min'] ?? 1 ) );
+					$field['step'] = 4;
+					$field['description'] = self::bounded_plain_text(
+						(string) ( $field['description'] ?? '' ) . ' WAN video frame counts use a 4n+1 cadence; the nearest valid count is used for authored duration.',
+						self::MAX_FIELD_DESCRIPTION_LENGTH
+					);
+				}
 				if ( in_array( $semantic, [ 'sampler', 'scheduler' ], true ) ) {
 					$field = self::constrain_workflow_choice( $field, $semantic, $current );
 				}
@@ -1121,6 +1188,12 @@ class Template_Run_Controls {
 		}
 
 		return array_values( $fields );
+	}
+
+	/** Whether a workflow node uses WAN's temporal latent cadence. */
+	private static function is_wan_video_node( array $node ): bool {
+		$class = strtolower( (string) ( $node['class_type'] ?? '' ) );
+		return false !== strpos( $class, 'wan' ) && false !== strpos( $class, 'video' );
 	}
 
 	/** Read scalar values from resolved workflow targets. */

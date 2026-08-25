@@ -336,7 +336,7 @@ function worldgraph_should_exclude_from_details( string $field_name, array $fiel
  */
 function worldgraph_expected_fields_for_cpt( string $cpt ): array {
 	$expected_fields = [
-		'worldgraph_project'            => [ 'project_name', 'project_slug', 'description', 'genre', 'target_medium', 'status', 'owner', 'start_date', 'end_date', 'team_members', 'production_stage', 'frame_width', 'frame_height', 'aspect_ratio', 'frame_rate', 'generation_prompt' ],
+		'worldgraph_project'            => [ 'project_name', 'project_slug', 'description', 'genre', 'target_medium', 'status', 'owner', 'start_date', 'end_date', 'associates', 'production_stage', 'frame_width', 'frame_height', 'aspect_ratio', 'frame_rate', 'generation_prompt' ],
 		'worldgraph_world'        => [ 'world_name', 'synopsis', 'timeline', 'rules', 'themes', 'geography', 'references', 'project', 'generation_prompt' ],
 		'worldgraph_character'          => [ 'display_name', 'biography', 'age', 'appearance', 'personality', 'motivation', 'backstory', 'voice_profile', 'avatar_asset', 'story_world', 'generation_prompt' ],
 		'worldgraph_location'           => [ 'location_name', 'description', 'environment_type', 'geography', 'mood', 'visual_reference', 'story_world', 'generation_prompt' ],
@@ -673,7 +673,7 @@ function worldgraph_schema_field_map(): array {
 			'owner'            => [ 'property' => 'creator', 'match' => 'close' ],
 			'start_date'       => [ 'property' => 'dateCreated', 'match' => 'close' ],
 			'end_date'         => [ 'property' => 'expires', 'match' => 'weak' ],
-			'team_members'     => [ 'property' => 'contributor', 'match' => 'close' ],
+			'associates'     => [ 'property' => 'contributor', 'match' => 'close' ],
 			'production_stage' => [ 'property' => 'creativeWorkStatus', 'match' => 'close' ],
 		],
 		'worldgraph_world' => [

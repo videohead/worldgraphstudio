@@ -368,7 +368,7 @@
             "name": "generation_prompt",
             "aria-label": "",
             "type": "textarea",
-            "instructions": "Project Visual Direction is the baseline. Enter only Scene-specific differences (about 20 words): lighting, palette, atmosphere, weather, or texture. These Scene values take precedence inside this Scene. Do not repeat the Project style or add plot, characters, camera, or sound.",
+            "instructions": "Project Visual Direction is the baseline. Enter only Scene-specific differences (about 8 words): lighting, palette, atmosphere, weather, or texture. These Scene values take precedence inside this Scene. Do not repeat the Project style or add plot, characters, camera, or sound.",
             "required": 0,
             "conditional_logic": 0,
             "wrapper": {
@@ -388,7 +388,7 @@
             "name": "audio_direction",
             "aria-label": "",
             "type": "textarea",
-            "instructions": "Optional Scene-wide ambience, music, and sonic palette (about 20 words) inherited by linked Sound generation. Describe tone, instrumentation, texture, rhythm, or acoustic space—not dialogue, lyrics, or individual cue events.",
+            "instructions": "Optional Scene-wide ambience, music, and sonic palette (about 16 words) inherited by linked Sound generation. Describe tone, instrumentation, texture, rhythm, or acoustic space—not dialogue, lyrics, or individual cue events.",
             "required": 0,
             "conditional_logic": 0,
             "wrapper": {

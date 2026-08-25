@@ -375,7 +375,7 @@ class Test_WorldGraph_Import extends TestCase {
 		$expected_fields = [
 			'project' => [
 				'id', 'title', 'project_slug', 'description', 'generation_prompt', 'genres', 'target_medium',
-				'production_status', 'start_date', 'end_date', 'team_members',
+				'production_status', 'start_date', 'end_date', 'associates',
 				'production_stage', 'frame_width', 'frame_height', 'aspect_ratio', 'frame_rate',
 			],
 			'world' => [
@@ -521,7 +521,7 @@ class Test_WorldGraph_Import extends TestCase {
 		$ids      = $this->full_featured_id_sets( $document );
 
 		$this->assert_reference( $document['world']['project'], $ids['project'], 'World project' );
-		foreach ( $document['project']['team_members'] as $character_id ) {
+		foreach ( $document['project']['associates'] as $character_id ) {
 			$this->assert_reference( $character_id, $ids['characters'], 'Project team member' );
 		}
 

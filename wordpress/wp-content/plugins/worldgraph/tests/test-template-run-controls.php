@@ -784,6 +784,35 @@ class Test_Template_Run_Controls extends TestCase {
 		$this->assertArrayNotHasKey( 'fps', $defaults );
 	}
 
+	/** Authored duration becomes a WAN-valid frame count at the workflow FPS. */
+	public function test_profile_defaults_derive_wan_frame_count_from_authored_duration(): void {
+		$workflow = [
+			'latent' => [
+				'class_type' => 'WanFirstLastFrameToVideo',
+				'inputs'     => [ 'width' => 640, 'height' => 640, 'length' => 81 ],
+			],
+			'video'  => [
+				'class_type' => 'CreateVideo',
+				'inputs'     => [ 'fps' => 16, 'images' => [ 'latent', 0 ] ],
+			],
+		];
+		$description = Template_Run_Controls::describe_configuration( [], [ 'workflow' => $workflow ] );
+		$length      = $this->field( $description, 'length' );
+		$defaults    = Template_Run_Controls::profile_defaults(
+			$description,
+			[ 'duration' => 10.0, 'frame_rate' => 24 ]
+		);
+
+		$this->assertSame( 4, $length['step'] );
+		$this->assertStringContainsString( '4n+1', $length['description'] );
+		$this->assertSame( 161, $defaults['length'] );
+		$this->assertArrayNotHasKey( 'fps', $defaults, 'The Template-authored 16 FPS remains authoritative.' );
+
+		$applied = Template_Run_Controls::apply_description_to_workflow( $description, $workflow, $defaults );
+		$this->assertSame( 161, $applied['latent']['inputs']['length'] );
+		$this->assertSame( 16, $applied['video']['inputs']['fps'] );
+	}
+
 	/**
 	 * The fingerprint is based on normalized fields, not associative input order.
 	 */

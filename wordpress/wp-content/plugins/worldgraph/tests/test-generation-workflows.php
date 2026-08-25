@@ -206,9 +206,10 @@ class Test_Generation_Workflows extends TestCase {
 		$shot_fields    = array_column( (array) ( $shot_group['fields'] ?? [] ), null, 'name' );
 
 		$this->assertSame( 'Project Visual Direction', $project_fields['generation_prompt']['label'] );
-		$this->assertStringContainsString( 'about 20 words', $project_fields['generation_prompt']['instructions'] );
+		$this->assertStringContainsString( 'about 12 words', $project_fields['generation_prompt']['instructions'] );
 		$this->assertStringContainsString( 'medium or rendering style, lighting, palette, contrast, and texture', $project_fields['generation_prompt']['instructions'] );
 		$this->assertSame( 'Scene Look & Lighting Changes', $scene_fields['generation_prompt']['label'] );
+		$this->assertStringContainsString( 'about 8 words', $scene_fields['generation_prompt']['instructions'] );
 		$this->assertSame( 'Sound & Music Direction', $scene_fields['audio_direction']['label'] );
 		$this->assertSame( 'Project (Standalone Scene)', $scene_fields['project']['label'] );
 		$this->assertStringContainsString( 'Episode ownership takes precedence', $scene_fields['project']['instructions'] );
@@ -286,6 +287,26 @@ class Test_Generation_Workflows extends TestCase {
 
 		$this->assertSame( 'Red turns.', $method->invoke( null, 'Red turns toward the open cottage door', 3 ) );
 		$this->assertSame( 'Space remains.', $method->invoke( null, 'Space remains between Red and the Woodsman', 3 ) );
+	}
+
+	/** Filmstrip inner summaries retain complete actions, appearance, and Scene tone. */
+	public function test_filmstrip_inner_copy_uses_complete_specific_phrases(): void {
+		$reflection = new ReflectionClass( Generation_Workflows::class );
+		$panel      = $reflection->getMethod( 'panel_description' );
+		$complete   = $reflection->getMethod( 'complete_phrase' );
+		$panel->setAccessible( true );
+		$complete->setAccessible( true );
+
+		$this->assertSame(
+			'Seen through the kitchen window, Red and the Woodsman arrive from the forest road as the last daylight fades.',
+			$panel->invoke( null, 'Seen through the kitchen window, Red and the Woodsman arrive from the forest road as the last daylight fades.', 20 )
+		);
+		$this->assertSame(
+			"Red folds her cloak beside the empty basket and places Grandmother's note safely on the shelf.",
+			$panel->invoke( null, "Red folds her cloak beside the empty basket and places Grandmother's note safely on the shelf.", 20 )
+		);
+		$this->assertSame( 'Safe, reflective, and quietly hopeful.', $complete->invoke( null, 'Safe, reflective, and quietly hopeful.', 8 ) );
+		$this->assertSame( 'A small, alert girl in a vivid red hooded cloak.', $complete->invoke( null, 'A small, alert girl in a vivid red hooded cloak over a cream blouse.', 10 ) );
 	}
 
 	/** The prompt filter gains Template context while retaining its original hook contract. */

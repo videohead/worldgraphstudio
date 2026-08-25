@@ -34,6 +34,38 @@ class Props_Controller extends Base_Controller {
 		add_action( 'rest_api_init', [ $instance, 'register_routes' ] );
 	}
 
+	/** Validate Prop ownership before a REST create can mutate state. */
+	public function check_create_permission( \WP_REST_Request $request ) {
+		$permission = parent::check_create_permission( $request );
+		return is_wp_error( $permission ) ? $permission : $this->validate_parent_request( $request );
+	}
+
+	/** Validate Prop ownership before a REST update can mutate state. */
+	public function check_update_permission( \WP_REST_Request $request ) {
+		$permission = parent::check_update_permission( $request );
+		return is_wp_error( $permission ) ? $permission : $this->validate_parent_request( $request );
+	}
+
+	/** Resolve submitted/stored parent fields and reject a cross-World pair. */
+	private function validate_parent_request( \WP_REST_Request $request ) {
+		$meta     = $request->get_param( 'meta' );
+		$meta     = is_array( $meta ) ? $meta : [];
+		$post_id  = absint( $request->get_param( 'id' ) );
+		$owner_id = array_key_exists( 'owner_character', $meta )
+			? self::relationship_request_id( $meta['owner_character'] )
+			: ( $post_id ? self::relationship_request_id( \WorldGraph\Utils\worldgraph_get_field_value( $post_id, 'owner_character' ) ) : 0 );
+		$world_id = array_key_exists( 'story_world', $meta )
+			? self::relationship_request_id( $meta['story_world'] )
+			: ( $post_id ? self::relationship_request_id( \WorldGraph\Utils\worldgraph_get_field_value( $post_id, 'story_world' ) ) : 0 );
+
+		return \WorldGraph\CPT\Prop::validate_parent_pair( $owner_id, $world_id );
+	}
+
+	/** Normalize a REST relationship scalar/list to one post ID. */
+	private static function relationship_request_id( $value ): int {
+		return absint( is_array( $value ) ? reset( $value ) : $value );
+	}
+
 	/**
 	 * Register routes.
 	 */

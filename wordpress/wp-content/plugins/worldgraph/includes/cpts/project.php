@@ -61,7 +61,7 @@ class Project {
 			'type'        => 'textarea',
 			'label'       => 'Project Visual Direction',
 			'required'    => false,
-			'description' => 'One concise, pervasive visual language (about 20 words) for every generated image and video. Describe medium or rendering style, lighting, palette, contrast, and texture—not plot, characters, camera movement, or resolution. Example: "hand-painted 2D storybook animation; high-key warm interiors; cool moonlit forest; soft cel shading; muted earth palette."',
+			'description' => 'One concise, pervasive visual language (about 12 words) for every generated image and video. Put the most important medium or rendering style, lighting, palette, contrast, and texture first—not plot, characters, camera movement, or resolution. Example: "hand-painted storybook animation; high-key lighting; soft cel shading; muted earth palette."',
 		],
 		'genre'               => [
 			'type'        => 'taxonomy',
@@ -107,9 +107,9 @@ class Project {
 			'label'       => 'End Date',
 			'required'    => false,
 		],
-		'team_members'        => [
+		'associates'        => [
 			'type'              => 'relationship',
-			'label'             => 'Team Members',
+			'label'             => 'Associates',
 			'required'          => false,
 			'related_cpt'       => 'worldgraph_character',
 			'relationship_type' => 'contains',
