@@ -139,6 +139,8 @@
 				return;
 			}
 
+			const self = this;
+
 			// Group by category.
 			const byCategory = {};
 			issues.forEach(function(issue) {
@@ -176,6 +178,7 @@
 		 * @returns {string}
 		 */
 		renderIssueCard(issue) {
+			const self = this;
 			const severity = issue.severity || 'warning';
 			const category = issue.category || 'general';
 			const description = issue.description || '';
@@ -197,7 +200,7 @@
 			if (entities.length > 0) {
 				html += '<div class="worldgraph-issue-entities">';
 				entities.forEach(function(entity) {
-					html += '<span class="worldgraph-entity-tag">' + self.capitalizeFirst(entity.type || '') + ' #' + (entity.id || '') + '</span>';
+					html += self.renderEntityTag(entity);
 				});
 				html += '</div>';
 			}
@@ -209,6 +212,51 @@
 
 			html += '</div>';
 			return html;
+		}
+
+		renderEntityTag(entity) {
+			const baseLabel = this.entityLabel(entity);
+			const scene = entity && entity.scene ? entity.scene : null;
+			const sceneLabel = scene && scene.label ? ' <span class="worldgraph-entity-context">| ' + this.escapeHtml(scene.label) + '</span>' : '';
+			const actions = this.entityActions(entity);
+
+			return '<span class="worldgraph-entity-tag">' + baseLabel + sceneLabel + actions + '</span>';
+		}
+
+		entityLabel(entity) {
+			if (entity && entity.label) {
+				return this.escapeHtml(entity.label);
+			}
+
+			const type = this.capitalizeFirst((entity && entity.type) || 'entity');
+			const id = entity && entity.id ? ' #' + entity.id : '';
+			return this.escapeHtml(type + id);
+		}
+
+		entityActions(entity) {
+			if (!entity) {
+				return '';
+			}
+
+			const reviewUrl = entity.review_url || '';
+			const editUrl = entity.edit_url || '';
+			if (!reviewUrl && !editUrl) {
+				return '';
+			}
+
+			let links = '<span class="worldgraph-entity-actions">';
+			if (reviewUrl) {
+				links += '<a href="' + this.escapeAttr(reviewUrl) + '" target="_blank" rel="noopener noreferrer">Review</a>';
+			}
+			if (reviewUrl && editUrl) {
+				links += '<span aria-hidden="true"> | </span>';
+			}
+			if (editUrl) {
+				links += '<a href="' + this.escapeAttr(editUrl) + '">Edit</a>';
+			}
+			links += '</span>';
+
+			return links;
 		}
 
 		/**
@@ -276,6 +324,10 @@
 			const div = document.createElement('div');
 			div.textContent = str;
 			return div.innerHTML;
+		}
+
+		escapeAttr(str) {
+			return this.escapeHtml(String(str || '')).replace(/"/g, '&quot;');
 		}
 	}
 

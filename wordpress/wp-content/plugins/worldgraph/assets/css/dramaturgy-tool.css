@@ -38,6 +38,14 @@
 	margin: 0 0 18px;
 }
 
+#worldgraph-dramaturgy-question {
+	margin-bottom: 6px;
+}
+
+.worldgraph-dramaturgy-question-help {
+	margin: 0 0 18px;
+}
+
 .worldgraph-dramaturgy-controls .button,
 .worldgraph-dramaturgy-result-header .button {
 	align-items: center;

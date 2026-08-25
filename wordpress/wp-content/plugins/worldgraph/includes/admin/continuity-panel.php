@@ -201,9 +201,37 @@ class Continuity_Panel {
 								<?php if ( ! empty( $issue['entities'] ) && is_array( $issue['entities'] ) ) : ?>
 									<div class="worldgraph-issue-entities">
 										<?php foreach ( $issue['entities'] as $entity ) : ?>
+											<?php
+											$entity_id   = absint( $entity['id'] ?? 0 );
+											$entity_type = sanitize_key( (string) ( $entity['type'] ?? '' ) );
+											$entity_name = $entity['label'] ?? '';
+											if ( '' === $entity_name && $entity_id > 0 ) {
+												$entity_name = \WorldGraph\Utils\entity_display_name( $entity_type, $entity_id );
+											}
+											$entity_name = '' !== $entity_name ? $entity_name : ucfirst( $entity_type ) . ( $entity_id ? ' #' . $entity_id : '' );
+											$edit_url    = $entity['edit_url'] ?? ( $entity_id ? \WorldGraph\Utils\entity_permalink( $entity_type, $entity_id ) : '' );
+											$review_url  = $entity['review_url'] ?? ( $entity_id ? get_permalink( $entity_id ) : '' );
+											$scene       = is_array( $entity['scene'] ?? null ) ? $entity['scene'] : null;
+											$scene_label = $scene['label'] ?? '';
+											?>
 											<span class="worldgraph-entity-tag">
-												<?php echo esc_html( ucfirst( $entity['type'] ?? '' ) ); ?>
-												<?php echo esc_html( $entity['id'] ? '#' . $entity['id'] : '' ); ?>
+												<?php echo esc_html( (string) $entity_name ); ?>
+												<?php if ( '' !== $scene_label ) : ?>
+													<span class="worldgraph-entity-context"> | <?php echo esc_html( (string) $scene_label ); ?></span>
+												<?php endif; ?>
+												<?php if ( ! empty( $review_url ) || ! empty( $edit_url ) ) : ?>
+													<span class="worldgraph-entity-actions">
+														<?php if ( ! empty( $review_url ) ) : ?>
+															<a href="<?php echo esc_url( $review_url ); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Review', 'worldgraph' ); ?></a>
+														<?php endif; ?>
+														<?php if ( ! empty( $review_url ) && ! empty( $edit_url ) ) : ?>
+															<span aria-hidden="true"> | </span>
+														<?php endif; ?>
+														<?php if ( ! empty( $edit_url ) ) : ?>
+															<a href="<?php echo esc_url( $edit_url ); ?>"><?php esc_html_e( 'Edit', 'worldgraph' ); ?></a>
+														<?php endif; ?>
+													</span>
+												<?php endif; ?>
 											</span>
 										<?php endforeach; ?>
 									</div>

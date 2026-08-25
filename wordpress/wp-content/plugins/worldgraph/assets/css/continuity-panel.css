@@ -203,6 +203,24 @@
 	color: #50575e;
 }
 
+.worldgraph-entity-context {
+	color: #646970;
+}
+
+.worldgraph-entity-actions {
+	margin-left: 6px;
+	white-space: nowrap;
+}
+
+.worldgraph-entity-actions a {
+	text-decoration: none;
+}
+
+.worldgraph-entity-actions a:hover,
+.worldgraph-entity-actions a:focus {
+	text-decoration: underline;
+}
+
 .worldgraph-issue-suggestion {
 	background: #f6f7f7;
 	border: 1px solid #dcdcde;

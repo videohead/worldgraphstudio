@@ -29,7 +29,16 @@ function fetch_continuity_validation( int $episode_id = 0, array $scene_ids = []
 	$posts = ! empty( $scene_ids ) ? array_map( 'get_post', array_map( 'absint', $scene_ids ) ) : get_posts( [ 'post_type' => 'worldgraph_scene', 'post_parent' => $episode_id ?: 0, 'post_status' => 'any', 'posts_per_page' => -1 ] );
 	foreach ( array_filter( $posts ) as $post ) {
 		if ( '' === trim( wp_strip_all_tags( $post->post_content ) ) ) {
-			$issues[] = [ 'severity' => 'warning', 'category' => 'content', 'description' => 'Scene has no content.', 'entities' => [ [ 'type' => $post->post_type, 'id' => $post->ID ] ], 'suggestion' => 'Add scene content before editorial review.' ];
+			$post_type_label = continuity_entity_type_label( $post->post_type );
+			$issues[]        = [
+				'severity'    => 'warning',
+				'category'    => 'content',
+				'description' => sprintf( '%s has no content.', $post_type_label ),
+				'entities'    => [
+					build_issue_entity_context( $post ),
+				],
+				'suggestion'  => sprintf( 'Open and add %s content before editorial review.', strtolower( $post_type_label ) ),
+			];
 		}
 	}
 
@@ -115,12 +124,12 @@ function store_global_continuity_issues( array $issues ): void {
 	$meta_key = WORLDGRAPH_CPT_PREFIX . 'global_continuity_issues';
 	$existing = get_option( $meta_key, [] );
 
-	// Merge and deduplicate by description.
+	// Merge and deduplicate by issue meaning + entities so separate records remain traceable.
 	$merged = [];
 	$seen   = [];
 
 	foreach ( array_merge( $existing, $issues ) as $issue ) {
-		$hash = md5( $issue['description'] ?? '' );
+		$hash = continuity_issue_hash( $issue );
 		if ( ! isset( $seen[ $hash ] ) ) {
 			$seen[ $hash ]  = true;
 			$merged[]       = $issue;
@@ -282,3 +291,80 @@ function entity_display_name( string $type, int $id ): string {
 	return $title ? $title : sprintf( '#%d', $id );
 }
 endif;
+
+/**
+ * Build structured entity context for a continuity issue.
+ *
+ * @param \WP_Post $post Source entity post.
+ * @return array
+ */
+function build_issue_entity_context( \WP_Post $post ): array {
+	$post_type_label = continuity_entity_type_label( $post->post_type );
+	$title           = get_the_title( $post->ID );
+	$label           = trim( sprintf( '%s #%d%s', $post_type_label, $post->ID, $title ? ': ' . $title : '' ) );
+
+	$context = [
+		'type'       => $post->post_type,
+		'id'         => (int) $post->ID,
+		'title'      => $title ? (string) $title : '',
+		'label'      => $label,
+		'edit_url'   => (string) get_edit_post_link( $post->ID, 'url' ),
+		'review_url' => (string) get_permalink( $post->ID ),
+	];
+
+	// Include the parent Scene for Shot issues so editors can orient quickly.
+	if ( 'worldgraph_shot' === $post->post_type ) {
+		$scene_id = (int) worldgraph_get_related_field_id( $post->ID, 'scene', 'worldgraph_scene' );
+		if ( $scene_id > 0 ) {
+			$scene_title                 = get_the_title( $scene_id );
+			$context['scene']            = [
+				'id'       => $scene_id,
+				'title'    => $scene_title ? (string) $scene_title : '',
+				'label'    => sprintf( 'Scene #%d%s', $scene_id, $scene_title ? ': ' . $scene_title : '' ),
+				'edit_url' => (string) get_edit_post_link( $scene_id, 'url' ),
+			];
+		}
+	}
+
+	return $context;
+}
+
+/**
+ * Build a stable hash for continuity issue deduplication.
+ *
+ * @param array $issue Issue payload.
+ * @return string
+ */
+function continuity_issue_hash( array $issue ): string {
+	$entity_refs = [];
+	foreach ( (array) ( $issue['entities'] ?? [] ) as $entity ) {
+		$entity_refs[] = sprintf( '%s:%d', sanitize_key( (string) ( $entity['type'] ?? '' ) ), absint( $entity['id'] ?? 0 ) );
+	}
+
+	sort( $entity_refs );
+
+	$fingerprint = [
+		'severity'    => sanitize_key( (string) ( $issue['severity'] ?? '' ) ),
+		'category'    => sanitize_key( (string) ( $issue['category'] ?? '' ) ),
+		'description' => (string) ( $issue['description'] ?? '' ),
+		'suggestion'  => (string) ( $issue['suggestion'] ?? '' ),
+		'entities'    => $entity_refs,
+	];
+
+	return md5( wp_json_encode( $fingerprint ) );
+}
+
+/**
+ * Resolve a human-friendly singular label for a post type.
+ *
+ * @param string $post_type Post type slug.
+ * @return string
+ */
+function continuity_entity_type_label( string $post_type ): string {
+	$post_type_obj = get_post_type_object( $post_type );
+	if ( $post_type_obj && isset( $post_type_obj->labels->singular_name ) ) {
+		return (string) $post_type_obj->labels->singular_name;
+	}
+
+	return ucfirst( str_replace( '_', ' ', $post_type ) );
+}

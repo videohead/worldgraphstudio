@@ -10,7 +10,7 @@
 	const save = document.getElementById('worldgraph-save-dramaturgy');
 	const status = document.getElementById('worldgraph-dramaturgy-status');
 
-	if (!source || !run || !save) {
+	if (!source || !lens || !question || !output || !run || !save || !status) {
 		return;
 	}
 
@@ -24,15 +24,16 @@
 	}
 
 	run.addEventListener('click', function () {
+		const submittedQuestion = question.value.trim();
 		run.disabled = true;
 		save.disabled = true;
 		status.textContent = worldgraphDramaturgyTool.strings.running;
-		request('worldgraph_run_dramaturgy', { source_id: source.value, lens: lens.value, question: question.value })
+		request('worldgraph_run_dramaturgy', { source_id: source.value, lens: lens.value, question: submittedQuestion })
 			.then((response) => {
 				if (!response.success) throw new Error(response.data && response.data.message ? response.data.message : worldgraphDramaturgyTool.strings.error);
 				output.value = response.data.analysis;
 				save.disabled = false;
-				status.textContent = worldgraphDramaturgyTool.strings.ready;
+				status.textContent = response.data.focused ? worldgraphDramaturgyTool.strings.readyFocused : worldgraphDramaturgyTool.strings.ready;
 			})
 			.catch((error) => { status.textContent = error.message; })
 			.finally(() => { run.disabled = false; });
