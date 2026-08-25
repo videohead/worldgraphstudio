@@ -271,7 +271,9 @@ class Connections {
 									<?php endif; ?>
 								</td>
 								<td style="white-space:nowrap;">
-									<a class="button button-small" href="<?php echo esc_url( $test_url ); ?>"><?php esc_html_e( 'Check connection', 'worldgraph' ); ?></a>
+									<?php if ( 'disabled' !== (string) ( $connection['status'] ?? '' ) ) : ?>
+										<a class="button button-small" href="<?php echo esc_url( $test_url ); ?>"><?php esc_html_e( 'Check connection', 'worldgraph' ); ?></a>
+									<?php endif; ?>
 									<a class="button button-small" href="<?php echo esc_url( (string) $edit_url ); ?>"><?php esc_html_e( 'Manage setup', 'worldgraph' ); ?></a>
 								</td>
 							</tr>

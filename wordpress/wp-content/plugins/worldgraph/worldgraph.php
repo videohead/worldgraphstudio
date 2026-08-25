@@ -250,6 +250,7 @@ function init(): void {
 	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/admin/dashboard.php';
 	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/admin/navigation.php';
 	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/admin/data-purge.php';
+	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/admin/project-cascade-delete.php';
 	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/admin/setup-wizard.php';
 	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/admin/metaboxes.php';
 	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/admin/asset-generator-metabox.php';
@@ -345,6 +346,7 @@ function init(): void {
 	Admin\Dashboard::init();
 	Admin\Navigation::init();
 	Admin\Data_Purge::init();
+	Admin\Project_Cascade_Delete::init();
 	Admin\Setup_Wizard::init();
 	Admin\MetaBoxes::init();
 	Admin\Asset_Generator_MetaBox::init();
@@ -413,6 +415,10 @@ function init(): void {
 	// Hook auto-validation on save for scenes and shots.
 	add_action( 'save_post_worldgraph_scene', __NAMESPACE__ . '\\auto_validate_scene', 20, 3 );
 	add_action( 'save_post_worldgraph_shot', __NAMESPACE__ . '\\auto_validate_shot', 20, 3 );
+
+	// Drop stored continuity issues when the referenced post goes away.
+	add_action( 'trashed_post', '\\WorldGraph\\Utils\\purge_continuity_issues_for_post' );
+	add_action( 'deleted_post', '\\WorldGraph\\Utils\\purge_continuity_issues_for_post' );
 
 	// Auto-generate useful shot names for shots with placeholder titles.
 	add_action( 'save_post_worldgraph_shot', __NAMESPACE__ . '\\worldgraph_maybe_name_shot', 5, 3 );
@@ -540,5 +546,6 @@ function activate(): void {
 function deactivate(): void {
 	wp_clear_scheduled_hook( Utils\Generation_Batch::HOOK );
 	wp_clear_scheduled_hook( Utils\Generation_Workflows::ASSEMBLY_HOOK );
+	wp_clear_scheduled_hook( Templates\Template_Manager::HOOK );
 	flush_rewrite_rules();
 }

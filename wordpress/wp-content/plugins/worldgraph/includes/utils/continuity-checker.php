@@ -168,7 +168,70 @@ function get_post_continuity_summary( int $post_id ): array {
  */
 function get_global_continuity_issues(): array {
 	$issues = get_option( WORLDGRAPH_CPT_PREFIX . 'global_continuity_issues', [] );
-	return is_array( $issues ) ? $issues : [];
+	$issues = is_array( $issues ) ? $issues : [];
+
+	$pruned = array_values( array_filter( $issues, __NAMESPACE__ . '\continuity_issue_entities_exist' ) );
+	if ( count( $pruned ) !== count( $issues ) ) {
+		update_option( WORLDGRAPH_CPT_PREFIX . 'global_continuity_issues', $pruned, false );
+	}
+
+	return $pruned;
+}
+
+/**
+ * Determine whether every entity referenced by an issue still exists.
+ *
+ * @param array $issue The issue array.
+ * @return bool
+ */
+function continuity_issue_entities_exist( $issue ): bool {
+	if ( ! is_array( $issue ) || empty( $issue['entities'] ) || ! is_array( $issue['entities'] ) ) {
+		return true;
+	}
+
+	foreach ( $issue['entities'] as $entity ) {
+		$entity_id = absint( is_array( $entity ) ? ( $entity['id'] ?? 0 ) : 0 );
+		if ( ! $entity_id ) {
+			continue;
+		}
+		$entity_post = get_post( $entity_id );
+		if ( ! $entity_post || in_array( $entity_post->post_status, [ 'trash', 'auto-draft' ], true ) ) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
+/**
+ * Remove stored continuity issues that reference a deleted or trashed post.
+ *
+ * @param int $post_id The post ID.
+ */
+function purge_continuity_issues_for_post( int $post_id ): void {
+	clear_post_continuity_issues( $post_id );
+
+	$meta_key = WORLDGRAPH_CPT_PREFIX . 'global_continuity_issues';
+	$issues   = get_option( $meta_key, [] );
+	if ( ! is_array( $issues ) || empty( $issues ) ) {
+		return;
+	}
+
+	$remaining = array_values( array_filter( $issues, function ( $issue ) use ( $post_id ) {
+		if ( ! is_array( $issue ) || empty( $issue['entities'] ) || ! is_array( $issue['entities'] ) ) {
+			return true;
+		}
+		foreach ( $issue['entities'] as $entity ) {
+			if ( is_array( $entity ) && absint( $entity['id'] ?? 0 ) === $post_id ) {
+				return false;
+			}
+		}
+		return true;
+	} ) );
+
+	if ( count( $remaining ) !== count( $issues ) ) {
+		update_option( $meta_key, $remaining, false );
+	}
 }
 
 /**
@@ -275,7 +338,8 @@ function category_label( string $category ): string {
  * @return string
  */
 function entity_permalink( string $type, int $id ): string {
-	return get_edit_post_link( $id, 'url' );
+	$link = get_edit_post_link( $id, 'url' );
+	return is_string( $link ) ? $link : '';
 }
 
 /**

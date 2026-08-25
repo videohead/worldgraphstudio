@@ -301,6 +301,25 @@ class Asset_Generator {
 			}
 		}
 
+		// Resolve executable dispatch metadata before creating a job so a broken
+		// third-party resolver cannot leave an orphaned generation post behind.
+		$template = $use_local_template ? (string) $template_id : $provider_template_id;
+		try {
+			$adapter = Connection_Adapters::generation_adapter(
+				(string) $provider,
+				$connection,
+				$template,
+				$use_local_template ? 'local_comfyui' : ''
+			);
+			$client  = Connection_Adapters::generation_client( (string) $provider, $connection, $template, $adapter );
+			$can_run = '' !== $client && is_callable( [ $client, 'run_template' ] );
+		} catch ( \Throwable ) {
+			return new WP_Error( 'worldgraph_asset_generation_client_invalid', __( 'The Template generation client could not be resolved safely.', 'worldgraph' ), [ 'status' => 501 ] );
+		}
+		if ( ! $can_run ) {
+			return new WP_Error( 'worldgraph_asset_generation_client_unavailable', __( 'The Template generation client is unavailable.', 'worldgraph' ), [ 'status' => 501 ] );
+		}
+
 		$job_id = wp_insert_post( [
 			'post_type'   => 'worldgraph_gen',
 			'post_title'  => sprintf(
@@ -319,10 +338,6 @@ class Asset_Generator {
 
 		// A user-selected Template wins; otherwise keep the legacy per-CPT
 		// workflow name so existing jobs without a Template keep working.
-		$template       = $use_local_template ? (string) $template_id : $provider_template_id;
-		$adapter        = 'comfyui' === $provider
-			? ( $use_local_template ? 'local_comfyui' : 'comfy_mcp' )
-			: Connection_Adapters::generation_adapter( (string) $provider, $connection, $template );
 		$template_input = array_merge( self::fal_template_input( $template_id ), Template_Run_Controls::defaults( $template_id ) );
 		$params         = $profile_values;
 		$params         = array_merge( $params, $run_values );

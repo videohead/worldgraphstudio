@@ -49,6 +49,7 @@ add_filter(
 			],
 			'generation'   => [
 				'client'                => 'Acme\\Generation_Client',
+				'adapter'               => 'acme_api',
 				'poll'                  => true,
 				'poll_with_template'    => false,
 				'media_inputs'           => false,
@@ -88,12 +89,13 @@ accepts older scalar or partial shapes for backward compatibility.
 | `callbacks.render_admin` | Optional trusted wp-admin renderer for provider-specific Connection guidance or controls |
 | `templates.provision` | Idempotently create or update provider-managed Templates |
 | `templates.delay` | Optional delay, in seconds, before scheduled provisioning; defaults to the core delay |
-| `templates.status_meta_prefix` | Optional non-secret prefix whose `_synced_at` and `_error` metadata powers generic setup status |
+| `templates.status_meta_prefix` | Optional non-secret prefix for `Template_Manager`-authoritative `_synced_at` and `_error` setup status |
 | `generation.client` | One fixed generation client class |
 | `generation.client_resolver` | Callable that selects a registered client class from trusted Connection/Template state |
 | `generation.poll` | Whether successful submission can require later polling |
 | `generation.poll_with_template` | Whether polling receives the provider Template ID as its third argument |
-| `generation.adapter` | Optional fixed adapter value or resolver for provider-specific dispatch metadata |
+| `generation.adapter` | Optional fixed, sanitized adapter marker string for provider-specific dispatch metadata |
+| `generation.adapter_resolver` | Optional callable that selects the adapter marker from trusted Connection/Template state |
 | `generation.media_inputs` | Whether this provider accepts the worker's resolved media-input contract |
 | `generation.flatten_inputs` | Merge resolved media inputs into top-level provider parameters instead of placing them under `inputs` |
 | `generation.poll_error_limit` | Consecutive polling errors allowed before the worker marks the job failed; minimum 1 |
@@ -110,9 +112,22 @@ public static function resolve_client(
 ): string;
 ```
 
-A callable `generation.adapter` uses the same three arguments and returns a
-sanitized adapter string. Neither resolver may accept a PHP class name from a
-browser request, Template JSON, MCP result, or provider response.
+`generation.adapter` is always a literal marker string. When the marker must be
+selected dynamically, omit it and declare `generation.adapter_resolver`:
+
+```php
+public static function resolve_adapter(
+	array $connection,
+	string $provider_template_id,
+	string $adapter
+): string;
+```
+
+The resolver returns a sanitized marker string. `generation.adapter` and
+`generation.adapter_resolver` are mutually exclusive authoring choices.
+Neither this resolver nor `generation.client_resolver` may accept a marker or
+PHP class name from a browser request, Template JSON, MCP result, or provider
+response without a trusted allowlist.
 
 ## Connection test callback
 
@@ -151,6 +166,10 @@ health data, and the post-test action. A callback must not write those fields
 itself. Health and messages must be bounded, actionable, and free of
 credentials, authorization headers, raw provider bodies, and sensitive
 account data.
+
+A disabled Connection cannot be health-tested. Core returns an unsuccessful
+health-test result without invoking `callbacks.test`, and it preserves the
+disabled status. Enable and save the Connection before testing it again.
 
 Two optional lifecycle/UI callbacks use these signatures:
 
@@ -330,9 +349,24 @@ The callback must remain safe to repeat and must not delete an operator-authored
 Template because a remote catalog temporarily omits it.
 
 When `templates.status_meta_prefix` is present, keep it stable and
-`sanitize_key()`-compatible. The generic Connections screen reads
-`<prefix>_synced_at` and `<prefix>_error`; those values are operator status,
-not storage for credentials, remote response dumps, or provider schemas.
+`sanitize_key()`-compatible. `Template_Manager` centrally maintains the
+authoritative `<prefix>_synced_at` and `<prefix>_error` Connection metadata on
+the generic path:
+
+- a completed provisioning pass updates `<prefix>_synced_at` and clears a stale
+  `<prefix>_error`, unless the returned array contains a non-empty `warning`
+  that should remain visible there;
+- a scheduling or provisioning failure writes an actionable
+  `<prefix>_error` without advancing `<prefix>_synced_at`; and
+- successful scheduling alone does not count as a completed sync.
+
+Return `WP_Error` when the callback cannot complete the pass; reserve the
+optional result `warning` for a completed pass that still needs operator
+attention. New provisioners should rely on `Template_Manager` instead of
+writing these keys themselves. Bundled legacy hooks and direct health-test
+entry points may mirror the same keys for backward compatibility. The values
+power generic operator status and must never contain credentials, authorization
+headers, remote response dumps, or provider schemas.
 
 ## Generation client contract
 
@@ -478,13 +512,15 @@ Add focused tests under
 
 - manifest metadata, portable callable shape, lazy loading, and external
   `loader` behavior;
-- test callback success, `WP_Error`, false readiness, status/timestamp
-  persistence, bounded health, and secret redaction; plus lightweight
-  `after_save` and escaped/authorized `render_admin` behavior when declared;
+- test callback success, `WP_Error`, false readiness, rejection while disabled,
+  status/timestamp persistence, bounded health, and secret redaction; plus
+  lightweight `after_save` and escaped/authorized `render_admin` behavior when
+  declared;
 - Template definition validation, provider/Connection agreement, modality and
-  output derivation, idempotent update, status metadata, and preservation of
-  unrelated fields;
-- client or resolver selection from trusted state, submit shape, polling
+  output derivation, idempotent update, manager-maintained scheduling/provisioning
+  status metadata, and preservation of unrelated fields;
+- fixed adapter marker or adapter-resolver selection and client selection from
+  trusted state, submit shape, polling
   signature, input nesting/flattening, normalized terminal states, bounded and
   permanent-error polling policy, and every output;
 - endpoint validation, authentication headers, parameter/tool allowlists,

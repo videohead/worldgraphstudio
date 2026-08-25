@@ -304,7 +304,9 @@ class Test_Generation_Authorization extends TestCase {
 		$this->assertStringContainsString( "'comfyui' === \$connection['provider_type'] && 'local' === ( \$connection['environment'] ?? '' )", $source );
 		$this->assertStringContainsString( "'' === \$provider_template_id && ! \$use_local_comfyui", $source );
 		$this->assertStringContainsString( "\$workflow = '' !== \$provider_template_id ? \$provider_template_id : (string) \$template->ID;", $source );
-		$this->assertStringContainsString( "update_post_meta( \$post_id, '_worldgraph_gen_adapter', 'local_comfyui' );", $source );
+		$this->assertStringContainsString( 'Connection_Adapters::generation_adapter(', $source );
+		$this->assertStringContainsString( "\$use_local_comfyui ? 'local_comfyui' : ''", $source );
+		$this->assertStringContainsString( "update_post_meta( \$post_id, '_worldgraph_gen_adapter', \$adapter );", $source );
 	}
 
 	/** Template bindings fill required i2v media, while explicit input wins. */

@@ -214,9 +214,17 @@ class Connection {
 
 		\WorldGraph\Utils\Connection_Adapters::load( $provider_type );
 		\WorldGraph\Templates\Template_Manager::schedule_for_connection( $post_id );
-		$after_save = \WorldGraph\Utils\Connection_Adapters::callback( $provider_type, 'after_save' );
-		if ( is_callable( $after_save ) ) {
-			call_user_func( $after_save, $post_id, \WorldGraph\Utils\Connection_Repository::get( $post_id ) );
+		try {
+			$after_save = \WorldGraph\Utils\Connection_Adapters::callback( $provider_type, 'after_save' );
+			if ( is_callable( $after_save ) ) {
+				call_user_func( $after_save, $post_id, \WorldGraph\Utils\Connection_Repository::get( $post_id ) );
+			}
+		} catch ( \Throwable ) {
+			try {
+				do_action( 'worldgraph_conn_adapter_callback_failed', sanitize_key( $provider_type ), 'after_save' );
+			} catch ( \Throwable ) {
+				// A diagnostic observer must not break a successful Connection save.
+			}
 		}
 	}
 
@@ -705,9 +713,19 @@ class Connection {
 			return;
 		}
 
-		$custom_renderer = \WorldGraph\Utils\Connection_Adapters::callback( $provider_type, 'render_admin' );
-		if ( is_callable( $custom_renderer ) ) {
-			call_user_func( $custom_renderer, $post, \WorldGraph\Utils\Connection_Adapters::get( $provider_type ) );
+		try {
+			$custom_renderer = \WorldGraph\Utils\Connection_Adapters::callback( $provider_type, 'render_admin' );
+			if ( is_callable( $custom_renderer ) ) {
+				call_user_func( $custom_renderer, $post, \WorldGraph\Utils\Connection_Adapters::get( $provider_type ) );
+				return;
+			}
+		} catch ( \Throwable ) {
+			try {
+				do_action( 'worldgraph_conn_adapter_callback_failed', $provider_type, 'render_admin' );
+			} catch ( \Throwable ) {
+				// Continue with the bounded operator-facing fallback below.
+			}
+			echo '<p>' . esc_html__( 'This provider’s setup controls are temporarily unavailable. Other Connections are unaffected.', 'worldgraph' ) . '</p>';
 			return;
 		}
 

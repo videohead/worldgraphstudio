@@ -18,6 +18,7 @@ class Generation_Batch {
 	const CLAIM_TTL = self::LOCK_TTL;
 	const IMPORT_RETRY_LIMIT = 3;
 	const VIDEODRAFT_AUDIO_RETRY_LIMIT = 45;
+	const PROVIDER_MESSAGE_LIMIT = 500;
 
 	/** Token held by the current batch request. */
 	private static string $lock_token = '';
@@ -267,12 +268,16 @@ class Generation_Batch {
 				Generation_Log::add( 'error', 'generation_batch', sprintf( 'Job %d has no adapter for provider %s.', $job_id, $provider_type ), [], (string) $job_id );
 				continue;
 			}
-			$client = self::client_for_job( $job_id, $connection );
-			if ( '' === $client || ! is_callable( [ $client, 'run_template' ] ) ) {
-				update_post_meta( $job_id, '_worldgraph_gen_status', 'failed' );
-				update_post_meta( $job_id, '_worldgraph_gen_error', sprintf( 'The generation client for provider %s is unavailable.', $provider_type ) );
-				self::clear_videodraft_submission_cache( $job_id );
-				self::clear_job_claim( $job_id );
+			try {
+				$client  = self::client_for_job( $job_id, $connection );
+				$can_run = '' !== $client && is_callable( [ $client, 'run_template' ] );
+			} catch ( \Throwable ) {
+				self::fail_claimed_job( $job_id, sprintf( 'The generation client for provider %s could not be resolved safely.', $provider_type ) );
+				Generation_Log::add( 'error', 'generation_batch', sprintf( 'Job %d generation client resolution failed.', $job_id ), [], (string) $job_id );
+				continue;
+			}
+			if ( ! $can_run ) {
+				self::fail_claimed_job( $job_id, sprintf( 'The generation client for provider %s is unavailable.', $provider_type ) );
 				continue;
 			}
 			$params = (array) get_post_meta( $job_id, '_worldgraph_gen_params', true );
@@ -335,12 +340,17 @@ class Generation_Batch {
 				$workflow = (string) absint( get_post_meta( $job_id, '_worldgraph_gen_template_id', true ) ) ?: $workflow;
 				update_post_meta( $job_id, '_worldgraph_gen_adapter', 'local_comfyui' );
 			}
-			$result = $client::run_template(
-				$workflow,
-				(string) get_post_meta( $job_id, '_worldgraph_gen_prompt', true ),
-				$params,
-				$connection_id
-			);
+			try {
+				$result = $client::run_template(
+					$workflow,
+					(string) get_post_meta( $job_id, '_worldgraph_gen_prompt', true ),
+					$params,
+					$connection_id
+				);
+			} catch ( \Throwable ) {
+				$result = new \WP_Error( 'worldgraph_generation_submit_exception', 'The registered generation client threw an exception before returning a valid result.' );
+			}
+			$result = self::validate_client_result( $result, 'submit' );
 
 			if ( is_wp_error( $result ) ) {
 				$attempts = absint( get_post_meta( $job_id, '_worldgraph_gen_submit_attempts', true ) ) + 1;
@@ -360,7 +370,8 @@ class Generation_Batch {
 				continue;
 			}
 			delete_post_meta( $job_id, '_worldgraph_gen_submit_attempts' );
-			if ( 'completed' === sanitize_key( (string) ( $result['status'] ?? '' ) ) ) {
+			$status = sanitize_key( (string) ( $result['status'] ?? '' ) );
+			if ( in_array( $status, [ 'completed', 'failed', 'cancelled' ], true ) ) {
 				self::complete_job( $job_id, $result );
 				continue;
 			}
@@ -372,6 +383,11 @@ class Generation_Batch {
 				self::clear_videodraft_submission_cache( $job_id );
 				self::clear_job_claim( $job_id );
 				Generation_Log::add( 'error', 'generation_batch', sprintf( 'Job %d: provider did not return a job ID.', $job_id ), $result, (string) $job_id );
+				continue;
+			}
+			if ( ! Connection_Adapters::supports_polling( (string) $provider_type ) ) {
+				self::fail_claimed_job( $job_id, 'The generation client returned an asynchronous job, but its adapter does not declare polling support.' );
+				Generation_Log::add( 'error', 'generation_batch', sprintf( 'Job %d returned an asynchronous result without polling support.', $job_id ), [], (string) $job_id );
 				continue;
 			}
 
@@ -421,25 +437,35 @@ class Generation_Batch {
 				continue;
 			}
 			Connection_Adapters::load( (string) $connection['provider_type'] );
-			$client = self::client_for_job( $job_id, $connection );
-			if ( '' === $client || ! is_callable( [ $client, 'get_job_status' ] ) ) {
-				update_post_meta( $job_id, '_worldgraph_gen_status', 'failed' );
-				update_post_meta( $job_id, '_worldgraph_gen_error', 'The registered generation polling client is unavailable.' );
-				self::clear_job_claim( $job_id );
+			try {
+				$client   = self::client_for_job( $job_id, $connection );
+				$can_poll = '' !== $client && is_callable( [ $client, 'get_job_status' ] );
+			} catch ( \Throwable ) {
+				self::fail_claimed_job( $job_id, 'The registered generation polling client could not be resolved safely.' );
+				Generation_Log::add( 'error', 'generation_batch', sprintf( 'Job %d polling client resolution failed.', $job_id ), [], (string) $job_id );
 				continue;
 			}
-			if ( Connection_Adapters::poll_with_template( (string) $connection['provider_type'] ) ) {
-				$result = $client::get_job_status(
-					(string) get_post_meta( $job_id, '_worldgraph_gen_job_id', true ),
-					$connection_id,
-					(string) get_post_meta( $job_id, '_worldgraph_gen_workflow', true )
-				);
-			} else {
-				$result = $client::get_job_status(
-					(string) get_post_meta( $job_id, '_worldgraph_gen_job_id', true ),
-					$connection_id
-				);
+			if ( ! $can_poll ) {
+				self::fail_claimed_job( $job_id, 'The registered generation polling client is unavailable.' );
+				continue;
 			}
+			try {
+				if ( Connection_Adapters::poll_with_template( (string) $connection['provider_type'] ) ) {
+					$result = $client::get_job_status(
+						(string) get_post_meta( $job_id, '_worldgraph_gen_job_id', true ),
+						$connection_id,
+						(string) get_post_meta( $job_id, '_worldgraph_gen_workflow', true )
+					);
+				} else {
+					$result = $client::get_job_status(
+						(string) get_post_meta( $job_id, '_worldgraph_gen_job_id', true ),
+						$connection_id
+					);
+				}
+			} catch ( \Throwable ) {
+				$result = new \WP_Error( 'worldgraph_generation_poll_exception', 'The registered generation polling client threw an exception.' );
+			}
+			$result = self::validate_client_result( $result, 'poll' );
 			if ( is_wp_error( $result ) ) {
 				$generation_config = Connection_Adapters::generation_config( (string) $connection['provider_type'] );
 				$attempts          = absint( get_post_meta( $job_id, '_worldgraph_gen_poll_attempts', true ) ) + 1;
@@ -508,6 +534,55 @@ class Generation_Batch {
 			(string) get_post_meta( $job_id, '_worldgraph_gen_workflow', true ),
 			(string) get_post_meta( $job_id, '_worldgraph_gen_adapter', true )
 		);
+	}
+
+	/**
+	 * Enforce the shared client boundary before worker code reads result fields.
+	 *
+	 * @param mixed  $result Provider client result.
+	 * @param string $phase  Either submit or poll.
+	 * @return array|\WP_Error
+	 */
+	private static function validate_client_result( $result, string $phase ) {
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+		$phase = 'poll' === $phase ? 'poll' : 'submit';
+		if ( ! is_array( $result ) ) {
+			return new \WP_Error(
+				'worldgraph_generation_' . $phase . '_invalid_response',
+				'The registered generation client returned an invalid response.'
+			);
+		}
+		if ( array_key_exists( 'status', $result ) && null !== $result['status'] && ! is_scalar( $result['status'] ) ) {
+			return new \WP_Error(
+				'worldgraph_generation_' . $phase . '_invalid_response',
+				'The registered generation client returned an invalid status.'
+			);
+		}
+		if ( 'submit' === $phase ) {
+			foreach ( [ 'job_id', 'id', 'prompt_id' ] as $identifier_key ) {
+				if ( array_key_exists( $identifier_key, $result ) && null !== $result[ $identifier_key ] && ! is_scalar( $result[ $identifier_key ] ) ) {
+					return new \WP_Error(
+						'worldgraph_generation_submit_invalid_response',
+						'The registered generation client returned an invalid job identifier.'
+					);
+				}
+			}
+		}
+
+		return $result;
+	}
+
+	/** Persist a terminal failure and always release this worker's job claim. */
+	private static function fail_claimed_job( int $job_id, string $message ): void {
+		update_post_meta( $job_id, '_worldgraph_gen_error', sanitize_text_field( $message ) );
+		delete_post_meta( $job_id, '_worldgraph_gen_error_data' );
+		if ( ! self::persist_job_status( $job_id, 'failed' ) ) {
+			update_post_meta( $job_id, '_worldgraph_gen_status', 'failed' );
+		}
+		self::clear_videodraft_submission_cache( $job_id );
+		self::clear_job_claim( $job_id );
 	}
 
 	/** Finish journal cleanup without reimporting already-persisted attachments. */
@@ -589,6 +664,7 @@ class Generation_Batch {
 	/** Complete a terminal provider result, importing all media before success. */
 	private static function complete_job( int $job_id, array $result ): void {
 		$status = sanitize_key( (string) ( $result['status'] ?? 'completed' ) );
+		$terminal_message = self::terminal_result_message( $result, $status );
 		$import_succeeded = false;
 		$stored_result = $result;
 		// Never persist raw synchronous provider bytes in post meta.
@@ -658,10 +734,46 @@ class Generation_Batch {
 			return;
 		}
 		self::clear_videodraft_submission_cache( $job_id );
+		if ( 'failed' === $status ) {
+			update_post_meta( $job_id, '_worldgraph_gen_error', $terminal_message );
+			delete_post_meta( $job_id, '_worldgraph_gen_error_data' );
+			self::clear_job_claim( $job_id );
+			Generation_Log::add( 'error', 'generation_batch', sprintf( 'Job %d failed: %s', $job_id, $terminal_message ), [], (string) $job_id );
+			return;
+		}
 		delete_post_meta( $job_id, '_worldgraph_gen_error' );
 		delete_post_meta( $job_id, '_worldgraph_gen_error_data' );
 		self::clear_job_claim( $job_id );
+		if ( 'cancelled' === $status ) {
+			Generation_Log::add( 'warning', 'generation_batch', sprintf( 'Job %d was cancelled: %s', $job_id, $terminal_message ), [], (string) $job_id );
+			return;
+		}
 		Generation_Log::add( 'info', 'generation_batch', sprintf( 'Job %d reached status: %s.', $job_id, $status ), [], (string) $job_id );
+	}
+
+	/** Extract one sanitized, bounded provider terminal-state message. */
+	private static function terminal_result_message( array $result, string $status ): string {
+		$error = $result['error'] ?? null;
+		$candidates = [
+			is_array( $error ) ? ( $error['message'] ?? null ) : $error,
+			$result['error_message'] ?? null,
+			$result['message'] ?? null,
+			$result['detail'] ?? null,
+		];
+		foreach ( $candidates as $candidate ) {
+			if ( ! is_scalar( $candidate ) ) {
+				continue;
+			}
+			$message = substr( (string) $candidate, 0, self::PROVIDER_MESSAGE_LIMIT * 2 );
+			$message = trim( sanitize_text_field( $message ) );
+			if ( '' !== $message ) {
+				return substr( $message, 0, self::PROVIDER_MESSAGE_LIMIT );
+			}
+		}
+
+		return 'cancelled' === $status
+			? 'The generation provider reported that the job was cancelled.'
+			: 'The generation provider reported that the job failed.';
 	}
 
 	/** Store provider recovery metadata without ever persisting credentials. */

@@ -52,6 +52,14 @@ class Connection_Test_Service {
 				'health'  => [],
 			];
 		}
+		if ( 'disabled' === sanitize_key( (string) ( $record['status'] ?? '' ) ) ) {
+			return [
+				'success' => false,
+				'status'  => 'disabled',
+				'message' => 'Enable this Connection before testing it.',
+				'health'  => [],
+			];
+		}
 
 		$provider_type = sanitize_key( (string) ( $record['provider_type'] ?? '' ) );
 		if ( '' === $provider_type ) {

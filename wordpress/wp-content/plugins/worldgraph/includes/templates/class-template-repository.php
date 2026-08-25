@@ -23,6 +23,12 @@ class Template_Repository {
 	/** Supported values for the Template's application-level status. */
 	const STATUSES = [ 'draft', 'active', 'archived' ];
 
+	/** Maximum lifetime of a crashed per-identity write lock. */
+	private const IDENTITY_LOCK_TTL = 300;
+
+	/** Prefix for non-autoloaded options used as atomic write locks. */
+	private const IDENTITY_LOCK_PREFIX = 'worldgraph_template_upsert_lock_';
+
 	/**
 	 * Create or update one provider-managed Template.
 	 *
@@ -107,21 +113,36 @@ class Template_Repository {
 			}
 		}
 
-		$existing = get_posts(
-			[
-				'post_type'      => 'worldgraph_template',
-				'post_status'    => 'any',
-				'posts_per_page' => 1,
-				'fields'         => 'ids',
-				'orderby'        => 'ID',
-				'order'          => 'ASC',
-				'meta_query'     => [ // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
-					[ 'key' => 'connection_id', 'value' => (string) $connection_id ],
-					[ 'key' => 'provider_template_id', 'value' => $provider_template_id ],
-				],
-			]
-		);
-		$template_id = $existing ? (int) $existing[0] : 0;
+		$lock = self::acquire_identity_lock( $connection_id, $provider_template_id );
+		if ( is_wp_error( $lock ) ) {
+			return $lock;
+		}
+
+		try {
+			return self::persist_provider_template(
+				$connection_id,
+				$provider_template_id,
+				$provider_type,
+				$template_name,
+				$modality,
+				$status,
+				$definition
+			);
+		} finally {
+			self::release_identity_lock( $lock );
+		}
+	}
+
+	/**
+	 * Persist a validated definition while its exact provider identity is locked.
+	 *
+	 * @param string|null $status Optional validated application status.
+	 * @return int|WP_Error
+	 */
+	private static function persist_provider_template( int $connection_id, string $provider_template_id, string $provider_type, string $template_name, string $modality, ?string $status, array $definition ) {
+		$existing             = self::find_identity( $connection_id, $provider_template_id );
+		$is_new               = empty( $existing );
+		$template_id          = $is_new ? 0 : (int) $existing[0];
 		$current_configuration = $template_id
 			? json_decode(
 				(string) \WorldGraph\Utils\worldgraph_get_field_value( $template_id, 'configuration_json' ),
@@ -194,7 +215,7 @@ class Template_Repository {
 		}
 		if ( null !== $status ) {
 			\WorldGraph\Utils\worldgraph_update_field_value( (int) $template_id, 'status', $status );
-		} elseif ( ! $existing ) {
+		} elseif ( $is_new ) {
 			\WorldGraph\Utils\worldgraph_update_field_value( (int) $template_id, 'status', 'active' );
 		}
 		if ( array_key_exists( 'version', $definition ) ) {
@@ -202,5 +223,104 @@ class Template_Repository {
 		}
 
 		return (int) $template_id;
+	}
+
+	/** Find the canonical identity across every registered post status, including trash. */
+	private static function find_identity( int $connection_id, string $provider_template_id ): array {
+		$post_statuses = array_values( (array) get_post_stati( [], 'names' ) );
+		$post_statuses[] = 'trash';
+		$post_statuses = array_values( array_unique( array_filter( array_map( 'sanitize_key', $post_statuses ) ) ) );
+
+		return array_map(
+			'absint',
+			get_posts(
+				[
+					'post_type'      => 'worldgraph_template',
+					'post_status'    => $post_statuses,
+					'posts_per_page' => -1,
+					'fields'         => 'ids',
+					'orderby'        => 'ID',
+					'order'          => 'ASC',
+					'meta_query'     => [ // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
+						[ 'key' => 'connection_id', 'value' => (string) $connection_id ],
+						[ 'key' => 'provider_template_id', 'value' => $provider_template_id ],
+					],
+				]
+			)
+		);
+	}
+
+	/**
+	 * Acquire an atomic, non-autoloaded option lock for one provider identity.
+	 *
+	 * Expired locks are replaced with a compare-and-swap update so two recovery
+	 * requests cannot both believe they acquired the same stale lock.
+	 *
+	 * @return array{option_name:string,token:string}|WP_Error
+	 */
+	private static function acquire_identity_lock( int $connection_id, string $provider_template_id ) {
+		$blog_id     = function_exists( 'get_current_blog_id' ) ? get_current_blog_id() : 0;
+		$option_name = self::IDENTITY_LOCK_PREFIX . md5( $blog_id . ':' . $connection_id . ':' . $provider_template_id );
+		$token       = ( time() + self::IDENTITY_LOCK_TTL ) . ':' . wp_generate_uuid4();
+		$lock        = [
+			'option_name' => $option_name,
+			'token'       => $token,
+		];
+
+		if ( add_option( $option_name, $token, '', 'no' ) ) {
+			return $lock;
+		}
+
+		$current       = get_option( $option_name, '' );
+		$current       = is_string( $current ) ? $current : '';
+		$current_parts = explode( ':', $current, 2 );
+		if ( (int) ( $current_parts[0] ?? 0 ) >= time() ) {
+			return self::identity_locked_error();
+		}
+
+		global $wpdb;
+		if ( ! is_object( $wpdb ) || empty( $wpdb->options ) ) {
+			return self::identity_locked_error();
+		}
+
+		$updated = $wpdb->update( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+			$wpdb->options,
+			[ 'option_value' => $token ],
+			[ 'option_name' => $option_name, 'option_value' => $current ],
+			[ '%s' ],
+			[ '%s', '%s' ]
+		);
+		if ( 1 !== (int) $updated ) {
+			return self::identity_locked_error();
+		}
+
+		wp_cache_delete( $option_name, 'options' );
+		return $lock;
+	}
+
+	/** Release only the lock token acquired by this request. */
+	private static function release_identity_lock( array $lock ): void {
+		global $wpdb;
+		if ( ! is_object( $wpdb ) || empty( $wpdb->options ) ) {
+			return;
+		}
+
+		$wpdb->delete( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+			$wpdb->options,
+			[
+				'option_name'  => (string) ( $lock['option_name'] ?? '' ),
+				'option_value' => (string) ( $lock['token'] ?? '' ),
+			],
+			[ '%s', '%s' ]
+		);
+		wp_cache_delete( (string) ( $lock['option_name'] ?? '' ), 'options' );
+	}
+
+	/** Return a stable retryable error for a concurrent identity write. */
+	private static function identity_locked_error(): WP_Error {
+		return new WP_Error(
+			'worldgraph_template_identity_locked',
+			__( 'Another request is updating this provider Template. Retry provisioning shortly.', 'worldgraph' )
+		);
 	}
 }

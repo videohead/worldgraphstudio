@@ -758,8 +758,9 @@ POST   /wp-json/worldgraph/v1/connections/{id}/catalog/entries/{entry_id}/downlo
 ```
 
 Connection status is the configured-startup and new-work authority for provider
-adapters; an explicit administrator test may still load a disabled adapter for
-diagnosis.
+adapters. A disabled Connection cannot be health-tested: `POST /test` returns a
+failed health-test result without invoking the adapter callback or replacing
+the disabled status. Enable and save the Connection before testing it.
 `resolve` reports the normalized Connection configuration, including its
 sensitive credential fields as empty values or a fixed mask; trusted
 server-side adapters receive the underlying value. `test` dispatches the

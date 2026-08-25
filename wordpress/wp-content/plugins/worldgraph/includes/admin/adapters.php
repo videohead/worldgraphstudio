@@ -76,8 +76,12 @@ class Adapters {
 					</tr>
 				</thead>
 				<tbody>
-					<?php foreach ( Connection_Adapters::all() as $provider_type => $adapter ) : ?>
+					<?php foreach ( Connection_Adapters::provider_types() as $provider_type ) : ?>
 						<?php
+						$adapter = Connection_Adapters::get( (string) $provider_type );
+						if ( ! is_array( $adapter ) ) {
+							continue;
+						}
 						if ( false === ( $adapter['show_in_plugins'] ?? true ) ) {
 							continue;
 						}

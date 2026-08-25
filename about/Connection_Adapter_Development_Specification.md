@@ -225,6 +225,7 @@ Existing call sites may continue using the inherited
 	],
 	'generation'  => [
 		'client'           => 'WorldGraph\\Utils\\Acme_Media_API',
+		'adapter'          => 'acme_api',
 		'poll'             => true,
 		'poll_error_limit' => 10,
 	],
@@ -285,11 +286,12 @@ add_filter(
 | `callbacks.render_admin` | Optional trusted renderer for provider-specific Connection controls |
 | `templates.provision` | Optional idempotent Template provisioner receiving one Connection ID |
 | `templates.delay` | Positive delay for common background provisioning |
-| `templates.status_meta_prefix` | Optional prefix for generic catalog status metadata |
+| `templates.status_meta_prefix` | Optional stable prefix for `Template_Manager`-authoritative sync/error metadata |
 | `generation.client` | Fixed generation client class; mutually exclusive with `client_resolver` |
 | `generation.client_resolver` | Callable selecting a trusted loaded client class from saved state |
 | `generation.poll` / `poll_with_template` | Asynchronous lifecycle and polling call shape |
-| `generation.adapter` | Optional fixed job adapter marker or trusted resolver |
+| `generation.adapter` | Optional fixed, sanitized job adapter marker string |
+| `generation.adapter_resolver` | Optional callable selecting the job adapter marker from trusted saved state |
 | `generation.media_inputs` / `flatten_inputs` | Media-input support and provider parameter shape |
 | `generation.poll_error_limit` | Bounded consecutive polling-error ceiling |
 | `generation.permanent_error_codes` | Provider error codes that fail a poll immediately |
@@ -420,8 +422,10 @@ throttles a request, or stops spending.
 
 ### 8.2 Status and default selection
 
-- A health test sets the Connection status to `verified` on success or `error`
-  on failure and updates `last_validated_at`.
+- An enabled Connection health test sets status to `verified` on success or
+  `error` on failure and updates `last_validated_at`.
+- A disabled Connection cannot be health-tested. Core preserves `disabled` and
+  does not invoke the provider test callback; enable and save it before testing.
 - Among Connection meta statuses, only `disabled` blocks loading and
   availability. Startup loading still requires a published record within the
   100-record query, and `is_available()` also requires a provider type and
@@ -881,6 +885,20 @@ allowed status, and array-shaped configuration. It derives
 `(connection_id, provider_template_id)` identity while preserving unrelated
 operator-owned fields.
 
+When the manifest declares `templates.status_meta_prefix`, `Template_Manager`
+centrally maintains the authoritative `<prefix>_synced_at` and
+`<prefix>_error` Connection metadata on the generic path. A completed
+provisioning pass stamps `_synced_at` and clears a stale `_error`, unless its
+result contains a non-empty `warning` that must remain operator-visible. A
+scheduling failure, thrown provisioner, returned `WP_Error`, or invalid
+provisioner result records an actionable `_error` without advancing the last
+successful sync time. Merely scheduling a pass does not stamp `_synced_at`.
+New provisioners must report failure with `WP_Error`, reserve `warning` for a
+completed pass that still needs attention, and rely on `Template_Manager` for
+these writes. Bundled legacy hooks and direct health-test entry points may
+mirror the same keys for backward compatibility. Status messages must never
+include secrets or raw provider responses.
+
 Testing a Connection may provision Templates when discovery is part of
 readiness. A provisioning failure must be visible; decide explicitly whether
 it makes the whole Connection test fail or returns a verified transport with a
@@ -908,6 +926,11 @@ provision Templates when discovery is part of readiness. Core records
 new result is empty, recursively redacts sensitive health keys, bounds the
 payload, and then fires `worldgraph_conn_tested`.
 
+Core rejects a health test while the Connection status is `disabled`. It does
+not invoke the test callback, does not stamp `last_validated_at`, and does not
+replace the disabled status. The operator must enable and save the Connection
+before the test route or admin action can run.
+
 Do not let an unknown provider fall through to the historical Comfy Cloud
 credential-presence message. Either add a real test or return an accurate
 “adapter has no tester” result.
@@ -926,6 +949,22 @@ from the shared route, quick-generation eligibility, and batch-worker dispatch.
 The declared class still must implement the exact static client signatures and
 the provider integration still must cover every applicable validation and
 output surface below.
+
+`generation.adapter` is strictly a fixed, sanitized marker string persisted
+with the job. If trusted saved Connection or Template state must select that
+marker, use the mutually exclusive `generation.adapter_resolver` callable:
+
+```php
+public static function resolve_adapter(
+	array $connection,
+	string $provider_template_id,
+	string $adapter
+): string;
+```
+
+It must return a sanitized marker from a trusted allowlist. Do not put a
+callable in `generation.adapter`, and do not accept an arbitrary marker from a
+request, Template JSON, MCP result, or provider response.
 
 ### 15.1 Generic generation route
 
@@ -1130,13 +1169,13 @@ mock all external traffic. At minimum cover the applicable rows:
 | Area | Required assertions |
 | --- | --- |
 | Manifest | Provider metadata, default endpoint(s), lazy files/loader, and optional setup choice |
-| Connection | Provider choice, save normalization, environment/status, default uniqueness, and disabled behavior |
+| Connection | Provider choice, save normalization, environment/status, default uniqueness, disabled behavior, and health-test rejection until re-enabled |
 | Credentials | Literal test fixture, valid `env://` resolution, invalid variable name, and no secret leakage |
 | REST/API transport | Authentication header, URL/path building, parameter allowlist, timeout/error, invalid JSON/binary |
 | MCP transport | Current per-request metadata or complete legacy initialize/initialized lifecycle and, when a session ID is issued, session lifecycle; version/header validation; result types/MRTR policy; response-ID correlation; bounded JSON/SSE decoding; pagination; missing tools; tool `isError`; malformed result |
 | Tester | Success/error status, timestamp, bounded health report, and provisioning outcome |
-| Catalog | Discovery filtering, schema defaults, idempotent Template update, connection/provider identity, visible sync error |
-| Generation | Template/Connection agreement, modality/type agreement, submit shape, synchronous or async result, polling states |
+| Catalog | Discovery filtering, schema defaults, idempotent Template update, connection/provider identity, and manager-maintained sync timestamp/scheduling/provisioning errors |
+| Generation | Template/Connection agreement, modality/type agreement, fixed adapter marker or trusted adapter resolver, submit shape, synchronous or async result, polling states |
 | Media | Every output imported, MIME/size rejection, authenticated download if needed, and no raw bytes in post meta |
 | Permissions | Administrator Connection access, object capability checks, nonce/signature/callback rejection |
 | Setup/UI | Only when guided setup or provider-specific controls are added |

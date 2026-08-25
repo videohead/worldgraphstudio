@@ -383,6 +383,21 @@ class Generation_Controller extends Base_Controller {
 		}
 		$provider_type = $connection['provider_type'];
 		$workflow = '' !== $provider_template_id ? $provider_template_id : (string) $template->ID;
+		try {
+			$adapter = \WorldGraph\Utils\Connection_Adapters::generation_adapter(
+				(string) $provider_type,
+				$connection,
+				$workflow,
+				$use_local_comfyui ? 'local_comfyui' : ''
+			);
+			$client  = \WorldGraph\Utils\Connection_Adapters::generation_client( (string) $provider_type, $connection, $workflow, $adapter );
+			$can_run = '' !== $client && is_callable( [ $client, 'run_template' ] );
+		} catch ( \Throwable ) {
+			return new WP_Error( 'generation_client_invalid', 'The selected Connection generation client could not be resolved safely.', [ 'status' => 501 ] );
+		}
+		if ( ! $can_run ) {
+			return new WP_Error( 'generation_client_unavailable', 'The selected Connection generation client is unavailable.', [ 'status' => 501 ] );
+		}
 		$run_values = \WorldGraph\Utils\Template_Run_Controls::validate( (int) $template->ID, $run_values );
 		if ( is_wp_error( $run_values ) ) {
 			return $run_values;
@@ -439,9 +454,7 @@ class Generation_Controller extends Base_Controller {
 		update_post_meta( $post_id, '_worldgraph_gen_template_id', $template->ID );
 		update_post_meta( $post_id, '_worldgraph_gen_provider_type', $provider_type );
 		update_post_meta( $post_id, '_worldgraph_gen_connection_id', $connection_id );
-		if ( $use_local_comfyui ) {
-			update_post_meta( $post_id, '_worldgraph_gen_adapter', 'local_comfyui' );
-		}
+		update_post_meta( $post_id, '_worldgraph_gen_adapter', $adapter );
 		update_post_meta( $post_id, '_worldgraph_gen_status', 'queued' );
 		update_post_meta( $post_id, '_worldgraph_gen_created', current_time( 'mysql' ) );
 

@@ -16,6 +16,17 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 final class Builtin_Adapter_Runtime {
 
+	/** Resolve the persisted execution marker for a ComfyUI Connection. */
+	public static function comfy_adapter( array $connection = [], string $template = '', string $adapter = '' ): string {
+		unset( $template );
+
+		if ( 'local_comfyui' === sanitize_key( $adapter ) || 'local' === (string) ( $connection['environment'] ?? '' ) ) {
+			return 'local_comfyui';
+		}
+
+		return 'comfy_mcp';
+	}
+
 	/**
 	 * Select local ComfyUI HTTP execution or Comfy Cloud MCP execution.
 	 *

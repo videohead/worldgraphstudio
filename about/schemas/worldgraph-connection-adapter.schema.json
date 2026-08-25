@@ -73,7 +73,7 @@
       "type": "object",
       "properties": {
         "test": {
-          "description": "Callable (int connection_id, array record): array|WP_Error. The record is Connection_Repository::get() output, not the decoded resolve() shape. The returned array contains success, message, and health; core persists the normalized result.",
+          "description": "Callable (int connection_id, array record): array|WP_Error. The record is Connection_Repository::get() output, not the decoded resolve() shape. The returned array contains success, message, and health; core persists the normalized result. Core rejects health tests while the Connection is disabled and does not invoke this callback.",
           "$ref": "#/$defs/callable"
         },
         "after_save": {
@@ -106,7 +106,7 @@
           "minimum": 1
         },
         "status_meta_prefix": {
-          "description": "Stable non-secret prefix for <prefix>_synced_at and <prefix>_error Connection metadata.",
+          "description": "Stable non-secret prefix for Template_Manager-authoritative <prefix>_synced_at and <prefix>_error Connection metadata on the generic path. Successful provisioning stamps the sync time and clears a stale error unless the result contains a non-empty warning; scheduling or provisioning failure records the error without advancing the sync time. Bundled legacy direct entry points may mirror these keys for backward compatibility.",
           "type": "string",
           "pattern": "^[a-z][a-z0-9_-]*$"
         }
@@ -139,7 +139,12 @@
           "default": false
         },
         "adapter": {
-          "description": "Fixed sanitized adapter marker or callable (array connection, string provider_template_id, string adapter): string.",
+          "description": "Fixed sanitized adapter marker persisted with generation jobs. Callable values are not accepted; use adapter_resolver for dynamic selection.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "adapter_resolver": {
+          "description": "Callable (array connection, string provider_template_id, string adapter): string selecting a sanitized marker from trusted saved state. Mutually exclusive with adapter.",
           "$ref": "#/$defs/callable"
         },
         "media_inputs": {
@@ -190,6 +195,14 @@
         }
       ],
       "allOf": [
+        {
+          "not": {
+            "required": [
+              "adapter",
+              "adapter_resolver"
+            ]
+          }
+        },
         {
           "if": {
             "properties": {

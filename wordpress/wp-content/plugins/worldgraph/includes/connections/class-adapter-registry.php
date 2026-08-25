@@ -67,7 +67,7 @@ class Adapter_Registry {
 					'poll'               => true,
 					'poll_with_template' => false,
 					'poll_error_limit'   => 10,
-					'adapter'            => 'comfyui',
+					'adapter_resolver'   => [ Builtin_Adapter_Runtime::class, 'comfy_adapter' ],
 					'media_inputs'       => true,
 				],
 			],
@@ -388,23 +388,37 @@ class Adapter_Registry {
 			self::$loaded[ $provider_type ] = false;
 			return false;
 		}
-		if ( ! empty( $adapter['loader'] ) && is_callable( $adapter['loader'] ) ) {
-			call_user_func( $adapter['loader'], $provider_type, $adapter );
-		}
-
-		foreach ( (array) ( $adapter['files'] ?? [] ) as $relative_file ) {
-			$relative_file = ltrim( (string) $relative_file, '/' );
-			$file          = realpath( WORLDGRAPH_PLUGIN_DIR . $relative_file );
-			$base          = trailingslashit( wp_normalize_path( (string) realpath( WORLDGRAPH_PLUGIN_DIR ) ) );
-			if ( false === $file || ! str_starts_with( wp_normalize_path( $file ), $base ) || ! is_readable( $file ) ) {
-				self::$loaded[ $provider_type ] = false;
-				return false;
+		$stage = 'loader';
+		try {
+			if ( ! empty( $adapter['loader'] ) ) {
+				if ( ! is_callable( $adapter['loader'] ) ) {
+					throw new \UnexpectedValueException( 'Invalid Connection adapter loader.' );
+				}
+				call_user_func( $adapter['loader'], $provider_type, $adapter );
 			}
-			require_once $file;
-		}
 
-		if ( ! empty( $adapter['init'] ) && is_callable( $adapter['init'] ) ) {
-			call_user_func( $adapter['init'] );
+			$stage = 'files';
+			foreach ( (array) ( $adapter['files'] ?? [] ) as $relative_file ) {
+				$relative_file = ltrim( (string) $relative_file, '/' );
+				$file          = realpath( WORLDGRAPH_PLUGIN_DIR . $relative_file );
+				$base          = trailingslashit( wp_normalize_path( (string) realpath( WORLDGRAPH_PLUGIN_DIR ) ) );
+				if ( false === $file || ! str_starts_with( wp_normalize_path( $file ), $base ) || ! is_readable( $file ) ) {
+					throw new \RuntimeException( 'Connection adapter file could not be loaded.' );
+				}
+				require_once $file;
+			}
+
+			$stage = 'init';
+			if ( ! empty( $adapter['init'] ) ) {
+				if ( ! is_callable( $adapter['init'] ) ) {
+					throw new \UnexpectedValueException( 'Invalid Connection adapter initializer.' );
+				}
+				call_user_func( $adapter['init'] );
+			}
+		} catch ( \Throwable ) {
+			self::$loaded[ $provider_type ] = false;
+			self::report_failure( 'worldgraph_conn_adapter_load_failed', $provider_type, $stage );
+			return false;
 		}
 
 		self::$loaded[ $provider_type ] = true;
@@ -459,8 +473,13 @@ class Adapter_Registry {
 	public static function callback( string $provider_type, string $callback_name ): ?callable {
 		$provider_type = sanitize_key( $provider_type );
 		$callback_name = sanitize_key( $callback_name );
-		$adapter       = self::get( $provider_type );
-		$callback      = is_array( $adapter ) ? ( $adapter['callbacks'][ $callback_name ] ?? null ) : null;
+		try {
+			$adapter  = self::get( $provider_type );
+			$callback = is_array( $adapter ) ? ( $adapter['callbacks'][ $callback_name ] ?? null ) : null;
+		} catch ( \Throwable ) {
+			self::report_failure( 'worldgraph_conn_adapter_callback_failed', $provider_type, 'resolve_' . $callback_name );
+			return null;
+		}
 		if ( empty( $callback ) || ! self::load( $provider_type ) ) {
 			return null;
 		}
@@ -492,7 +511,12 @@ class Adapter_Registry {
 
 		$config = self::generation_config( $provider_type );
 		if ( ! empty( $config['client_resolver'] ) && is_callable( $config['client_resolver'] ) ) {
-			$client = call_user_func( $config['client_resolver'], $connection, $template, $adapter );
+			try {
+				$client = call_user_func( $config['client_resolver'], $connection, $template, $adapter );
+			} catch ( \Throwable ) {
+				self::report_failure( 'worldgraph_conn_adapter_callback_failed', $provider_type, 'generation_client' );
+				return '';
+			}
 			return is_string( $client ) ? ltrim( $client, '\\' ) : '';
 		}
 
@@ -523,17 +547,33 @@ class Adapter_Registry {
 		}
 
 		$config   = self::generation_config( $provider_type );
-		$declared = $config['adapter'] ?? '';
-		if ( is_callable( $declared ) && self::load( $provider_type ) ) {
-			$resolved = call_user_func( $declared, $connection, $template, $adapter );
-			$resolved = is_string( $resolved ) ? sanitize_key( $resolved ) : '';
-			if ( '' !== $resolved ) {
-				return $resolved;
+		$resolver = $config['adapter_resolver'] ?? null;
+		if ( ! empty( $resolver ) && self::load( $provider_type ) && is_callable( $resolver ) ) {
+			try {
+				$resolved = call_user_func( $resolver, $connection, $template, $adapter );
+				$resolved = is_string( $resolved ) ? sanitize_key( $resolved ) : '';
+				if ( '' !== $resolved ) {
+					return $resolved;
+				}
+			} catch ( \Throwable ) {
+				self::report_failure( 'worldgraph_conn_adapter_callback_failed', $provider_type, 'generation_adapter' );
 			}
-		} elseif ( is_string( $declared ) && '' !== sanitize_key( $declared ) ) {
+		}
+
+		$declared = $config['adapter'] ?? '';
+		if ( is_string( $declared ) && '' !== sanitize_key( $declared ) ) {
 			return sanitize_key( $declared );
 		}
 
 		return $provider_type;
+	}
+
+	/** Emit a bounded adapter diagnostic without exposing credentials or callback errors. */
+	private static function report_failure( string $hook, string $provider_type, string $stage ): void {
+		try {
+			do_action( $hook, sanitize_key( $provider_type ), sanitize_key( $stage ) );
+		} catch ( \Throwable ) {
+			// Diagnostics must never turn an isolated adapter failure into a core failure.
+		}
 	}
 }

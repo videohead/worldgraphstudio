@@ -14,6 +14,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+require_once dirname( __DIR__ ) . '/templates/class-template-manager.php';
+
 /**
  * Bundled provider health checks.
  */
@@ -60,7 +62,7 @@ final class Builtin_Connection_Tests {
 			: sprintf( 'fal MCP is reachable but does not expose required tools: %s.', implode( ', ', $missing ) );
 		$health = [ 'tools' => $tools ];
 		if ( $success ) {
-			$provisioned = \WorldGraph\Utils\Fal_Catalog::provision( $connection_id );
+			$provisioned = \WorldGraph\Templates\Template_Manager::provision_for_connection( $connection_id );
 			if ( is_wp_error( $provisioned ) ) {
 				$message .= ' Template provisioning needs attention: ' . $provisioned->get_error_message();
 				$health['template_provisioning_error'] = $provisioned->get_error_message();
@@ -92,7 +94,7 @@ final class Builtin_Connection_Tests {
 			);
 		}
 
-		$provisioned = \WorldGraph\Utils\ElevenLabs_Catalog::provision( $connection_id );
+		$provisioned = \WorldGraph\Templates\Template_Manager::provision_for_connection( $connection_id );
 		if ( is_wp_error( $provisioned ) ) {
 			return self::outcome( false, $provisioned->get_error_message(), [ 'model_count' => $model_count, 'voice_count' => $voice_count ] );
 		}
@@ -128,7 +130,7 @@ final class Builtin_Connection_Tests {
 			);
 		}
 
-		$provisioned = \WorldGraph\Utils\Suno_Catalog::provision( $connection_id );
+		$provisioned = \WorldGraph\Templates\Template_Manager::provision_for_connection( $connection_id );
 		if ( is_wp_error( $provisioned ) ) {
 			return self::outcome( false, $provisioned->get_error_message(), [ 'credits' => $credits, 'tools' => $tools ] );
 		}
@@ -159,7 +161,7 @@ final class Builtin_Connection_Tests {
 			);
 		}
 
-		$provisioned = \WorldGraph\Utils\VideoDraft_Catalog::provision( $connection_id );
+		$provisioned = \WorldGraph\Templates\Template_Manager::provision_for_connection( $connection_id );
 		if ( is_wp_error( $provisioned ) ) {
 			return self::outcome( false, $provisioned->get_error_message(), [ 'tools' => $tools ] );
 		}
