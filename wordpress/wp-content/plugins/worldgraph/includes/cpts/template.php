@@ -402,8 +402,9 @@ class Template {
 			'default_values'     => [
 				'type'        => 'textarea',
 				'format'      => 'json',
-				'label'       => 'Default Values',
+				'label'       => 'Default Values JSON (Advanced)',
 				'required'    => false,
+				'description' => 'Advanced escape hatch for a flat JSON object of Template run-control defaults. Prefer the validated per-Template defaults editor in Generate Representative Media; it writes this field safely.',
 			],
 			'provider_type'      => [
 				'type'        => 'text',

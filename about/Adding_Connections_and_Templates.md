@@ -512,6 +512,11 @@ order after the Template has been saved. Keep advanced section ordering,
 forbidden sections, character/byte ceilings, and provider-provisioned policy in
 the normalized JSON declarations described above.
 
+For a manually pasted ComfyUI API workflow with blank `model_family`, core
+detects registered families from node `class_type` prefixes before consulting
+Template names or checkpoint identifiers. The effective policy and admin
+guidance use the same resolver.
+
 `primary`, `objective`, `author_instructions`, `constraints`, and `verbatim`
 cannot be forbidden. Later preference layers may change the target, order, and
 format, but positive hard ceilings combine by taking the smallest limit.
@@ -534,7 +539,7 @@ positive-prompt schema `maxLength`; no schema prose becomes an instruction.
 
 ### Keep run defaults in the correct layer
 
-Template input/default configuration defines the lowest run-control layer.
+Template `default_values` defines the editable lowest run-control layer.
 Do not write Project or entity preferences into a provider-managed Template.
 The effective runtime hierarchy, from lowest to highest, is Template default,
 compatible owning-Project frame profile, owning-Project exact-pair override,
@@ -549,12 +554,22 @@ to Shot, Character, Location, Prop, Scene, Episode, Story World, and any future
 supported source type.
 
 The Assets UI saves and resets these layers only through explicit actions.
-POSTing a complete visible form lets core validate it and store only values
-different from the inherited lower layers; reset deletes only that scope/pair.
+A Template save validates the complete visible form and replaces
+`default_values` with canonical flat JSON; Template reset writes `{}` and
+requires permission to edit the Template. The raw **Default Values JSON
+(Advanced)** field is an escape hatch, not the preferred editor. Project/item
+saves store only values different from inherited lower layers; reset deletes
+only that scope/pair.
 Save and reset require the current fingerprint, while ordinary one-off
 generation does not persist anything. Adapter clients receive only the final
 validated effective scalar values and must not implement a second default
 repository or accept client-selected Connection IDs.
+
+An unreadable Project/item defaults document must remain visibly resettable.
+Its explicit reset may clear the whole malformed document when no exact pair
+can be trusted, but it must preserve the optimistic snapshot conflict check.
+Malformed/incompatible Template defaults likewise report a warning and remain
+resettable.
 
 The public `run_controls.fields` descriptions explain recognized settings in
 plain language before showing provider-specific context. In particular, `cfg`

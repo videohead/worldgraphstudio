@@ -415,11 +415,11 @@
         },
         {
             "key": "field_worldgraph_template_default_values",
-            "label": "Default Values",
+            "label": "Default Values JSON (Advanced)",
             "name": "default_values",
             "aria-label": "",
             "type": "textarea",
-            "instructions": "",
+            "instructions": "Advanced escape hatch for a flat JSON object of Template run-control defaults. Prefer the validated per-Template defaults editor in Generate Representative Media; it writes this field safely.",
             "required": 0,
             "conditional_logic": 0,
             "wrapper": {
@@ -524,5 +524,5 @@
     "display_title": "",
     "allow_ai_access": false,
     "ai_description": "",
-    "modified": 1787678079
+    "modified": 1787680200
 }

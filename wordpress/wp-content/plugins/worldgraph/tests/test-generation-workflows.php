@@ -8,6 +8,7 @@
 defined( 'ABSPATH' ) || exit;
 
 use PHPUnit\Framework\TestCase;
+use WorldGraph\Utils\Asset_Generator;
 use WorldGraph\Utils\Generation_Workflows;
 
 if ( ! function_exists( '__' ) ) {
@@ -54,6 +55,7 @@ if ( ! function_exists( 'get_bloginfo' ) ) {
 
 require_once dirname( __DIR__ ) . '/includes/utils/generation-modality.php';
 require_once dirname( __DIR__ ) . '/includes/utils/class-generation-workflows.php';
+require_once dirname( __DIR__ ) . '/includes/utils/class-asset-generator.php';
 
 /** Representative workflow and metabox contract tests. */
 class Test_Generation_Workflows extends TestCase {
@@ -185,6 +187,9 @@ class Test_Generation_Workflows extends TestCase {
 		$this->assertSame( $shot_fields['camera_movement']['choices'], $scene_fields['camera_movement']['choices'] );
 		$this->assertSame( 'select', $shot_fields['camera_movement']['type'] );
 		$this->assertSame( 'text', $shot_fields['motion_direction']['type'] );
+		$this->assertStringContainsString( 'inherit the containing Scene default', $shot_fields['lens']['instructions'] );
+		$this->assertStringContainsString( 'inherit the containing Scene default', $shot_fields['camera_movement']['instructions'] );
+		$this->assertStringContainsString( 'Locked Off to suppress Scene movement', $shot_fields['camera_movement']['instructions'] );
 		$this->assertSame( 'Locked Off (Static)', $shot_fields['camera_movement']['choices']['locked_off'] );
 		$this->assertSame( 'Follow Subject', $shot_fields['camera_movement']['choices']['follow_subject'] );
 		$this->assertSame( 'Additional Generation Constraints', $shot_fields['generation_prompt']['label'] );
@@ -304,21 +309,22 @@ class Test_Generation_Workflows extends TestCase {
 		$freeze = $reflection->getMethod( 'freeze_task' );
 		$freeze->setAccessible( true );
 		$frozen = $freeze->invoke( null, [
-			'task_key'             => 'Shot 9 Video!',
-			'source_id'            => -91,
-			'source_type'          => 'worldgraph_shot',
-			'source_title'         => '<b>Closing shot</b>',
-			'workflow_id'          => 'shot-video',
-			'intent'               => 'demonstration-shot-video',
-			'label'                => 'Shot video',
-			'type'                 => 'video',
-			'phase'                => 'video',
-			'required'             => false,
-			'generation_required'  => true,
-			'prompt'               => 'Camera tracks forward.',
-			'dependencies'         => [ 'Character Ref', 'Character Ref', '' ],
-			'preferred_modalities' => [ 'text_image_to_video', 'video_to_video', 'text_image_to_video' ],
-			'input_refs'           => [
+			'task_key'                  => 'Shot 9 Video!',
+			'source_id'                 => -91,
+			'source_type'               => 'worldgraph_shot',
+			'source_title'              => '<b>Closing shot</b>',
+			'workflow_id'               => 'shot-video',
+			'intent'                    => 'demonstration-shot-video',
+			'label'                     => 'Shot video',
+			'type'                      => 'video',
+			'phase'                     => 'video',
+			'required'                  => false,
+			'generation_required'       => true,
+			'prompt'                    => 'Camera tracks forward.',
+			'prompt_policy_fingerprint' => str_repeat( 'a', 64 ),
+			'dependencies'              => [ 'Character Ref', 'Character Ref', '' ],
+			'preferred_modalities'      => [ 'text_image_to_video', 'video_to_video', 'text_image_to_video' ],
+			'input_refs'                => [
 				'image'      => [ 'task_key' => 'Character Ref', 'fallback_task_key' => 'Shot Still' ],
 				'end_frame'  => 'Next Still',
 				'not_a_slot' => 'discard-me',
@@ -336,12 +342,64 @@ class Test_Generation_Workflows extends TestCase {
 		$this->assertSame( [ 'task_key' => 'nextstill' ], $frozen['input_refs']['end_frame'] );
 		$this->assertArrayNotHasKey( 'not_a_slot', $frozen['input_refs'] );
 		$this->assertSame( hash( 'sha256', 'Camera tracks forward.' ), $frozen['prompt_hash'] );
+		$this->assertSame( str_repeat( 'a', 64 ), $frozen['prompt_policy_fingerprint'] );
 
 		$queue = $this->method_source( 'queue_batch' );
 		$this->assertStringContainsString( "'scope'             => \$scope", $queue );
 		$this->assertStringContainsString( 'batch_for_idempotency_key( $post_id, $requester_id, $idempotency_key, $batch_kind )', $queue );
 		$this->assertStringContainsString( 'reserve_idempotency_key( $post_id, $requester_id, $idempotency_key, $request_hash, $batch_kind )', $queue );
 		$this->assertStringContainsString( '$meta[ self::ASSEMBLY_PLAN_META ] = (array) ( $plan[\'assembly\'] ?? [] );', $queue );
+	}
+
+	/** Only an exact frozen batch prompt can bypass live policy finalization. */
+	public function test_frozen_batch_prompt_integrity_and_direct_prompt_boundary(): void {
+		$reflection     = new ReflectionClass( Asset_Generator::class );
+		$candidate      = $reflection->getMethod( 'is_frozen_batch_prompt_candidate' );
+		$matches        = $reflection->getMethod( 'prompt_matches_frozen_task' );
+		$policy_matches = $reflection->getMethod( 'prompt_policy_matches_frozen_task' );
+		$candidate->setAccessible( true );
+		$matches->setAccessible( true );
+		$policy_matches->setAccessible( true );
+
+		$this->assertFalse( $candidate->invoke( null, 0, true, true ), 'A direct client-supplied prompt_profiled flag must not bypass finalization.' );
+		$this->assertFalse( $candidate->invoke( null, 91, false, true ) );
+		$this->assertFalse( $candidate->invoke( null, 91, true, false ) );
+		$this->assertTrue( $candidate->invoke( null, 91, true, true ) );
+
+		$prompt = 'Camera tracks forward.';
+		$task   = [ 'prompt' => $prompt, 'prompt_hash' => hash( 'sha256', $prompt ) ];
+		$this->assertTrue( $matches->invoke( null, $task, $prompt ) );
+		$this->assertFalse( $matches->invoke( null, $task, $prompt . ' Add smoke.' ) );
+		$this->assertFalse( $matches->invoke( null, [ 'prompt' => $prompt, 'prompt_hash' => 'not-a-digest' ], $prompt ) );
+		$this->assertFalse( $matches->invoke( null, [ 'prompt' => $prompt . ' changed', 'prompt_hash' => hash( 'sha256', $prompt ) ], $prompt ) );
+
+		$policy_fingerprint = hash( 'sha256', 'effective prompt policy' );
+		$this->assertTrue( $policy_matches->invoke( null, [], 2, $policy_fingerprint ), 'Legacy plans may use their exact prompt without claiming a missing policy snapshot.' );
+		$this->assertFalse( $policy_matches->invoke( null, [], Generation_Workflows::PROMPT_POLICY_FINGERPRINT_VERSION, $policy_fingerprint ) );
+		$this->assertTrue( $policy_matches->invoke( null, [ 'prompt_policy_fingerprint' => $policy_fingerprint ], Generation_Workflows::WORKFLOW_VERSION, $policy_fingerprint ) );
+		$this->assertFalse( $policy_matches->invoke( null, [ 'prompt_policy_fingerprint' => hash( 'sha256', 'changed policy' ) ], Generation_Workflows::WORKFLOW_VERSION, $policy_fingerprint ) );
+
+		$generator              = (string) file_get_contents( dirname( __DIR__ ) . '/includes/utils/class-asset-generator.php' );
+		$workflow               = (string) file_get_contents( dirname( __DIR__ ) . '/includes/utils/class-generation-workflows.php' );
+		$candidate_position     = strpos( $generator, 'if ( $frozen_batch_prompt )' );
+		$validation_position    = strpos( $generator, 'self::validate_batch_task(', $candidate_position );
+		$verified_position      = strpos( $generator, '$frozen_prompt_verified = true;', $validation_position );
+		$dynamic_guard_position = strpos( $generator, 'if ( ! $frozen_prompt_verified )', $verified_position );
+		$finalize_position      = strpos( $generator, 'Generation_Prompt_Policy::finalize_text(', $dynamic_guard_position );
+
+		$this->assertNotFalse( $candidate_position );
+		$this->assertNotFalse( $validation_position );
+		$this->assertNotFalse( $verified_position );
+		$this->assertNotFalse( $dynamic_guard_position );
+		$this->assertNotFalse( $finalize_position );
+		$this->assertTrue( $candidate_position < $validation_position && $validation_position < $verified_position );
+		$this->assertTrue( $verified_position < $dynamic_guard_position && $dynamic_guard_position < $finalize_position );
+		$this->assertStringContainsString( 'prompt_matches_frozen_task( $task, $prompt )', $generator );
+		$this->assertStringContainsString( "'prompt_policy_fingerprint'", $generator );
+		$this->assertStringContainsString( 'worldgraph_asset_batch_prompt_policy_changed', $generator );
+		$this->assertSame( 2, preg_match_all( "/'prompt_is_composed'\s*=>\s*true/", $workflow ) );
+		$this->assertSame( 2, preg_match_all( "/'prompt_profiled'\s*=>\s*true/", $workflow ) );
+		$this->assertStringContainsString( "\$task['prompt_policy_fingerprint'] = Generation_Prompt_Policy::fingerprint(", $workflow );
 	}
 
 	/** Media references wait for siblings, verify provenance, and become immutable inputs. */

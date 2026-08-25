@@ -149,7 +149,7 @@ listed because several are not yet callback-driven.
 | Template input resolution | `includes/utils/template_bindings.php` |
 | Template run-control allowlist/defaults | `includes/utils/template-run-controls.php` |
 | Template-aware prompt composition and policy | `includes/utils/class-generation-workflows.php` and `includes/utils/class-generation-prompt-policy.php` |
-| Contextual Project/item run defaults | `includes/utils/class-generation-run-defaults.php` |
+| Contextual Template/Project/item run defaults | `includes/utils/class-generation-run-defaults.php` |
 | Generic generation REST submission | `includes/rest-api/generation-controller.php` |
 | Story-record quick asset generation | `includes/utils/class-asset-generator.php` |
 | Submission/poll worker and client dispatch | `includes/utils/generation-batch.php` |
@@ -995,6 +995,7 @@ provider-managed Template.
 | `prompt_format` | Optional first-class operator preference: `natural_language`, `concise_phrases`, or `chronological_prose` |
 | `prompt_target_words` / `prompt_max_words` | Optional first-class integer prompt target/ceiling from 1 to 4000; blank inherits reviewed guidance |
 | `input_bindings` | Optional Story Graph-to-runtime input map |
+| `default_values` | Flat validated scalar Template run-control baseline; the Generate editor writes canonical JSON and reset writes `{}`; raw JSON is an advanced escape hatch |
 | `status` | `active` only after the Template is executable |
 | `version` | Optional remote schema/model version |
 
@@ -1075,13 +1076,22 @@ normalized `run_controls` definition, and contains only validated scalar
 Scene, Episode, Story World, and future supported sources use the same shape.
 
 Generation must not persist defaults. The dedicated defaults REST operation
-performs explicit save/reset with object-capability checks. Save receives a
-complete form and stores sparse differences from inherited lower layers;
-reset removes only one scope/pair. Both require the current fingerprint so a
+performs explicit save/reset with object-capability checks. Template writes
+require `edit_post` on the Template and replace `default_values` with a
+canonical validated scalar object; Template reset writes `{}`. Project/item
+saves receive a complete form and store sparse differences from inherited
+lower layers; reset removes only one scope/pair. Both require the current fingerprint so a
 stale browser cannot overwrite a changed Template contract. Reads revalidate a
 stale stored entry and warn or ignore it; deriving Connection from Template
 prevents pair spoofing and prevents a reparented Template from using its old
 Connection entry.
+
+If a Project/item document is structurally unreadable, expose its target as
+resettable. An explicit reset may clear that unreadable document in full,
+because selective pair removal is not trustworthy, but must retain the stored
+snapshot conflict check. Malformed/incompatible Template `default_values` must
+also report a warning and remain resettable. Do not silently report reset while
+leaving corrupt metadata behind.
 
 Every public run-control field should also be understandable without provider
 jargon. Core supplies bounded plain-language descriptions for recognized
@@ -1412,7 +1422,7 @@ mock all external traffic. At minimum cover the applicable rows:
 | Tester | Success/error status, timestamp, bounded health report, and provisioning outcome |
 | Catalog | Discovery filtering, schema defaults, idempotent Template update, connection/provider identity, and manager-maintained sync timestamp/scheduling/provisioning errors |
 | Prompt policy | Manifest/default/output/modality selection, layer precedence, hard-limit intersection, protected sections, schema `maxLength`, and rejection of remote/MCP prose |
-| Run defaults | Exact Connection+Template pair isolation, Template → Project profile → Project → item → one-off precedence, sparse save/reset, capability checks, stale-fingerprint conflict/revalidation, and frozen batch snapshots |
+| Run defaults | Exact Connection+Template pair isolation, Template → Project profile → Project → item → one-off precedence, canonical Template save/reset, sparse contextual save/reset, capability checks, malformed-document recovery, stale-fingerprint conflict/revalidation, and frozen batch snapshots |
 | Generation | Template/Connection agreement, modality/type agreement, fixed adapter marker or trusted adapter resolver, submit shape, synchronous or async result, polling states |
 | Media | Every output imported, MIME/size rejection, authenticated download if needed, and no raw bytes in post meta |
 | Permissions | Administrator Connection access, object capability checks, nonce/signature/callback rejection |

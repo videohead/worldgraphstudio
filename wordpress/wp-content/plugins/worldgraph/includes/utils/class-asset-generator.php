@@ -206,6 +206,7 @@ class Asset_Generator {
 		$provided_prompt = trim( wp_strip_all_tags( (string) $args['prompt'] ) );
 		$prompt_is_composed = rest_sanitize_boolean( $args['prompt_is_composed'] );
 		$prompt_profiled    = rest_sanitize_boolean( $args['prompt_profiled'] );
+		$frozen_batch_prompt = self::is_frozen_batch_prompt_candidate( $batch_id, $prompt_is_composed, $prompt_profiled );
 		$prompt          = $prompt_is_composed
 			? $provided_prompt
 			: self::build_prompt( $post_id, $intent, $provided_prompt, $template_id );
@@ -302,22 +303,6 @@ class Asset_Generator {
 				return $requirements;
 			}
 		}
-		if ( ! $prompt_profiled ) {
-			$prompt = Generation_Prompt_Profiles::apply( $prompt, $post_id, $intent, $template_id );
-		} else {
-			$prompt = Generation_Prompt_Policy::finalize_text(
-				$prompt,
-				Generation_Prompt_Policy::for_template(
-					$template_id,
-					[
-						'output_type' => $type,
-						'post_type'   => (string) $post->post_type,
-						'intent'      => $intent,
-					]
-				)
-			);
-		}
-
 		$trusted_batch_values = $batch_id && rest_sanitize_boolean( $args['run_values_validated'] );
 		$description          = Template_Run_Controls::describe( $template_id );
 		$submitted_run_values = is_array( $args['run_values'] ) ? $args['run_values'] : [];
@@ -343,10 +328,40 @@ class Asset_Generator {
 		$profile_values = $trusted_batch_values && rest_sanitize_boolean( $args['profile_values_frozen'] ) && is_array( $args['profile_values'] )
 			? $args['profile_values']
 			: self::project_template_defaults( $template_id, $profile, $description );
-		if ( $batch_id ) {
-			$batch_validation = self::validate_batch_task( $batch_id, $batch_step, $post_id, $type, $intent, $template_id, $requester_id, $run_values, $profile_values, $bound_inputs );
+
+		// A server-composed, already-profiled batch prompt may bypass current
+		// policy finalization only after its complete frozen task is verified.
+		$frozen_prompt_verified = false;
+		if ( $frozen_batch_prompt ) {
+			$batch_validation = self::validate_batch_task( $batch_id, $batch_step, $post_id, $type, $intent, $template_id, $requester_id, $prompt, $run_values, $profile_values, $bound_inputs );
 			if ( is_wp_error( $batch_validation ) ) {
 				return $batch_validation;
+			}
+			$frozen_prompt_verified = true;
+		}
+
+		if ( ! $frozen_prompt_verified ) {
+			if ( ! $prompt_profiled ) {
+				$prompt = Generation_Prompt_Profiles::apply( $prompt, $post_id, $intent, $template_id );
+			} else {
+				$prompt = Generation_Prompt_Policy::finalize_text(
+					$prompt,
+					Generation_Prompt_Policy::for_template(
+						$template_id,
+						[
+							'output_type' => $type,
+							'post_type'   => (string) $post->post_type,
+							'intent'      => $intent,
+						]
+					)
+				);
+			}
+
+			if ( $batch_id ) {
+				$batch_validation = self::validate_batch_task( $batch_id, $batch_step, $post_id, $type, $intent, $template_id, $requester_id, $prompt, $run_values, $profile_values, $bound_inputs );
+				if ( is_wp_error( $batch_validation ) ) {
+					return $batch_validation;
+				}
 			}
 		}
 
@@ -451,7 +466,7 @@ class Asset_Generator {
 	}
 
 	/** Validate that a staged child exactly matches its frozen parent task. */
-	private static function validate_batch_task( int $batch_id, int $step, int $post_id, string $type, string $intent, int $template_id, int $requester_id, array $run_values = [], array $profile_values = [], array $inputs = [] ) {
+	private static function validate_batch_task( int $batch_id, int $step, int $post_id, string $type, string $intent, int $template_id, int $requester_id, string $prompt, array $run_values = [], array $profile_values = [], array $inputs = [] ) {
 		$batch = get_post( $batch_id );
 		$plan  = get_post_meta( $batch_id, Generation_Workflows::BATCH_PLAN_META, true );
 		$task  = is_array( $plan ) && isset( $plan[ $step ] ) && is_array( $plan[ $step ] ) ? $plan[ $step ] : [];
@@ -474,8 +489,60 @@ class Asset_Generator {
 		) {
 			return new WP_Error( 'worldgraph_asset_batch_task_invalid', __( 'The generation job does not match its frozen representative-media batch task.', 'worldgraph' ), [ 'status' => 409 ] );
 		}
+		if ( ! self::prompt_matches_frozen_task( $task, $prompt ) ) {
+			return new WP_Error( 'worldgraph_asset_batch_prompt_invalid', __( 'The generation prompt does not match the prompt accepted with this frozen batch. Refresh and start a new batch.', 'worldgraph' ), [ 'status' => 409 ] );
+		}
+
+		$workflow_version            = absint( get_post_meta( $batch_id, '_worldgraph_gen_workflow_version', true ) );
+		$expected_policy_fingerprint = (string) ( $task['prompt_policy_fingerprint'] ?? '' );
+		if ( $workflow_version >= Generation_Workflows::PROMPT_POLICY_FINGERPRINT_VERSION || '' !== $expected_policy_fingerprint ) {
+			$current_policy_fingerprint = Generation_Prompt_Policy::fingerprint(
+				Generation_Prompt_Policy::for_template(
+					$template_id,
+					[
+						'output_type' => $type,
+						'post_type'   => (string) ( $task['source_type'] ?? '' ),
+						'intent'      => $intent,
+					]
+				)
+			);
+			if ( ! self::prompt_policy_matches_frozen_task( $task, $workflow_version, $current_policy_fingerprint ) ) {
+				return new WP_Error( 'worldgraph_asset_batch_prompt_policy_changed', __( 'The Template prompt policy changed after this batch was accepted. Refresh and start a new batch.', 'worldgraph' ), [ 'status' => 409 ] );
+			}
+		}
 
 		return true;
+	}
+
+	/** Verify both the supplied prompt and stored prompt against the frozen digest. */
+	private static function prompt_matches_frozen_task( array $task, string $prompt ): bool {
+		$expected = (string) ( $task['prompt_hash'] ?? '' );
+		if ( ! self::is_sha256( $expected ) || ! array_key_exists( 'prompt', $task ) || ! is_string( $task['prompt'] ) ) {
+			return false;
+		}
+
+		return hash_equals( $expected, hash( 'sha256', $prompt ) )
+			&& hash_equals( $expected, hash( 'sha256', $task['prompt'] ) );
+	}
+
+	/** Only a composed/profiled prompt tied to a batch may seek a bypass. */
+	private static function is_frozen_batch_prompt_candidate( int $batch_id, bool $prompt_is_composed, bool $prompt_profiled ): bool {
+		return $batch_id > 0 && $prompt_is_composed && $prompt_profiled;
+	}
+
+	/** Compare a current effective policy with the snapshot required by the plan version. */
+	private static function prompt_policy_matches_frozen_task( array $task, int $workflow_version, string $current ): bool {
+		$expected = (string) ( $task['prompt_policy_fingerprint'] ?? '' );
+		if ( $workflow_version < Generation_Workflows::PROMPT_POLICY_FINGERPRINT_VERSION && '' === $expected ) {
+			return true;
+		}
+
+		return self::is_sha256( $expected ) && self::is_sha256( $current ) && hash_equals( $expected, $current );
+	}
+
+	/** Whether a value is a canonical lowercase SHA-256 digest. */
+	private static function is_sha256( string $value ): bool {
+		return 1 === preg_match( '/\A[a-f0-9]{64}\z/D', $value );
 	}
 
 	/** Whether a frozen batch task authorizes a non-representative intent. */

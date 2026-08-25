@@ -509,12 +509,13 @@ Template summaries use this shape:
     "effective": { "steps": 32 },
     "sources": { "steps": "item" },
     "layers": {
-      "template": { "post_id": 101, "values": { "steps": 28 }, "status": "current" },
+      "template": { "post_id": 101, "values": { "steps": 28 }, "fingerprint": "opaque-deterministic-sha256-value", "has_entry": true, "status": "current", "warnings": [] },
       "project_profile": { "post_id": 7, "values": {}, "status": "current" },
       "project": { "post_id": 7, "values": {}, "fingerprint": "", "has_entry": false, "status": "inherited", "warnings": [] },
       "item": { "post_id": 42, "values": { "steps": 32 }, "fingerprint": "opaque-deterministic-sha256-value", "has_entry": true, "status": "current", "warnings": [] }
     },
     "targets": [
+      { "scope": "template", "post_id": 101, "label": "Template", "has_overrides": true, "editable": true },
       { "scope": "project", "post_id": 7, "label": "Project", "has_overrides": false, "editable": true },
       { "scope": "item", "post_id": 42, "label": "Shot", "has_overrides": true, "editable": true }
     ],
@@ -558,7 +559,7 @@ Episode, Story World, or another supported source. Generating never changes a
 saved default.
 
 All three defaults methods accept `post_id`, `template_id`, and `scope`
-(`item` or `project`, default `item`). GET is read-only. POST additionally
+(`template`, `project`, or `item`, default `item`). GET is read-only. POST additionally
 requires a complete `values` object and the current `fingerprint`; DELETE
 requires the current fingerprint. Example save:
 
@@ -575,13 +576,22 @@ requires the current fingerprint. Example save:
 }
 ```
 
-POST validates the complete form and persists only values differing from the
-lower-layer baseline. DELETE removes only the selected scope and pair. Both
+POST validates the complete form. For `template`, it replaces the Template's
+`default_values` with canonical flat scalar JSON; for Project/item it persists
+only values differing from the lower-layer baseline. Template DELETE writes
+`{}`; contextual DELETE removes only the selected scope and pair. Both
 return the refreshed `run_defaults` DTO. A write made with an obsolete
 fingerprint returns `409`; the client must refresh rather than retry the stale
 form. GET may report a stored layer as `revalidated` with a warning when its
 old fingerprint still validates against the current contract, or as
 `incompatible` and omit its values when it does not.
+
+Malformed or incompatible Template defaults report a warning and keep a Reset
+target. An unreadable Project/item document likewise remains resettable.
+Because no exact pair is trustworthy in malformed contextual storage, that
+explicit reset clears the unreadable document as a whole. It compares the
+stored snapshot first and returns `409` instead of clearing a concurrent
+replacement.
 
 The storage contract is version-1 post meta named
 `_worldgraph_generation_run_defaults` on each Project or source item:
@@ -606,7 +616,9 @@ request parameter. Consequently, a Template moved to another Connection does
 not select the old pair. The repository stores scalar values only and accepts
 at most 64 pair entries and 65,536 serialized bytes per post. Reading or
 writing defaults requires edit permission for the source;
-writing additionally checks the resolved Project/item target. An item-layer
+writing additionally checks the resolved Template, Project, or item target.
+Defaults are available only when the Template provider matches its available
+Connection and that provider declares a generation adapter. An item-layer
 write against a Project is invalid; use `scope: "project"`.
 
 Direct generation accepts `type: "image"` (the backward-compatible default) or
@@ -736,9 +748,13 @@ duplicate paid batch or reuse the key for different settings. The normalized
 values are resolved after each task's exact Template is selected. Every task
 then freezes its saved Project/item override snapshot, requested one-off
 snapshot, effective normalized run values, compatible Project-profile values,
-and run-control fingerprint. These are copied into its child job; later form,
-default, or catalog changes cannot mutate an already accepted batch. Starting fails before any child is queued if
-a required generated task lacks a runnable Template, a submitted value is
+run-control fingerprint, and effective prompt-policy fingerprint. The run-value
+snapshots are copied into its child job; later form, default, or catalog
+changes cannot mutate an already accepted batch. Materialization requires the
+exact frozen prompt digest and rejects prompt-policy drift rather than
+re-finalizing the accepted prompt against current settings. Starting fails
+before any child is queued if a required generated task lacks a runnable
+Template, a submitted value is
 invalid, or the requester cannot edit every source. Optional demonstration
 motion or audio without a runnable Template is frozen as unavailable fallback
 work rather than promoted to a hard blocker. A successful start returns
@@ -747,7 +763,7 @@ three per-type run-value objects still applies each source's Template,
 Project-profile, Project-pair, and item-pair defaults. An explicit per-type map
 is the one-off highest layer for every matching task.
 
-The version 2 demonstration snapshot freezes stable task keys, required versus
+The version 3 demonstration snapshot freezes stable task keys, required versus
 optional behavior, reference/audio/video phases, dependencies, symbolic media
 references, preferred modalities, fallbacks, prompts, Templates, run values, and
 the editorial assembly timeline. A Character reference gives

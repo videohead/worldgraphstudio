@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Stores sparse Project/item overrides without copying a Template contract.
+ * Edits the Template baseline and stores sparse Project/item overrides.
  *
  * The visual editor may resemble a repeater, but row order has no meaning.
  * Every entry is selected by the exact Connection and Template pair and is
@@ -25,7 +25,7 @@ class Generation_Run_Defaults {
 	/** Stored document and public DTO version. */
 	public const VERSION = 1;
 
-	/** One bounded document is stored on each Project or source item. */
+	/** One bounded contextual document is stored on each Project or source item. */
 	public const META_KEY = '_worldgraph_generation_run_defaults';
 
 	/** Defensive storage bounds. */
@@ -33,7 +33,7 @@ class Generation_Run_Defaults {
 	private const MAX_BYTES   = 65536;
 
 	/** Supported saved layers. */
-	private const SCOPES = [ 'project', 'item' ];
+	private const SCOPES = [ 'template', 'project', 'item' ];
 
 	/** Build the stable row key for an exact Connection and Template pair. */
 	public static function pair_key( int $connection_id, int $template_id ): string {
@@ -45,36 +45,48 @@ class Generation_Run_Defaults {
 	 *
 	 * @param int    $source_id   Story Graph source post.
 	 * @param int    $template_id Selected Template.
-	 * @param string $scope       `item` includes item overrides; `project` stops at Project.
+	 * @param string $scope       `item` includes every layer; `project` or `template` stops at that layer.
 	 * @param array  $description Optional run-control description.
 	 * @return array<string,mixed>
 	 */
 	public static function describe( int $source_id, int $template_id, string $scope = 'item', array $description = [] ): array {
-		$scope       = in_array( $scope, self::SCOPES, true ) ? $scope : 'item';
-		$description = $description ?: Template_Run_Controls::describe( $template_id );
-		$connection_id = self::connection_id( $template_id );
-		$fingerprint = sanitize_text_field( (string) ( $description['fingerprint'] ?? '' ) );
-		$project_id  = Generation_Workflows::project_id_for_source( $source_id );
-		$template    = Template_Run_Controls::description_defaults( $description );
-		$profile     = Template_Run_Controls::profile_defaults( $description, Asset_Generator::project_media_profile( $source_id ) );
-		$project     = $project_id
+		$scope          = in_array( $scope, self::SCOPES, true ) ? $scope : 'item';
+		$description    = $description ?: Template_Run_Controls::describe( $template_id );
+		$connection_id  = self::connection_id( $template_id );
+		$fingerprint    = sanitize_text_field( (string) ( $description['fingerprint'] ?? '' ) );
+		$project_id     = Generation_Workflows::project_id_for_source( $source_id );
+		$template       = Template_Run_Controls::description_defaults( $description );
+		$template_layer = self::template_layer( $template_id, $description, $template );
+		$profile        = 'template' !== $scope
+			? Template_Run_Controls::profile_defaults( $description, Asset_Generator::project_media_profile( $source_id ) )
+			: [];
+		$project        = 'template' !== $scope && $project_id
 			? self::read_layer( $project_id, $connection_id, $template_id, $description )
 			: self::empty_layer( 0 );
-		$item        = 'item' === $scope && $source_id !== $project_id
+		$item           = 'item' === $scope && $source_id !== $project_id
 			? self::read_layer( $source_id, $connection_id, $template_id, $description )
 			: self::empty_layer( $source_id );
 
 		$effective = [];
 		$sources   = [];
 		self::overlay( $effective, $sources, $template, 'template' );
-		self::overlay( $effective, $sources, $profile, 'project_profile' );
-		self::overlay( $effective, $sources, (array) $project['values'], 'project' );
+		if ( 'template' !== $scope ) {
+			self::overlay( $effective, $sources, $profile, 'project_profile' );
+			self::overlay( $effective, $sources, (array) $project['values'], 'project' );
+		}
 		if ( 'item' === $scope && $source_id !== $project_id ) {
 			self::overlay( $effective, $sources, (array) $item['values'], 'item' );
 		}
 
-		$targets = [];
-		if ( $project_id ) {
+		$targets = [
+			[
+				'scope'         => 'template',
+				'post_id'       => $template_id,
+				'label'         => __( 'Template', 'worldgraph' ),
+				'has_overrides' => ! empty( $template_layer['has_entry'] ),
+			],
+		];
+		if ( 'template' !== $scope && $project_id ) {
 			$targets[] = [
 				'scope'         => 'project',
 				'post_id'       => $project_id,
@@ -104,13 +116,17 @@ class Generation_Run_Defaults {
 			'effective'     => $effective,
 			'sources'       => $sources,
 			'layers'        => [
-				'template'        => [ 'post_id' => $template_id, 'values' => $template, 'status' => 'current' ],
+				'template'        => $template_layer,
 				'project_profile' => [ 'post_id' => $project_id, 'values' => $profile, 'status' => 'current' ],
 				'project'         => $project,
 				'item'            => $item,
 			],
 			'targets'       => $targets,
-			'warnings'      => array_values( array_unique( array_merge( (array) $project['warnings'], (array) $item['warnings'] ) ) ),
+			'warnings'      => array_values(
+				array_unique(
+					array_merge( (array) $template_layer['warnings'], (array) $project['warnings'], (array) $item['warnings'] )
+				)
+			),
 		];
 	}
 
@@ -149,11 +165,11 @@ class Generation_Run_Defaults {
 	}
 
 	/**
-	 * Replace one sparse Project or item layer from a complete editor form.
+	 * Replace one Template, sparse Project, or sparse item layer from a complete editor form.
 	 *
 	 * @param int    $source_id   Story Graph source used to resolve its Project.
 	 * @param int    $template_id Selected Template.
-	 * @param string $scope       `project` or `item`.
+	 * @param string $scope       `template`, `project`, or `item`.
 	 * @param array  $values      Complete current form values.
 	 * @param string $fingerprint Client-observed Template contract fingerprint.
 	 * @return array<string,mixed>|WP_Error
@@ -167,6 +183,10 @@ class Generation_Run_Defaults {
 		$validated   = Template_Run_Controls::validate_description( $description, $values );
 		if ( is_wp_error( $validated ) ) {
 			return $validated;
+		}
+		if ( 'template' === $scope ) {
+			$saved = self::persist_template_defaults( $template_id, $validated, (string) $context['fingerprint'] );
+			return is_wp_error( $saved ) ? $saved : self::describe( $source_id, $template_id, 'template' );
 		}
 
 		$baseline = self::baseline_for_scope( $source_id, $template_id, $scope, $description );
@@ -202,14 +222,18 @@ class Generation_Run_Defaults {
 		return self::describe( $source_id, $template_id, 'project' === $scope ? 'project' : 'item', $description );
 	}
 
-	/** Remove only the exact Connection+Template layer at the requested scope. */
+	/** Remove the requested Template baseline or exact Connection+Template contextual layer. */
 	public static function reset( int $source_id, int $template_id, string $scope, string $fingerprint ) {
 		$context = self::write_context( $source_id, $template_id, $scope, $fingerprint );
 		if ( is_wp_error( $context ) ) {
 			return $context;
 		}
+		if ( 'template' === $scope ) {
+			$saved = self::persist_template_defaults( $template_id, [], (string) $context['fingerprint'] );
+			return is_wp_error( $saved ) ? $saved : self::describe( $source_id, $template_id, 'template' );
+		}
 		$snapshot = [];
-		$document = self::document_for_write( (int) $context['target_id'], $snapshot );
+		$document = self::document_for_write( (int) $context['target_id'], $snapshot, true );
 		if ( is_wp_error( $document ) ) {
 			return $document;
 		}
@@ -226,7 +250,7 @@ class Generation_Run_Defaults {
 	/** Resolve and validate the target of a mutating operation. */
 	private static function write_context( int $source_id, int $template_id, string $scope, string $fingerprint ) {
 		if ( ! in_array( $scope, self::SCOPES, true ) ) {
-			return self::error( 'worldgraph_generation_default_scope_invalid', __( 'Choose Project or item defaults.', 'worldgraph' ), 400 );
+			return self::error( 'worldgraph_generation_default_scope_invalid', __( 'Choose Template, Project, or item defaults.', 'worldgraph' ), 400 );
 		}
 		$source = get_post( $source_id );
 		if ( ! $source instanceof \WP_Post || ! Asset_Generator::supports( $source_id ) ) {
@@ -247,7 +271,9 @@ class Generation_Run_Defaults {
 		}
 
 		$project_id = Generation_Workflows::project_id_for_source( $source_id );
-		if ( 'project' === $scope ) {
+		if ( 'template' === $scope ) {
+			$target_id = $template_id;
+		} elseif ( 'project' === $scope ) {
 			if ( ! $project_id ) {
 				return self::error( 'worldgraph_generation_default_project_missing', __( 'This item does not belong to a Project.', 'worldgraph' ), 409 );
 			}
@@ -286,15 +312,54 @@ class Generation_Run_Defaults {
 
 	/** Read and atomically revalidate one exact stored layer. */
 	private static function read_layer( int $post_id, int $connection_id, int $template_id, array $description ): array {
-		$layer = self::empty_layer( $post_id );
-		$raw   = get_post_meta( $post_id, self::META_KEY, true );
-		if ( '' === $raw || [] === $raw || null === $raw ) {
+		$layer  = self::empty_layer( $post_id );
+		$stored = get_post_meta( $post_id, self::META_KEY, false );
+		if ( [] === $stored ) {
 			return $layer;
 		}
-		if ( ! is_array( $raw ) || self::VERSION !== (int) ( $raw['version'] ?? 0 ) || ! is_array( $raw['entries'] ?? null ) ) {
-			$layer['status']     = 'invalid_document';
-			$layer['warnings'][] = 'invalid_document';
+		if ( ! is_array( $stored ) || 1 !== count( $stored ) ) {
+			$layer['has_entry']   = true;
+			$layer['status']      = 'invalid_document';
+			$layer['warnings'][]  = 'invalid_document';
 			return $layer;
+		}
+		$raw = reset( $stored );
+		if (
+			! is_array( $raw )
+			|| self::VERSION !== (int) ( $raw['version'] ?? 0 )
+			|| ! is_array( $raw['entries'] ?? null )
+			|| count( $raw['entries'] ) > self::MAX_ENTRIES
+		) {
+			$layer['has_entry']   = true;
+			$layer['status']      = 'invalid_document';
+			$layer['warnings'][]  = 'invalid_document';
+			return $layer;
+		}
+		$raw_encoded = wp_json_encode( $raw );
+		if ( false === $raw_encoded || strlen( $raw_encoded ) > self::MAX_BYTES ) {
+			$layer['has_entry']   = true;
+			$layer['status']      = 'invalid_document';
+			$layer['warnings'][]  = 'invalid_document';
+			return $layer;
+		}
+		foreach ( $raw['entries'] as $stored_key => $stored_entry ) {
+			$stored_connection  = is_array( $stored_entry ) ? absint( $stored_entry['connection_id'] ?? 0 ) : 0;
+			$stored_template    = is_array( $stored_entry ) ? absint( $stored_entry['template_id'] ?? 0 ) : 0;
+			$stored_fingerprint = is_array( $stored_entry ) ? sanitize_text_field( (string) ( $stored_entry['fingerprint'] ?? '' ) ) : '';
+			if (
+				! is_string( $stored_key )
+				|| ! is_array( $stored_entry )
+				|| ! $stored_connection
+				|| ! $stored_template
+				|| self::pair_key( $stored_connection, $stored_template ) !== $stored_key
+				|| ! preg_match( '/^[a-f0-9]{64}$/', $stored_fingerprint )
+				|| ! self::scalar_values( $stored_entry['values'] ?? null )
+			) {
+				$layer['has_entry']   = true;
+				$layer['status']      = 'invalid_document';
+				$layer['warnings'][]  = 'invalid_document';
+				return $layer;
+			}
 		}
 
 		$key   = self::pair_key( $connection_id, $template_id );
@@ -349,6 +414,99 @@ class Generation_Run_Defaults {
 		}
 	}
 
+	/** Describe the explicit Template field separately from its resolved defaults. */
+	private static function template_layer( int $template_id, array $description, array $values ): array {
+		$layer = [
+			'post_id'     => $template_id,
+			'values'      => $values,
+			'fingerprint' => sanitize_text_field( (string) ( $description['fingerprint'] ?? '' ) ),
+			'has_entry'   => false,
+			'status'      => 'current',
+			'warnings'    => [],
+		];
+		$raw = worldgraph_get_field_value( $template_id, 'default_values' );
+		if ( is_array( $raw ) ) {
+			if ( empty( $raw ) ) {
+				return $layer;
+			}
+			$layer['has_entry'] = true;
+			if ( array_is_list( $raw ) ) {
+				$layer['status']     = 'invalid_document';
+				$layer['warnings'][] = 'invalid_document';
+				return $layer;
+			}
+			$decoded = $raw;
+		} elseif ( ! is_string( $raw ) || '' === trim( $raw ) || '{}' === trim( $raw ) ) {
+			return $layer;
+		} elseif ( strlen( $raw ) > Template_Run_Controls::MAX_CONFIGURATION_BYTES ) {
+			$layer['has_entry']   = true;
+			$layer['status']      = 'invalid_document';
+			$layer['warnings'][]  = 'invalid_document';
+			return $layer;
+		} else {
+			$object  = json_decode( $raw );
+			$decoded = json_decode( $raw, true, 32 );
+			$layer['has_entry'] = true;
+			if ( ! $object instanceof \stdClass || ! is_array( $decoded ) ) {
+				$layer['status']     = 'invalid_document';
+				$layer['warnings'][] = 'invalid_document';
+				return $layer;
+			}
+		}
+
+		$submitted = isset( $decoded['parameters'] ) && is_array( $decoded['parameters'] )
+			? $decoded['parameters']
+			: $decoded;
+		$validated = Template_Run_Controls::validate_description( $description, $submitted );
+		if ( is_wp_error( $validated ) ) {
+			$layer['status']     = 'incompatible';
+			$layer['warnings'][] = 'incompatible';
+		}
+
+		return $layer;
+	}
+
+	/** Encode a flat, deterministically ordered Template defaults object. */
+	private static function canonical_template_defaults( array $values ) {
+		if ( ! self::scalar_values( $values ) ) {
+			return false;
+		}
+		ksort( $values, SORT_STRING );
+		if ( empty( $values ) ) {
+			return '{}';
+		}
+
+		$encoded = wp_json_encode( $values, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
+		return false !== $encoded && strlen( $encoded ) <= Template_Run_Controls::MAX_CONFIGURATION_BYTES
+			? $encoded
+			: false;
+	}
+
+	/** Persist the Template baseline and recheck its fingerprint before writing. */
+	private static function persist_template_defaults( int $template_id, array $values, string $fingerprint ) {
+		$current = (string) ( Template_Run_Controls::describe( $template_id )['fingerprint'] ?? '' );
+		if ( '' === $fingerprint || '' === $current || ! hash_equals( $current, $fingerprint ) ) {
+			return self::error( 'worldgraph_generation_default_fingerprint_stale', __( 'The Template controls changed. Refresh them before saving defaults.', 'worldgraph' ), 409 );
+		}
+
+		$encoded = self::canonical_template_defaults( $values );
+		if ( false === $encoded ) {
+			return self::error( 'worldgraph_generation_default_template_invalid', __( 'Template defaults must be a bounded object of validated scalar values.', 'worldgraph' ), 400 );
+		}
+		$before = (string) worldgraph_get_field_value( $template_id, 'default_values' );
+		if ( $before === $encoded ) {
+			return true;
+		}
+
+		$updated = worldgraph_update_field_value( $template_id, 'default_values', $encoded );
+		$stored  = (string) worldgraph_get_field_value( $template_id, 'default_values' );
+		if ( ! $updated || $stored !== $encoded ) {
+			return self::error( 'worldgraph_generation_default_template_write_failed', __( 'Template defaults could not be saved.', 'worldgraph' ), 500 );
+		}
+
+		return true;
+	}
+
 	/**
 	 * Load and strictly validate a complete document before mutating it.
 	 *
@@ -356,43 +514,58 @@ class Generation_Run_Defaults {
 	 * and-swap. Keeping it separate from the canonicalized document prevents a
 	 * concurrent request from being silently overwritten between read and write.
 	 *
-	 * @param int                      $post_id  Metadata owner.
-	 * @param array<string,mixed>|null $snapshot Exact pre-mutation state.
+	 * An explicit reset may clear the entire metadata key when its document is
+	 * unreadable. Selective pair removal is unsafe in that state, and retaining
+	 * an invisible corrupt value would make Reset appear successful while it
+	 * continued to affect later writes.
+	 *
+	 * @param int                      $post_id            Metadata owner.
+	 * @param array<string,mixed>|null $snapshot           Exact pre-mutation state.
+	 * @param bool                     $allow_invalid_reset Return an empty document and destructive reset snapshot when unreadable.
 	 * @return array<string,mixed>|WP_Error
 	 */
-	private static function document_for_write( int $post_id, ?array &$snapshot = null ) {
+	private static function document_for_write( int $post_id, ?array &$snapshot = null, bool $allow_invalid_reset = false ) {
 		$stored = get_post_meta( $post_id, self::META_KEY, false );
-		if ( ! is_array( $stored ) || count( $stored ) > 1 ) {
+		if ( ! is_array( $stored ) ) {
 			return self::error( 'worldgraph_generation_default_document_invalid', __( 'Saved generation defaults have an unsupported format.', 'worldgraph' ), 409 );
 		}
 
 		$exists   = 1 === count( $stored );
 		$raw      = $exists ? reset( $stored ) : '';
 		$snapshot = [
-			'exists' => $exists,
-			'value'  => $raw,
+			'exists'     => ! empty( $stored ),
+			'value'      => $raw,
+			'values'     => array_values( $stored ),
+			'unreadable' => false,
 		];
+		if ( count( $stored ) > 1 ) {
+			return self::invalid_document_for_reset( $snapshot, $allow_invalid_reset, 'worldgraph_generation_default_document_invalid', __( 'Saved generation defaults have an unsupported format.', 'worldgraph' ) );
+		}
 		if ( ! $exists ) {
 			return [ 'version' => self::VERSION, 'entries' => [] ];
 		}
 		if ( ! is_array( $raw ) || self::VERSION !== (int) ( $raw['version'] ?? 0 ) || ! is_array( $raw['entries'] ?? null ) ) {
-			return self::error( 'worldgraph_generation_default_document_invalid', __( 'Saved generation defaults have an unsupported format.', 'worldgraph' ), 409 );
+			return self::invalid_document_for_reset( $snapshot, $allow_invalid_reset, 'worldgraph_generation_default_document_invalid', __( 'Saved generation defaults have an unsupported format.', 'worldgraph' ) );
+		}
+		$raw_encoded = wp_json_encode( $raw );
+		if ( false === $raw_encoded || strlen( $raw_encoded ) > self::MAX_BYTES ) {
+			return self::invalid_document_for_reset( $snapshot, $allow_invalid_reset, 'worldgraph_generation_default_document_large', __( 'Saved generation defaults are too large to read safely.', 'worldgraph' ) );
 		}
 		if ( count( $raw['entries'] ) > self::MAX_ENTRIES ) {
-			return self::error( 'worldgraph_generation_default_document_large', __( 'Too many generation default entries are stored on this item.', 'worldgraph' ), 409 );
+			return self::invalid_document_for_reset( $snapshot, $allow_invalid_reset, 'worldgraph_generation_default_document_large', __( 'Too many generation default entries are stored on this item.', 'worldgraph' ) );
 		}
 
 		$entries = [];
 		foreach ( $raw['entries'] as $key => $entry ) {
 			if ( ! is_string( $key ) || ! is_array( $entry ) ) {
-				return self::error( 'worldgraph_generation_default_document_invalid', __( 'Saved generation defaults contain an invalid entry.', 'worldgraph' ), 409 );
+				return self::invalid_document_for_reset( $snapshot, $allow_invalid_reset, 'worldgraph_generation_default_document_invalid', __( 'Saved generation defaults contain an invalid entry.', 'worldgraph' ) );
 			}
 			$connection_id = absint( $entry['connection_id'] ?? 0 );
 			$template_id   = absint( $entry['template_id'] ?? 0 );
 			$fingerprint   = sanitize_text_field( (string) ( $entry['fingerprint'] ?? '' ) );
 			$values        = $entry['values'] ?? null;
 			if ( ! $connection_id || ! $template_id || self::pair_key( $connection_id, $template_id ) !== $key || ! preg_match( '/^[a-f0-9]{64}$/', $fingerprint ) || ! self::scalar_values( $values ) ) {
-				return self::error( 'worldgraph_generation_default_document_invalid', __( 'Saved generation defaults contain an invalid entry.', 'worldgraph' ), 409 );
+				return self::invalid_document_for_reset( $snapshot, $allow_invalid_reset, 'worldgraph_generation_default_document_invalid', __( 'Saved generation defaults contain an invalid entry.', 'worldgraph' ) );
 			}
 			$entries[ $key ] = [
 				'connection_id' => $connection_id,
@@ -404,6 +577,16 @@ class Generation_Run_Defaults {
 		ksort( $entries, SORT_STRING );
 
 		return [ 'version' => self::VERSION, 'entries' => $entries ];
+	}
+
+	/** Convert an unreadable document to an explicitly destructive reset plan. */
+	private static function invalid_document_for_reset( array &$snapshot, bool $allow_invalid_reset, string $code, string $message ) {
+		if ( ! $allow_invalid_reset ) {
+			return self::error( $code, $message, 409 );
+		}
+
+		$snapshot['unreadable'] = true;
+		return [ 'version' => self::VERSION, 'entries' => [] ];
 	}
 
 	/**
@@ -426,6 +609,9 @@ class Generation_Run_Defaults {
 
 		if ( ! array_key_exists( 'exists', $snapshot ) || ! is_bool( $snapshot['exists'] ) || ! array_key_exists( 'value', $snapshot ) ) {
 			return self::error( 'worldgraph_generation_default_conflict', __( 'These generation defaults changed in another editor. Refresh before saving again.', 'worldgraph' ), 409 );
+		}
+		if ( ! empty( $snapshot['unreadable'] ) ) {
+			return self::clear_unreadable_document( $post_id, $document, $snapshot );
 		}
 
 		$existed = true === ( $snapshot['exists'] ?? false );
@@ -450,6 +636,30 @@ class Generation_Run_Defaults {
 		} elseif ( update_post_meta( $post_id, self::META_KEY, $document, $before ) ) {
 			return true;
 		} elseif ( $document === get_post_meta( $post_id, self::META_KEY, true ) ) {
+			return true;
+		}
+
+		return self::error( 'worldgraph_generation_default_conflict', __( 'These generation defaults changed in another editor. Refresh before saving again.', 'worldgraph' ), 409 );
+	}
+
+	/** Clear only the exact unreadable values observed by an explicit reset. */
+	private static function clear_unreadable_document( int $post_id, array $document, array $snapshot ) {
+		if ( ! empty( $document['entries'] ) || ! is_array( $snapshot['values'] ?? null ) ) {
+			return self::error( 'worldgraph_generation_default_conflict', __( 'These generation defaults changed in another editor. Refresh before saving again.', 'worldgraph' ), 409 );
+		}
+		$before = array_values( $snapshot['values'] );
+		if ( $before !== array_values( get_post_meta( $post_id, self::META_KEY, false ) ) ) {
+			return self::error( 'worldgraph_generation_default_conflict', __( 'These generation defaults changed in another editor. Refresh before saving again.', 'worldgraph' ), 409 );
+		}
+
+		foreach ( $before as $value ) {
+			if ( '' === $value || null === $value || false === $value ) {
+				delete_post_meta( $post_id, self::META_KEY );
+				break;
+			}
+			delete_post_meta( $post_id, self::META_KEY, $value );
+		}
+		if ( [] === get_post_meta( $post_id, self::META_KEY, false ) ) {
 			return true;
 		}
 

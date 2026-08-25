@@ -373,6 +373,20 @@ class Generation_Prompt_Policy {
 		return self::enforce_hard_limits( self::clean_text( $prompt ), (array) $policy['limits'] );
 	}
 
+	/**
+	 * Fingerprint the effective normalized policy while excluding provenance.
+	 *
+	 * Source provenance is intentionally excluded: changing a diagnostic source
+	 * label without changing the resolved limits, sections, or hints must not
+	 * invalidate already accepted generation work.
+	 */
+	public static function fingerprint( array $policy ): string {
+		$policy = self::finalize_policy( $policy );
+		unset( $policy['sources'] );
+
+		return hash( 'sha256', (string) wp_json_encode( self::canonicalize_cache_value( $policy ) ) );
+	}
+
 	/** Return a safe preview DTO without exposing provider schema or configuration. */
 	public static function preview( string $prompt, array $policy, int $template_id = 0 ): array {
 		$policy = self::finalize_policy( $policy );
@@ -771,7 +785,7 @@ class Generation_Prompt_Policy {
 				}
 			}
 			foreach ( $node as $key => $child ) {
-				if ( is_array( $child ) && in_array( (string) $key, [ 'inputSchema', 'input_schema', 'schema', 'properties', 'components' ], true ) ) {
+				if ( is_array( $child ) && in_array( (string) $key, [ 'inputSchema', 'input_schema', 'input', 'parameters', 'schema', 'properties', 'components' ], true ) ) {
 					$queue[] = [ $child, $depth + 1 ];
 				}
 			}
@@ -780,11 +794,19 @@ class Generation_Prompt_Policy {
 		return $limits ? min( $limits ) : 0;
 	}
 
-	/** Infer a stable family from explicit metadata and Template identifiers. */
-	private static function template_family( int $template_id ): string {
+	/** Infer a stable family from explicit metadata, workflow nodes, and Template identifiers. */
+	public static function template_family( int $template_id ): string {
 		$family = Model_Family::sanitize( (string) worldgraph_get_field_value( $template_id, 'model_family' ) );
 		if ( '' !== $family ) {
 			return $family;
+		}
+
+		$workflow = json_decode( (string) worldgraph_get_field_value( $template_id, 'workflow_json' ), true );
+		if ( is_array( $workflow ) ) {
+			$family = Model_Family::detect_from_workflow( $workflow );
+			if ( '' !== $family ) {
+				return $family;
+			}
 		}
 
 		$post = get_post( $template_id );

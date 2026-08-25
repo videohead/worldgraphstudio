@@ -505,6 +505,37 @@
 		}
 	}
 
+	function runControlSourceLabel( source ) {
+		var labels = {
+			template: strings.templateDefaultSource || 'Inherited from Template',
+			project_profile: strings.projectProfileSource || 'Inherited from Project media profile',
+			project: strings.projectDefaultSource || 'Inherited from Project defaults',
+			item: strings.itemDefaultSource || 'Inherited from this item',
+			run: strings.currentRunSource || 'This run (not saved)',
+			initial: strings.initialValueSource || 'Initial value'
+		};
+
+		return labels[ source ] || ( strings.inheritedValueSource || 'Inherited value' );
+	}
+
+	function setRunControlSource( input, source ) {
+		if ( ! input._worldgraphRunSource ) {
+			return;
+		}
+		var label = runControlSourceLabel( source || 'initial' );
+		if ( input._worldgraphRunSource.textContent !== label ) {
+			input._worldgraphRunSource.textContent = label;
+		}
+	}
+
+	function appendRunControlDescription( input, id ) {
+		var describedBy = ( input.getAttribute( 'aria-describedby' ) || '' ).split( /\s+/ ).filter( Boolean );
+		if ( describedBy.indexOf( id ) === -1 ) {
+			describedBy.push( id );
+		}
+		input.setAttribute( 'aria-describedby', describedBy.join( ' ' ) );
+	}
+
 	function createRunControlInput( panel, field, template, savedValues ) {
 		var wrapper = document.createElement( 'div' );
 		var inputId = nextRunControlId( panel, template.id );
@@ -569,9 +600,11 @@
 		input._worldgraphRunDirty = !! hasSaved;
 		input.addEventListener( 'input', function () {
 			input._worldgraphRunDirty = true;
+			setRunControlSource( input, 'run' );
 		} );
 		input.addEventListener( 'change', function () {
 			input._worldgraphRunDirty = true;
+			setRunControlSource( input, 'run' );
 		} );
 		if ( [ 'integer', 'number' ].indexOf( field.type ) !== -1 ) {
 			applyNumericRunControlAttributes( input, field );
@@ -598,18 +631,15 @@
 			input.setAttribute( 'aria-describedby', description.id );
 			wrapper.appendChild( description );
 		}
-		if ( effectiveDefault.source ) {
-			var source = document.createElement( 'small' );
-			var sourceLabels = {
-				template: strings.templateDefaultSource || 'Template default',
-				project_profile: strings.projectProfileSource || 'Project media profile',
-				project: strings.projectDefaultSource || 'Project default',
-				item: strings.itemDefaultSource || 'Item default'
-			};
-			source.className = 'worldgraph-generate-asset__run-control-source';
-			source.textContent = sourceLabels[ effectiveDefault.source ] || effectiveDefault.source;
-			wrapper.appendChild( source );
-		}
+		var source = document.createElement( 'small' );
+		source.id = inputId + '-source';
+		source.className = 'worldgraph-generate-asset__run-control-source';
+		source.setAttribute( 'aria-live', 'polite' );
+		source.setAttribute( 'aria-atomic', 'true' );
+		input._worldgraphRunSource = source;
+		setRunControlSource( input, hasSaved ? 'run' : ( effectiveDefault.source || 'initial' ) );
+		appendRunControlDescription( input, source.id );
+		wrapper.appendChild( source );
 
 		return wrapper;
 	}
@@ -633,13 +663,152 @@
 		}
 	}
 
+	function runDefaultScopeLabel( scope ) {
+		var labels = {
+			template: strings.templateLayerLabel || 'Template defaults',
+			project_profile: strings.projectProfileLayerLabel || 'Project media profile',
+			project: strings.projectLayerLabel || 'Project defaults',
+			item: strings.itemLayerLabel || 'Item defaults'
+		};
+
+		return labels[ scope ] || ( strings.savedDefaultsLayerLabel || 'Saved defaults' );
+	}
+
+	function runDefaultStatusLabel( status ) {
+		var labels = {
+			current: strings.defaultStatusCurrent || 'Current',
+			inherited: strings.defaultStatusInherited || 'Inherited; no saved override',
+			revalidated: strings.defaultStatusRevalidated || 'Revalidated after Template changes',
+			incompatible: strings.defaultStatusIncompatible || 'Not used; incompatible with the current Template controls',
+			invalid_entry: strings.defaultStatusInvalidEntry || 'Not used; saved row is invalid',
+			invalid_document: strings.defaultStatusInvalidDocument || 'Not used; saved defaults repository is invalid'
+		};
+
+		return labels[ status ] || ( strings.defaultStatusUnknown || 'Needs review' );
+	}
+
+	function runDefaultWarningCode( warning ) {
+		if ( warning && 'object' === typeof warning ) {
+			return String( warning.code || warning.status || '' );
+		}
+		return String( warning || '' );
+	}
+
+	function runDefaultWarningLabel( warning ) {
+		var labels = {
+			invalid_document: strings.defaultWarningInvalidDocument || 'A saved defaults repository is invalid and is not being used. Reset the affected layer before saving new defaults.',
+			invalid_entry: strings.defaultWarningInvalidEntry || 'A saved defaults row is invalid and is not being used. Reset the affected layer.',
+			incompatible: strings.defaultWarningIncompatible || 'Saved values are incompatible with the current Template controls and are not being used. Reset the affected layer.',
+			revalidated: strings.defaultWarningRevalidated || 'Saved values were revalidated after the Template controls changed. Review them before generating.'
+		};
+
+		return labels[ runDefaultWarningCode( warning ) ] || ( strings.defaultWarningUnknown || 'Saved generation defaults need review.' );
+	}
+
+	function runDefaultLayerStatus( defaults, target ) {
+		if ( target && target.status ) {
+			return String( target.status );
+		}
+		var layer = defaults && defaults.layers && defaults.layers[ String( target && target.scope || '' ) ];
+		return layer && layer.status ? String( layer.status ) : 'inherited';
+	}
+
+	function problematicRunDefaultStatus( status ) {
+		return [ 'incompatible', 'invalid_entry', 'invalid_document' ].indexOf( String( status || '' ) ) !== -1;
+	}
+
+	function renderRunDefaultStatus( editor, defaults, targets ) {
+		var layers = defaults && defaults.layers && 'object' === typeof defaults.layers ? defaults.layers : {};
+		var warnings = defaults && Array.isArray( defaults.warnings ) ? defaults.warnings : [];
+		var targetScopes = {};
+		var rows = [];
+		( targets || [] ).forEach( function ( target ) {
+			targetScopes[ String( target.scope || '' ) ] = target;
+		} );
+		[ 'template', 'project_profile', 'project', 'item' ].forEach( function ( scope ) {
+			if ( ! Object.prototype.hasOwnProperty.call( layers, scope ) ) {
+				return;
+			}
+			var layer = layers[ scope ] || {};
+			if (
+				[ 'project', 'item' ].indexOf( scope ) !== -1 &&
+				! targetScopes[ scope ] &&
+				! layer.has_entry &&
+				! ( parseInt( layer.post_id, 10 ) || 0 )
+			) {
+				return;
+			}
+			rows.push( {
+				scope: scope,
+				status: String( ( targetScopes[ scope ] && targetScopes[ scope ].status ) || layer.status || 'inherited' )
+			} );
+		} );
+
+		if ( ! rows.length && ! warnings.length ) {
+			return;
+		}
+
+		var region = document.createElement( 'div' );
+		region.className = 'worldgraph-generate-asset__run-default-status';
+		region.setAttribute( 'role', 'status' );
+		region.setAttribute( 'aria-live', 'polite' );
+		region.setAttribute( 'aria-atomic', 'true' );
+		if ( rows.length ) {
+			var title = document.createElement( 'strong' );
+			var list = document.createElement( 'ul' );
+			title.textContent = strings.defaultLayerStatusHeading || 'Default layer status';
+			list.className = 'worldgraph-generate-asset__run-default-layer-list';
+			rows.forEach( function ( row ) {
+				var item = document.createElement( 'li' );
+				var label = document.createElement( 'span' );
+				var status = document.createElement( 'span' );
+				item.className = problematicRunDefaultStatus( row.status ) ? 'is-warning' : '';
+				label.textContent = runDefaultScopeLabel( row.scope );
+				status.textContent = runDefaultStatusLabel( row.status );
+				item.appendChild( label );
+				item.appendChild( status );
+				list.appendChild( item );
+			} );
+			region.appendChild( title );
+			region.appendChild( list );
+		}
+		if ( warnings.length ) {
+			var warningList = document.createElement( 'ul' );
+			var seenWarnings = {};
+			warningList.className = 'worldgraph-generate-asset__run-default-warnings';
+			warnings.forEach( function ( warning ) {
+				var code = runDefaultWarningCode( warning ) || 'unknown';
+				if ( seenWarnings[ code ] ) {
+					return;
+				}
+				seenWarnings[ code ] = true;
+				var item = document.createElement( 'li' );
+				item.textContent = runDefaultWarningLabel( warning );
+				warningList.appendChild( item );
+			} );
+			region.classList.add( 'has-warning' );
+			region.appendChild( warningList );
+		}
+		editor.appendChild( region );
+	}
+
+	function resetRunDefaultsConfirmation( scope ) {
+		if ( 'template' === scope ) {
+			return strings.confirmResetTemplateDefaults || 'Reset these Template defaults? Every Project and item using this Template will inherit its built-in values.';
+		}
+		if ( 'project' === scope ) {
+			return strings.confirmResetProjectDefaults || 'Reset these Project defaults and inherit from the Template and Project media profile?';
+		}
+		return strings.confirmResetItemDefaults || strings.confirmResetDefaults || 'Reset these item defaults and inherit from the Project?';
+	}
+
 	function persistRunDefaults( panel, templatePanel, target, reset ) {
 		var template = templatePanel._worldgraphRunTemplate;
 		var defaults = template && template.run_defaults;
 		if ( ! template || ! defaults || ! defaults.fingerprint || panel._worldgraphBusy ) {
 			return;
 		}
-		if ( reset && ! window.confirm( strings.confirmResetDefaults || 'Reset this saved default layer and inherit from the layer above?' ) ) {
+		if ( reset && ! window.confirm( resetRunDefaultsConfirmation( String( target.scope ) ) ) ) {
 			return;
 		}
 
@@ -675,29 +844,38 @@
 
 	function renderRunDefaultActions( panel, templatePanel, template ) {
 		var defaults = template && template.run_defaults;
-		var targets = defaults && Array.isArray( defaults.targets ) ? defaults.targets.filter( function ( target ) {
-			return target && target.editable && [ 'project', 'item' ].indexOf( String( target.scope ) ) !== -1;
+		var allTargets = defaults && Array.isArray( defaults.targets ) ? defaults.targets.filter( function ( target ) {
+			return target && [ 'template', 'project', 'item' ].indexOf( String( target.scope ) ) !== -1;
 		} ) : [];
-		if ( ! targets.length ) {
+		var targets = allTargets.filter( function ( target ) {
+			return target.editable;
+		} );
+		if ( ! defaults || ( ! allTargets.length && ! ( defaults.layers && 'object' === typeof defaults.layers ) && ! ( defaults.warnings || [] ).length ) ) {
 			return;
 		}
 
 		var editor = document.createElement( 'div' );
 		var help = document.createElement( 'p' );
 		editor.className = 'worldgraph-generate-asset__run-default-editor';
+		renderRunDefaultStatus( editor, defaults, allTargets );
 		help.className = 'description';
 		help.textContent = strings.defaultLayersHelp || 'Template → Project → item → this run. Save only when these values should become reusable defaults.';
 		editor.appendChild( help );
 		targets.forEach( function ( target ) {
+			var targetEditor = document.createElement( 'div' );
 			var actions = document.createElement( 'div' );
 			var save = document.createElement( 'button' );
+			var targetStatus = runDefaultLayerStatus( defaults, target );
+			targetEditor.className = 'worldgraph-generate-asset__run-default-target worldgraph-generate-asset__run-default-target--' + String( target.scope );
 			actions.className = 'worldgraph-generate-asset__run-default-actions';
 			save.type = 'button';
 			save.className = 'button button-small';
 			save.setAttribute( 'data-worldgraph-default-action', '' );
-			save.textContent = 'project' === target.scope
-				? ( strings.saveProjectDefaults || 'Save current as Project defaults' )
-				: ( strings.saveItemDefaults || 'Save current as item defaults' );
+			save.textContent = 'template' === target.scope
+				? ( strings.saveTemplateDefaults || 'Save current values as Template defaults' )
+				: ( 'project' === target.scope
+					? ( strings.saveProjectDefaults || 'Save current values as Project defaults' )
+					: ( strings.saveItemDefaults || 'Save current values as item defaults' ) );
 			save.addEventListener( 'click', function () {
 				persistRunDefaults( panel, templatePanel, target, false );
 			} );
@@ -705,17 +883,26 @@
 			if ( target.has_overrides ) {
 				var reset = document.createElement( 'button' );
 				reset.type = 'button';
-				reset.className = 'button-link';
+				reset.className = problematicRunDefaultStatus( targetStatus ) ? 'button-link-delete' : 'button-link';
 				reset.setAttribute( 'data-worldgraph-default-action', '' );
-				reset.textContent = 'project' === target.scope
-					? ( strings.resetProjectDefaults || 'Reset Project defaults' )
-					: ( strings.resetItemDefaults || 'Reset item defaults' );
+				reset.textContent = 'template' === target.scope
+					? ( strings.resetTemplateDefaults || 'Reset Template defaults' )
+					: ( 'project' === target.scope
+						? ( strings.resetProjectDefaults || 'Reset Project defaults' )
+						: ( strings.resetItemDefaults || 'Reset item defaults' ) );
 				reset.addEventListener( 'click', function () {
 					persistRunDefaults( panel, templatePanel, target, true );
 				} );
 				actions.appendChild( reset );
 			}
-			editor.appendChild( actions );
+			targetEditor.appendChild( actions );
+			if ( 'template' === target.scope ) {
+				var templateHelp = document.createElement( 'p' );
+				templateHelp.className = 'description worldgraph-generate-asset__run-default-target-help';
+				templateHelp.textContent = strings.templateDefaultsHelp || 'Template defaults affect every use of this Template across all Projects and items.';
+				targetEditor.appendChild( templateHelp );
+			}
+			editor.appendChild( targetEditor );
 		} );
 		templatePanel.appendChild( editor );
 	}

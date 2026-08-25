@@ -109,27 +109,8 @@ class Generation_Prompt_Profiles {
 		return Generation_Prompt_Policy::finalize_text( $filtered, $policy );
 	}
 
-	/** Infer a stable family slug from Template metadata and graph filenames. */
+	/** Share the policy resolver so admin guidance and runtime ordering cannot diverge. */
 	private static function template_family( int $template_id ): string {
-		$family = Model_Family::sanitize( (string) worldgraph_get_field_value( $template_id, 'model_family' ) );
-		if ( '' !== $family ) {
-			return $family;
-		}
-
-		$post = get_post( $template_id );
-		$hints = [
-			$post instanceof \WP_Post ? $post->post_title : '',
-			(string) worldgraph_get_field_value( $template_id, 'template_name' ),
-			(string) worldgraph_get_field_value( $template_id, 'provider_template_id' ),
-			(string) worldgraph_get_field_value( $template_id, 'workflow_json' ),
-		];
-		foreach ( $hints as $hint ) {
-			$family = Model_Family::sanitize( $hint );
-			if ( '' !== $family ) {
-				return $family;
-			}
-		}
-
-		return '';
+		return Generation_Prompt_Policy::template_family( $template_id );
 	}
 }

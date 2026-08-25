@@ -4,7 +4,7 @@
 > Template-resolution preferences, bounded Story Graph prompts, durable item,
 > Project, and whole-story demonstration batches, dependency-aware fallback
 > planning, FFmpeg rough-cut assembly, Template-conditional per-run controls,
-> explicit Project/item run-default layers, and their REST operations are
+> explicit Template/Project/item run-default layers, and their REST operations are
 > delivered. Provider execution and final assembly
 > still depend on the deployment's Connections, models, and FFmpeg installation.
 > A dedicated
@@ -229,12 +229,27 @@ current value. Runtime precedence, from lowest to highest, is:
 
 The same item layer applies to every supported source type, including Shot,
 Character, Location, Prop, Scene, Episode, and Story World; it is not a
-Shot-specific schema. Project and item saves are explicit actions. Generating
-media never changes a default. **Save current as Project default** and **Save
-current as item default** submit the complete visible form, which the server
-validates and stores sparsely against the inherited lower layers. The matching
-reset action removes only that pair's override and immediately reveals its
-inherited value. A one-off value always wins and is never persisted by the run.
+Shot-specific schema. Template, Project, and item saves are explicit actions.
+Generating media never changes a default. **Save current values as Template
+defaults** changes the baseline for every Project and item that uses that exact
+Template. The Project and item actions submit the same complete
+visible form, which the server validates and stores sparsely against inherited
+lower layers. The matching reset action removes only that layer and immediately
+reveals its inherited value. A one-off value always wins and is never persisted
+by the run.
+
+The editor shows the status of each available layer and converts repository
+warning codes into human-readable notices. Invalid or incompatible saved rows
+are ignored and, when the current user can edit the affected target, retain a
+visible reset action for recovery. Each field shows its initial provenance;
+after any input or change event it reads **This run (not saved)** so an edited
+value is never presented as inherited.
+
+Template saves persist the validated flat scalar object as canonical JSON in
+the Template's `default_values` field; Template reset writes `{}`. The raw
+**Default Values JSON (Advanced)** field remains available as an escape hatch,
+but ordinary editors should use the validated Generate surface. Project and
+item defaults continue to use the exact-pair repository below.
 
 Saved values use the versioned post-meta repository
 `_worldgraph_generation_run_defaults`. Its conceptual JSON shape is:
@@ -263,18 +278,27 @@ it is incompatible. Reparenting a Template to another Connection therefore
 cannot accidentally reuse the old pair.
 
 The contextual `run_defaults` DTO returned with a runnable Template exposes
-the effective values, per-field sources, layers, editable Project/item targets,
-warnings, and current fingerprint. The defaults endpoint is:
+the effective values, per-field sources, layers, editable
+Template/Project/item targets, warnings, and current fingerprint. The defaults
+endpoint is:
 
 ```http
-GET    /wp-json/worldgraph/v1/assets/generate/defaults?post_id={id}&template_id={id}&scope={item|project}
+GET    /wp-json/worldgraph/v1/assets/generate/defaults?post_id={id}&template_id={id}&scope={template|project|item}
 POST   /wp-json/worldgraph/v1/assets/generate/defaults
 DELETE /wp-json/worldgraph/v1/assets/generate/defaults
 ```
 
 POST accepts the complete `values` object and required `fingerprint`; DELETE
 accepts the required fingerprint. Both writes require permission to edit the
-resolved Project or item target.
+resolved Template, Project, or item target.
+
+When a legacy Project/item defaults document is structurally unreadable, its
+target remains marked as having overrides so Reset stays available. Because an
+exact pair cannot be identified safely inside malformed storage, that explicit
+reset clears the unreadable document as a whole; the same snapshot conflict
+check prevents it from erasing a concurrent replacement. Malformed or
+incompatible Template `default_values` similarly reports a warning and remains
+resettable.
 
 Media inputs are not scalar run controls. Image-to-video and
 text-plus-image-to-video Templates continue to obtain their image or
@@ -466,15 +490,15 @@ with:
 - `_worldgraph_gen_batch_plan`, a versioned frozen task list containing source,
   step, workflow, intent, output type, Template, prompt, prompt hash, and
   featured behavior, plus the saved-default snapshot, requested one-off
-  snapshot, effective normalized run values, Project profile, and run-control
-  fingerprint for that task. A
+  snapshot, effective normalized run values, Project profile, run-control
+  fingerprint, and effective prompt-policy fingerprint for that task. A
   demonstration snapshot additionally retains its stable task key, phase,
   required/optional flag, dependencies, symbolic media references, preferred
   modalities, generation-required flag, fallback, and editorial order;
 - `_worldgraph_gen_assembly_plan`, the frozen demonstration timeline and its
   still, silence, and subtitle fallback policy;
 - `_worldgraph_gen_batch_cursor`, which tracks bounded materialization;
-- `_worldgraph_gen_workflow_version = 2`;
+- `_worldgraph_gen_workflow_version = 3`;
 - `_worldgraph_gen_idempotency_key`;
 - `_worldgraph_gen_request_hash`;
 - requester, creation time, planned total, and aggregate status.
@@ -494,6 +518,13 @@ a missing wake-up or return a retryable scheduling error instead of silently
 leaving a committed batch dormant. A child's runnable status is likewise
 written last, after its prompt, Template, requester, intent, and batch
 membership are durable.
+
+Materialization verifies the supplied prompt against both the frozen prompt
+and its SHA-256 digest before an already composed/profiled task may bypass live
+prompt finalization. Version-3 tasks also require the current effective prompt
+policy to match the frozen policy fingerprint; drift is rejected instead of
+silently rewriting accepted work. Older version-2 tasks still require their
+exact frozen prompt digest but cannot retroactively supply a policy snapshot.
 For representative-media batches, the parent moves through
 `batch_materializing`, `batch_activating`, and `batch_active`. WP-Cron creates
 up to 20 non-runnable `staged` children per tick. Only after every task exists

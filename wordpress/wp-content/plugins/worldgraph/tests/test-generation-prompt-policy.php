@@ -9,6 +9,7 @@ defined( 'ABSPATH' ) || exit;
 
 use PHPUnit\Framework\TestCase;
 use WorldGraph\Utils\Generation_Prompt_Policy;
+use WorldGraph\Utils\Generation_Prompt_Profiles;
 
 if ( ! function_exists( 'sanitize_key' ) ) {
 	function sanitize_key( $value ): string {
@@ -63,6 +64,7 @@ if ( ! function_exists( 'wp_trim_words' ) ) {
 require_once dirname( __DIR__ ) . '/includes/utils/generation-modality.php';
 require_once dirname( __DIR__ ) . '/includes/utils/model_family.php';
 require_once dirname( __DIR__ ) . '/includes/utils/class-generation-prompt-policy.php';
+require_once dirname( __DIR__ ) . '/includes/utils/class-generation-prompt-profiles.php';
 
 /** Prompt policy unit tests. */
 final class Test_Generation_Prompt_Policy extends TestCase {
@@ -124,12 +126,87 @@ final class Test_Generation_Prompt_Policy extends TestCase {
 		$this->assertSame( $left, $right );
 	}
 
+	/** Fingerprints track effective prompt behavior, not diagnostic provenance. */
+	public function test_policy_fingerprint_ignores_sources_and_detects_effective_changes(): void {
+		$policy = Generation_Prompt_Policy::for_template(
+			0,
+			[ 'output_type' => 'video', 'post_type' => 'worldgraph_shot', 'intent' => 'shot-video' ]
+		);
+		$provenance_only            = $policy;
+		$provenance_only['sources'] = [ 'core', 'template_editor', 'filter' ];
+
+		$this->assertSame(
+			Generation_Prompt_Policy::fingerprint( $policy ),
+			Generation_Prompt_Policy::fingerprint( $provenance_only )
+		);
+
+		$tighter                        = $policy;
+		$tighter['limits']['max_words'] = max( 1, (int) $policy['limits']['max_words'] - 1 );
+		$this->assertNotSame(
+			Generation_Prompt_Policy::fingerprint( $policy ),
+			Generation_Prompt_Policy::fingerprint( $tighter )
+		);
+
+		$motion_first                       = $policy;
+		$motion_first['hints']['lead_with'] = 'motion';
+		$this->assertNotSame(
+			Generation_Prompt_Policy::fingerprint( $policy ),
+			Generation_Prompt_Policy::fingerprint( $motion_first )
+		);
+	}
+
 	/** Compact family identifiers are recognized without substring false positives. */
 	public function test_compact_template_family_hints_are_recognized_at_token_boundaries(): void {
 		$this->assertSame( 'ltxv', $this->invoke_policy_helper( 'family_from_hint', 'LTXV' ) );
 		$this->assertSame( 'ltxv', $this->invoke_policy_helper( 'family_from_hint', 'LTXV-13B text-to-video checkpoint' ) );
 		$this->assertSame( 'wan', $this->invoke_policy_helper( 'family_from_hint', 'WanVideo 2.2' ) );
 		$this->assertSame( '', $this->invoke_policy_helper( 'family_from_hint', 'A Swan Song' ) );
+	}
+
+	/** A pasted Comfy workflow is a stronger family signal than generic Template text. */
+	public function test_template_family_is_detected_from_manual_comfy_workflow_nodes(): void {
+		$template_id = 987655;
+		$had_state   = array_key_exists( 'worldgraph_import_journal_state', $GLOBALS );
+		$prior_state = $GLOBALS['worldgraph_import_journal_state'] ?? null;
+		$GLOBALS['worldgraph_import_journal_state'] = [
+			'post_types' => [ $template_id => 'worldgraph_template' ],
+			'meta'       => [
+				$template_id => [
+					'model_family'  => '',
+					'modality'      => 'text_image_to_video',
+					'workflow_json' => wp_json_encode(
+						[
+							'1' => [ 'class_type' => 'WanImageToVideo', 'inputs' => [] ],
+						]
+					),
+				],
+			],
+		];
+
+		try {
+			$this->assertSame( 'wan', $this->invoke_policy_helper( 'template_family', $template_id ) );
+			$this->assertSame( 'wan-motion-first', Generation_Prompt_Profiles::for_template( $template_id )['id'] ?? '' );
+		} finally {
+			if ( $had_state ) {
+				$GLOBALS['worldgraph_import_journal_state'] = $prior_state;
+			} else {
+				unset( $GLOBALS['worldgraph_import_journal_state'] );
+			}
+		}
+	}
+
+	/** MCP/REST schema wrappers all contribute trusted numeric prompt ceilings. */
+	public function test_prompt_schema_limit_traverses_input_and_parameters_wrappers(): void {
+		$this->assertSame(
+			240,
+			$this->invoke_policy_helper(
+				'schema_prompt_limit',
+				[
+					'input'      => [ 'properties' => [ 'prompt' => [ 'type' => 'string', 'maxLength' => 320 ] ] ],
+					'parameters' => [ 'properties' => [ 'positive_prompt' => [ 'type' => 'string', 'maxLength' => 240 ] ] ],
+				]
+			)
+		);
 	}
 
 	/** Wan's reviewed profile places visible motion directly after the primary beat. */

@@ -146,6 +146,17 @@ MCP for prompt-writing prose. Negative conditioning remains a separate run
 control. The `worldgraph_generate_asset_prompt` compatibility filter cannot
 expand the final policy bounds.
 
+The built-in profiles are grounded in the model authors' current guidance:
+[WAN 2.2's prompt-extension system prompt](https://github.com/Wan-Video/Wan2.2/blob/main/wan/utils/system_prompt.py),
+the [LTX prompting guide](https://docs.ltx.io/open-source-model/usage-guides/prompting-guide),
+the [FLUX.2 prompting guide](https://docs.bfl.ai/guides/prompting_guide_flux2),
+and [Midjourney prompt basics](https://docs.midjourney.com/hc/en-us/articles/32023408776205-Prompt-Basics).
+The [AI Wiki image guide](https://aiwiki.ai/wiki/prompt_engineering_for_image_generation),
+[PicassoIA video structure guide](https://blog.picassoia.com/best-prompt-structure-for-video-ai),
+and [Magic Hour cinematic cookbook](https://magichour.ai/blog/cinematic-ai-video-prompt-cookbook)
+inform the shared semantic taxonomy. Their suggested formulas and word counts
+are editorial references, not executable instructions or universal limits.
+
 For the official WAN 2.2 14B first/last-frame quality graph, preserve the
 authored two-expert bundle: no Lightning LoRAs, shift 8, 20 steps, CFG 4,
 Euler/simple, a high-noise pass over steps 0-10, then low-noise from 10 to the
@@ -318,6 +329,12 @@ remain in `configuration.prompt_policy`. Trusted adapters may supply
 length, semantic section priority, and concise formatting without copying raw
 provider or MCP prose into a generation request.
 
+When `model_family` is blank on a manually pasted ComfyUI Template, the
+resolver inspects API-workflow node `class_type` values before falling back to
+Template names and checkpoint identifiers. Prompt composition and the admin
+guidance panel share that result, so a Wan graph still receives the Wan
+motion-first profile without redundant operator metadata.
+
 The Template editor makes the common operator layer first-class:
 `prompt_lead_with`, `prompt_format`, `prompt_target_words`, and
 `prompt_max_words`. Blank values inherit reviewed Connection/model guidance;
@@ -411,10 +428,18 @@ Template-conditional fields live in a separate collapsed **Run controls
 
 The generic item layer works for Shot, Character, Location, Prop, Scene,
 Episode, Story World, and other supported sources. Generation never saves a
-default implicitly. The editor provides explicit Project/item save and reset
-actions. A save posts the complete current form; the server stores only values
-that differ from its inherited lower layers. Reset removes only the selected
-scope and pair.
+default implicitly. The editor provides explicit Template, Project, and item
+save and reset actions. Saving Template defaults changes the baseline for every
+Project and item using that exact Template; Project and item
+saves remain scoped to their exact pair. A save posts the complete current
+form; contextual layers store only values that differ from inherited lower
+layers. Reset removes only the selected scope and pair.
+
+The editor displays the returned layer status and warning codes as localized
+human guidance. Invalid or incompatible rows remain resettable whenever the
+backend advertises an editable target with `has_overrides`. Per-field
+provenance changes to **This run (not saved)** on input or change, so a one-off
+edit is never mislabeled as inherited.
 
 Project and item overrides use post meta
 `_worldgraph_generation_run_defaults`, version 1. Entries are keyed exactly
@@ -425,6 +450,14 @@ reset require the current fingerprint to prevent stale-form writes. Stale
 stored values are revalidated against the current contract on read and either
 returned with a warning or ignored; a Template moved to another Connection
 cannot inherit its old pair accidentally.
+
+Template saves instead persist the complete validated scalar baseline as
+canonical JSON in `default_values`; Template reset writes `{}`. Editing that
+layer requires `edit_post` for the Template. Malformed/incompatible Template
+defaults and structurally unreadable Project/item documents remain visibly
+resettable. An explicit reset clears a whole unreadable contextual document
+when no exact pair can be selected safely, while retaining the repository's
+snapshot conflict check.
 
 Runnable Template lists exclude disabled Connections, mismatched output types,
 and Templates whose required bindings cannot be resolved for every applicable
@@ -494,14 +527,21 @@ representative_media` or `demonstration_video`. The parent stores the
 root post, `item`, `project`, or `demonstration` scope, requester, optional
 idempotency key, a
 versioned frozen task plan, materialization cursor, planned total, and aggregate
-status. The current frozen workflow contract is version 2. Each task snapshot
+status. The current frozen workflow contract is version 3. Each task snapshot
 retains its step, source, workflow, intent, output type, Template, prompt,
 prompt hash, featured behavior, saved Project/item default values, requested
 one-off values, effective normalized run values, separately projected Project
-profile values, and the run-control fingerprint. All layers are resolved after
-the task's exact Template is selected and frozen before materialization. Child
-jobs retain the saved-default, requested, and effective snapshots as distinct
-metadata so later default edits cannot change accepted work. Child jobs store
+profile values, run-control fingerprint, and effective prompt-policy
+fingerprint. All layers are resolved after the task's exact Template is
+selected and frozen before materialization. Materialization accepts only the
+exact frozen prompt digest and never re-finalizes an already composed/profiled
+batch prompt against live policy. A changed Template prompt policy rejects the
+frozen task so an operator can review and start a new batch instead of silently
+changing accepted creative direction. Version-2 in-flight tasks retain exact
+prompt-hash enforcement but cannot claim a policy snapshot they never stored.
+Child jobs retain the saved-default, requested, and effective snapshots as
+distinct metadata so later default edits cannot change accepted work. Child
+jobs store
 `_worldgraph_gen_batch_id`, `_worldgraph_gen_batch_step`, and
 `_worldgraph_gen_intent`. This separation lets a Project batch run for hours or
 days while every child remains independently observable through the ordinary
@@ -669,9 +709,9 @@ The canonical REST base is `/wp-json/worldgraph/v1/`.
 | `GET /assets/generate/prompt?post_id={id}` | Direct image/Shot-video actions, read-only prompts and prompt-policy diagnostics, and runnable Templates with sanitized run controls/defaults |
 | `POST /assets/generate/prompt-preview` | Recompose one output for an explicitly selected Template and return bounded prompt-policy diagnostics |
 | `POST /assets/generate` | Queue one story-aware image or Shot video with optional `run_values` |
-| `GET /assets/generate/defaults?post_id={id}&template_id={id}&scope=item\|project` | Inspect effective Template, Project-profile, Project-pair, and item-pair values |
-| `POST /assets/generate/defaults` | Explicitly save the complete current form as sparse Project or item pair defaults; requires the current fingerprint |
-| `DELETE /assets/generate/defaults` | Reset one Project or item pair override; requires the current fingerprint |
+| `GET /assets/generate/defaults?post_id={id}&template_id={id}&scope=template\|project\|item` | Inspect effective Template, Project-profile, Project-pair, and item-pair values |
+| `POST /assets/generate/defaults` | Explicitly save the complete current form as Template defaults or sparse Project/item pair defaults; requires the current fingerprint |
+| `DELETE /assets/generate/defaults` | Reset the Template baseline or one Project/item pair override; requires the current fingerprint |
 | `GET /assets/generate/plan?post_id={id}&scope=item\|project\|demonstration` | Preview representative or whole-story outputs, prompt hashes, runnable Templates and contextual run defaults, fallbacks, and the latest batch |
 | `POST /assets/generate/batches` | Validate and start a durable item, Project representative-media, or Project demonstration batch with optional image/video/audio Template overrides and run values |
 | `GET /assets/generate/batches/{id}` | Read aggregate batch progress and child jobs |

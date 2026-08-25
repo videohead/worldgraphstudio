@@ -38,7 +38,8 @@ class Generation_Workflows {
 	const STEP_META             = '_worldgraph_gen_batch_step';
 	const REPRESENTATIVE_BATCH = 'representative_media';
 	const DEMONSTRATION_BATCH  = 'demonstration_video';
-	const WORKFLOW_VERSION      = 2;
+	const WORKFLOW_VERSION = 3;
+	const PROMPT_POLICY_FINGERPRINT_VERSION = 3;
 	const MATERIALIZE_PER_TICK  = 20;
 	const ACTIVATE_PER_TICK     = 50;
 	const COORDINATOR_LOCK      = 'worldgraph_generation_workflow_coordinator_lock';
@@ -131,6 +132,7 @@ class Generation_Workflows {
 		'worldgraph_episode'   => [ 'field' => 'project', 'types' => [ 'worldgraph_project' ] ],
 		'worldgraph_scene'     => [ 'field' => 'episode', 'types' => [ 'worldgraph_episode' ] ],
 		'worldgraph_shot'      => [ 'field' => 'scene', 'types' => [ 'worldgraph_scene' ] ],
+		'worldgraph_sound'     => [ 'field' => 'scene', 'types' => [ 'worldgraph_scene' ] ],
 	];
 
 	/** Request-local Template lookup cache, keyed by source post and output. */
@@ -478,7 +480,9 @@ class Generation_Workflows {
 				continue;
 			}
 			$field = (array) ( $fields[ $field_name ] ?? [] );
-			$value = self::clean_text( self::field_prompt_value( $post_id, $field_name, $field ), 26 );
+			$value = 'worldgraph_scene' === $post_type && 'location' === $field_name
+				? self::scene_location_prompt_value( $post_id, 14 )
+				: self::clean_text( self::field_prompt_value( $post_id, $field_name, $field ), 26 );
 			if ( 'personality' === $field_name && '' !== $value ) {
 				$value = self::visible_character_traits( $value );
 			}
@@ -775,18 +779,10 @@ class Generation_Workflows {
 			return '';
 		}
 
-		$parts       = [];
-		$location_id = self::related_field_id( (int) $scene->ID, 'worldgraph_scene', 'location', 'worldgraph_location' );
-		$location    = $location_id ? get_post( $location_id ) : null;
-		if ( $location instanceof \WP_Post && 'worldgraph_location' === $location->post_type ) {
-			$location_text = self::clean_text( (string) $location->post_title, 10 );
-			$description   = rtrim( self::first_sentence( (string) worldgraph_get_field_value( $location_id, 'description' ), 14 ), '.; ' );
-			$parts[]       = $location_text . ( '' !== $description ? ' — ' . $description : '' );
-		} else {
-			$location_text = self::field_prompt_value( (int) $scene->ID, 'location', (array) ( worldgraph_get_fields( 'worldgraph_scene' )['location'] ?? [] ) );
-			if ( '' !== $location_text ) {
-				$parts[] = self::clean_text( $location_text, 10 );
-			}
+		$parts         = [];
+		$location_text = self::scene_location_prompt_value( (int) $scene->ID, 14 );
+		if ( '' !== $location_text ) {
+			$parts[] = $location_text;
 		}
 
 		$time = self::clean_text( (string) worldgraph_get_field_value( (int) $scene->ID, 'time_of_day' ), 5 );
@@ -799,6 +795,20 @@ class Generation_Workflows {
 		}
 
 		return $parts ? __( 'Setting', 'worldgraph' ) . ': ' . implode( '; ', $parts ) : '';
+	}
+
+	/** Return one Scene's Location title plus a short physical description. */
+	private static function scene_location_prompt_value( int $scene_id, int $description_words = 14 ): string {
+		$location_id = self::related_field_id( $scene_id, 'worldgraph_scene', 'location', 'worldgraph_location' );
+		$location    = $location_id ? get_post( $location_id ) : null;
+		if ( $location instanceof \WP_Post && 'worldgraph_location' === $location->post_type ) {
+			$title       = self::clean_text( (string) $location->post_title, 10 );
+			$description = rtrim( self::first_sentence( (string) worldgraph_get_field_value( $location_id, 'description' ), $description_words ), '.; ' );
+			return trim( $title . ( '' !== $description ? ' — ' . $description : '' ) );
+		}
+
+		$field = (array) ( worldgraph_get_fields( 'worldgraph_scene' )['location'] ?? [] );
+		return self::clean_text( self::field_prompt_value( $scene_id, 'location', $field ), 10 );
 	}
 
 	/** Resolve the source Scene itself or its closest canonical Scene ancestor. */
@@ -835,19 +845,11 @@ class Generation_Workflows {
 
 	/** Add a Location's physical description to a Scene setting without plot prose. */
 	private static function inherited_field_prompt_value( \WP_Post $ancestor, string $field_name, array $field ): string {
-		$value = self::field_prompt_value( (int) $ancestor->ID, $field_name, $field );
-		if ( 'worldgraph_scene' !== $ancestor->post_type || 'location' !== $field_name ) {
-			return $value;
+		if ( 'worldgraph_scene' === $ancestor->post_type && 'location' === $field_name ) {
+			return self::scene_location_prompt_value( (int) $ancestor->ID, 28 );
 		}
 
-		$location_id = self::related_field_id( (int) $ancestor->ID, 'worldgraph_scene', 'location', 'worldgraph_location' );
-		$location    = $location_id ? get_post( $location_id ) : null;
-		if ( ! $location instanceof \WP_Post || 'worldgraph_location' !== $location->post_type ) {
-			return $value;
-		}
-		$description = self::first_sentence( (string) worldgraph_get_field_value( $location_id, 'description' ), 28 );
-
-		return trim( $value . ( '' !== $description ? ' — ' . $description : '' ) );
+		return self::field_prompt_value( (int) $ancestor->ID, $field_name, $field );
 	}
 
 	/**
@@ -2668,12 +2670,13 @@ class Generation_Workflows {
 					];
 					continue;
 				}
-				$task['template_id']              = 0;
-				$task['run_values']               = [];
-				$task['default_values']           = [];
-				$task['requested_run_values']     = [];
-				$task['profile_values']           = [];
-				$task['run_controls_fingerprint'] = '';
+				$task['template_id']               = 0;
+				$task['run_values']                = [];
+				$task['default_values']            = [];
+				$task['requested_run_values']      = [];
+				$task['profile_values']            = [];
+				$task['run_controls_fingerprint']  = '';
+				$task['prompt_policy_fingerprint'] = '';
 				$resolved_tasks[]                 = $task;
 				continue;
 			}
@@ -2703,6 +2706,16 @@ class Generation_Workflows {
 				$description
 			);
 			$task['run_controls_fingerprint'] = (string) ( $description['fingerprint'] ?? '' );
+			$task['prompt_policy_fingerprint'] = Generation_Prompt_Policy::fingerprint(
+				Generation_Prompt_Policy::for_template(
+					$template_id,
+					[
+						'output_type' => (string) $task['type'],
+						'post_type'   => (string) $task['source_type'],
+						'intent'      => (string) $task['intent'],
+					]
+				)
+			);
 			$resolved_tasks[]    = $task;
 		}
 
@@ -2853,6 +2866,7 @@ class Generation_Workflows {
 			'requested_run_values'     => (array) ( $task['requested_run_values'] ?? [] ),
 			'profile_values'           => (array) ( $task['profile_values'] ?? [] ),
 			'run_controls_fingerprint' => sanitize_text_field( (string) ( $task['run_controls_fingerprint'] ?? '' ) ),
+			'prompt_policy_fingerprint' => sanitize_text_field( (string) ( $task['prompt_policy_fingerprint'] ?? '' ) ),
 			'prompt'                   => (string) ( $task['prompt'] ?? '' ),
 			'prompt_hash'              => hash( 'sha256', (string) ( $task['prompt'] ?? '' ) ),
 			'dependencies'             => $dependencies,

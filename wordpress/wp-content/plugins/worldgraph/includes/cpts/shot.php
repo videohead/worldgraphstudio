@@ -71,12 +71,13 @@ class Shot {
 			'type'        => 'text',
 			'label'       => 'Lens',
 			'required'    => false,
+			'description' => 'Optional focal length or lens language for this Shot, for example 40mm. Leave blank to inherit the containing Scene default.',
 		],
 		'camera_movement' => [
 			'type'        => 'select',
 			'label'       => 'Camera Movement',
 			'required'    => false,
-			'description' => 'Choose one primary camera behavior for generated video. Leave blank when the Template or reference frames should determine it.',
+			'description' => 'Choose one primary camera behavior for generated video. Leave blank to inherit the containing Scene default; if both are blank, the Template or reference frames decide. Choose Locked Off to suppress Scene movement explicitly.',
 			'options'     => [
 				'locked_off'       => 'Locked Off (Static)',
 				'handheld'         => 'Handheld Drift',

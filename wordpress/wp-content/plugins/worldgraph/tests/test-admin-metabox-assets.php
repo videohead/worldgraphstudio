@@ -138,16 +138,28 @@ class Test_Admin_Metabox_Assets extends TestCase {
 		$controller = (string) file_get_contents( dirname( __DIR__ ) . '/includes/rest-api/asset-generation-controller.php' );
 
 		$this->assertStringContainsString( 'Template → Project → item → this run', $metabox );
+		$this->assertStringContainsString( 'Save current values as Template defaults', $metabox );
 		$this->assertStringContainsString( 'Save current values as Project defaults', $metabox );
 		$this->assertStringContainsString( 'Save current values as item defaults', $metabox );
+		$this->assertStringContainsString( 'Reset Template defaults', $metabox );
 		$this->assertStringContainsString( 'Reset Project defaults', $metabox );
 		$this->assertStringContainsString( 'Reset item defaults', $metabox );
+		$this->assertStringContainsString( 'Template defaults affect every use of this Template across all Projects and items.', $metabox );
+		$this->assertStringContainsString( 'This run (not saved)', $metabox );
 
 		$this->assertStringContainsString( 'function persistRunDefaults( panel, templatePanel, target, reset )', $script );
 		$this->assertStringContainsString( "request( settings.restUrl + '/defaults', { method: reset ? 'DELETE' : 'POST'", $script );
 		$this->assertStringContainsString( 'fingerprint: String( defaults.fingerprint )', $script );
 		$this->assertStringContainsString( 'payload.values = completeRunControlValues( templatePanel )', $script );
-		$this->assertStringContainsString( 'target && target.editable', $script );
+		$this->assertStringContainsString( "[ 'template', 'project', 'item' ].indexOf( String( target.scope ) )", $script );
+		$this->assertStringContainsString( 'return target.editable;', $script );
+		$this->assertStringContainsString( 'if ( target.has_overrides )', $script );
+		$this->assertStringContainsString( "setRunControlSource( input, 'run' )", $script );
+		$this->assertStringContainsString( "source.setAttribute( 'aria-live', 'polite' )", $script );
+		$this->assertStringContainsString( 'function renderRunDefaultStatus( editor, defaults, targets )', $script );
+		$this->assertStringContainsString( "defaults && Array.isArray( defaults.warnings )", $script );
+		$this->assertStringContainsString( "region.setAttribute( 'role', 'status' )", $script );
+		$this->assertStringContainsString( 'problematicRunDefaultStatus( targetStatus )', $script );
 
 		$generate_start = strpos( $script, 'function generateSingle( panel, action )' );
 		$generate_end   = strpos( $script, 'function startBatch( panel, scope )', $generate_start );

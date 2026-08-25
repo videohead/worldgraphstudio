@@ -8,6 +8,7 @@
 namespace WorldGraph\REST;
 
 use WorldGraph\Utils\Asset_Generator;
+use WorldGraph\Utils\Connection_Adapters;
 use WorldGraph\Utils\Connection_Repository;
 use WorldGraph\Utils\Generation_Prompt_Policy;
 use WorldGraph\Utils\Generation_Run_Defaults;
@@ -339,7 +340,7 @@ class Asset_Generation_Controller extends Base_Controller {
 		] );
 	}
 
-	/** Return one exact Template's inherited Project/item default layers. */
+	/** Return one exact Template's inherited Template/Project/item default layers. */
 	public static function get_defaults( WP_REST_Request $request ) {
 		$checked = self::defaults_context( $request );
 		if ( is_wp_error( $checked ) ) {
@@ -352,7 +353,7 @@ class Asset_Generation_Controller extends Base_Controller {
 		) ) );
 	}
 
-	/** Explicitly save one Project or item default layer. */
+	/** Explicitly save one Template, Project, or item default layer. */
 	public static function save_defaults( WP_REST_Request $request ) {
 		$checked = self::defaults_context( $request, true );
 		if ( is_wp_error( $checked ) ) {
@@ -368,7 +369,7 @@ class Asset_Generation_Controller extends Base_Controller {
 		return is_wp_error( $result ) ? $result : rest_ensure_response( self::prepare_run_defaults( $result ) );
 	}
 
-	/** Reset one exact Project or item layer to inherited values. */
+	/** Reset one exact Template, Project, or item layer to inherited values. */
 	public static function reset_defaults( WP_REST_Request $request ) {
 		$checked = self::defaults_context( $request, true );
 		if ( is_wp_error( $checked ) ) {
@@ -593,9 +594,9 @@ class Asset_Generation_Controller extends Base_Controller {
 	/** Shared argument contract for the defaults repository endpoints. */
 	private static function defaults_route_args( bool $write ): array {
 		$args = [
-			'post_id'     => [ 'description' => 'Story Graph source used to resolve item and Project layers.', 'type' => 'integer', 'required' => true ],
+			'post_id'     => [ 'description' => 'Story Graph source used to resolve contextual layers and source authorization.', 'type' => 'integer', 'required' => true ],
 			'template_id' => [ 'description' => 'Active Template whose Connection and control contract identify the defaults.', 'type' => 'integer', 'required' => true ],
-			'scope'       => [ 'description' => 'Default layer to inspect or edit.', 'type' => 'string', 'enum' => [ 'project', 'item' ], 'default' => 'item' ],
+			'scope'       => [ 'description' => 'Default layer to inspect or edit.', 'type' => 'string', 'enum' => [ 'template', 'project', 'item' ], 'default' => 'item' ],
 		];
 		if ( $write ) {
 			$args['fingerprint'] = [ 'description' => 'Current Template run-control fingerprint.', 'type' => 'string', 'required' => true ];
@@ -608,18 +609,28 @@ class Asset_Generation_Controller extends Base_Controller {
 		$post_id     = absint( $request->get_param( 'post_id' ) );
 		$template_id = absint( $request->get_param( 'template_id' ) );
 		$scope       = sanitize_key( (string) $request->get_param( 'scope' ) );
-		$scope       = in_array( $scope, [ 'project', 'item' ], true ) ? $scope : 'item';
+		$scope       = in_array( $scope, [ 'template', 'project', 'item' ], true ) ? $scope : 'item';
 		$template    = get_post( $template_id );
 		if ( ! $template instanceof \WP_Post || 'worldgraph_template' !== $template->post_type || 'publish' !== $template->post_status || 'active' !== worldgraph_get_field_value( $template_id, 'status' ) ) {
 			return new WP_Error( 'worldgraph_generation_default_template_invalid', __( 'Choose an active generation Template.', 'worldgraph' ), [ 'status' => 404 ] );
 		}
 		$connection_id = absint( worldgraph_get_field_value( $template_id, 'connection_id' ) );
-		if ( ! $connection_id || ! Connection_Repository::is_available( $connection_id ) ) {
+		$connection    = $connection_id ? Connection_Repository::get( $connection_id ) : null;
+		if ( ! $connection_id || ! $connection || ! Connection_Repository::is_available( $connection_id ) ) {
 			return new WP_Error( 'worldgraph_generation_default_connection_invalid', __( 'The selected Template Connection is unavailable.', 'worldgraph' ), [ 'status' => 409 ] );
+		}
+		$provider = sanitize_key( (string) worldgraph_get_field_value( $template_id, 'provider_type' ) );
+		if ( '' === $provider || $provider !== sanitize_key( (string) ( $connection['provider_type'] ?? '' ) ) ) {
+			return new WP_Error( 'worldgraph_generation_default_provider_mismatch', __( 'The selected Template and Connection must use the same provider.', 'worldgraph' ), [ 'status' => 409 ] );
+		}
+		if ( ! Connection_Adapters::supports_generation( $provider ) ) {
+			return new WP_Error( 'worldgraph_generation_default_provider_unsupported', __( 'This provider has no World Graph Studio asset generation adapter.', 'worldgraph' ), [ 'status' => 501 ] );
 		}
 
 		$target_id = $post_id;
-		if ( 'project' === $scope ) {
+		if ( 'template' === $scope ) {
+			$target_id = $template_id;
+		} elseif ( 'project' === $scope ) {
 			$target_id = Generation_Workflows::project_id_for_source( $post_id );
 			if ( ! $target_id ) {
 				return new WP_Error( 'worldgraph_generation_default_project_missing', __( 'This item does not belong to a Project.', 'worldgraph' ), [ 'status' => 409 ] );

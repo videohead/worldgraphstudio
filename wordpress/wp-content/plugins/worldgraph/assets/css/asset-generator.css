@@ -227,6 +227,52 @@
 	margin: 0 0 8px;
 }
 
+.worldgraph-generate-asset__run-default-status {
+	margin: 0 0 10px;
+	padding: 9px 10px;
+	background: #fff;
+	border-left: 4px solid #72aee6;
+}
+
+.worldgraph-generate-asset__run-default-status.has-warning {
+	background: #fcf9e8;
+	border-left-color: #dba617;
+}
+
+.worldgraph-generate-asset__run-default-layer-list,
+.worldgraph-generate-asset__run-default-warnings {
+	margin: 6px 0 0;
+}
+
+.worldgraph-generate-asset__run-default-layer-list {
+	display: grid;
+	gap: 3px;
+}
+
+.worldgraph-generate-asset__run-default-layer-list li {
+	display: grid;
+	grid-template-columns: minmax(150px, 0.7fr) minmax(220px, 1.3fr);
+	gap: 10px;
+	margin: 0;
+}
+
+.worldgraph-generate-asset__run-default-layer-list li > span:first-child {
+	font-weight: 600;
+}
+
+.worldgraph-generate-asset__run-default-layer-list .is-warning,
+.worldgraph-generate-asset__run-default-warnings {
+	color: #8a2424;
+}
+
+.worldgraph-generate-asset__run-default-target + .worldgraph-generate-asset__run-default-target {
+	margin-top: 8px;
+}
+
+.worldgraph-generate-asset__run-default-target-help {
+	margin: 4px 0 0;
+}
+
 .worldgraph-generate-asset__run-default-actions {
 	display: flex;
 	flex-wrap: wrap;
@@ -288,5 +334,10 @@
 	.worldgraph-generate-asset__template-options,
 	.worldgraph-generate-asset__run-control-grid {
 		grid-template-columns: 1fr;
+	}
+
+	.worldgraph-generate-asset__run-default-layer-list li {
+		grid-template-columns: 1fr;
+		gap: 0;
 	}
 }

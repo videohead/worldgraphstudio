@@ -160,10 +160,10 @@ final class Test_Generation_Run_Defaults extends TestCase {
 	}
 
 	/** Load a canonical document and retain the production CAS snapshot. */
-	private function document_for_write( int $post_id, array &$snapshot ) {
+	private function document_for_write( int $post_id, array &$snapshot, bool $allow_invalid_reset = false ) {
 		$reflection = new ReflectionMethod( Generation_Run_Defaults::class, 'document_for_write' );
 		$reflection->setAccessible( true );
-		$arguments = [ $post_id, &$snapshot ];
+		$arguments = [ $post_id, &$snapshot, $allow_invalid_reset ];
 		return $reflection->invokeArgs( null, $arguments );
 	}
 
@@ -235,6 +235,36 @@ final class Test_Generation_Run_Defaults extends TestCase {
 
 		$runtime = $this->method_source( 'runtime_values' );
 		$this->assertStringContainsString( 'array_merge( self::runtime_overrides( $source_id, $template_id, $description ), $one_off )', $runtime );
+	}
+
+	/** Template defaults are a canonical flat JSON object, including reset. */
+	public function test_template_scope_encodes_validated_scalar_defaults_canonically(): void {
+		$reflection = new ReflectionClass( Generation_Run_Defaults::class );
+		$this->assertSame( [ 'template', 'project', 'item' ], $reflection->getConstant( 'SCOPES' ) );
+		$this->assertSame(
+			'{"auto_enhance":false,"cfg":0,"negative_prompt":"","steps":28}',
+			$this->invoke_defaults_helper(
+				'canonical_template_defaults',
+				[ 'steps' => 28, 'negative_prompt' => '', 'cfg' => 0, 'auto_enhance' => false ]
+			)
+		);
+		$this->assertSame( '{}', $this->invoke_defaults_helper( 'canonical_template_defaults', [] ) );
+		$this->assertFalse( $this->invoke_defaults_helper( 'canonical_template_defaults', [ 'steps' => [ 28 ] ] ) );
+		$this->assertFalse( $this->invoke_defaults_helper( 'canonical_template_defaults', [ 'negative_prompt' => str_repeat( 'x', Template_Run_Controls::MAX_CONFIGURATION_BYTES ) ] ) );
+
+		$save = $this->method_source( 'save' );
+		$this->assertStringContainsString( "'template' === \$scope", $save );
+		$this->assertStringContainsString( 'persist_template_defaults', $save );
+		$this->assertStringContainsString( "self::describe( \$source_id, \$template_id, 'template' )", $save );
+		$this->assertStringNotContainsString( "self::describe( \$source_id, \$template_id, 'template', \$description )", $save, 'The response must reload the fingerprint changed by default_values.' );
+		$reset = $this->method_source( 'reset' );
+		$this->assertStringContainsString( "self::describe( \$source_id, \$template_id, 'template' )", $reset );
+
+		$template_layer = $this->method_source( 'template_layer' );
+		$this->assertStringContainsString( 'instanceof \\stdClass', $template_layer );
+		$this->assertStringContainsString( "'invalid_document'", $template_layer );
+		$this->assertStringContainsString( "'incompatible'", $template_layer );
+		$this->assertStringContainsString( "'has_entry'", $template_layer );
 	}
 
 	/** Stored zero, false, and empty-string values survive strict revalidation. */
@@ -402,6 +432,79 @@ final class Test_Generation_Run_Defaults extends TestCase {
 		$this->assertInstanceOf( WP_Error::class, $result );
 		$this->assertSame( 'worldgraph_generation_default_conflict', $result->get_error_code() );
 		$this->assertSame( [ 'version' => Generation_Run_Defaults::VERSION, 'entries' => $concurrent ], \WorldGraph\Utils\get_post_meta( 77, Generation_Run_Defaults::META_KEY, true ) );
+	}
+
+	/** Explicit reset can recover a corrupt document, while ordinary save cannot. */
+	public function test_explicit_reset_clears_an_unreadable_document(): void {
+		$GLOBALS['worldgraph_import_journal_state']['meta'][ 77 ][ Generation_Run_Defaults::META_KEY ] = 'legacy-corrupt-value';
+		$layer = $this->invoke_defaults_helper( 'read_layer', 77, 1, 10, $this->description() );
+		$this->assertTrue( $layer['has_entry'], 'The presentation target must expose Reset for a corrupt document.' );
+		$this->assertSame( 'invalid_document', $layer['status'] );
+
+		$snapshot = [];
+		$blocked  = $this->document_for_write( 77, $snapshot );
+		$this->assertInstanceOf( WP_Error::class, $blocked );
+		$this->assertSame( 'worldgraph_generation_default_document_invalid', $blocked->get_error_code() );
+
+		$snapshot = [];
+		$document = $this->document_for_write( 77, $snapshot, true );
+		$this->assertSame( [ 'version' => Generation_Run_Defaults::VERSION, 'entries' => [] ], $document );
+		$this->assertTrue( $snapshot['unreadable'] );
+		$this->assertTrue( $this->invoke_defaults_helper( 'persist_document', 77, $document, $snapshot ) );
+		$this->assertSame( '', \WorldGraph\Utils\get_post_meta( 77, Generation_Run_Defaults::META_KEY, true ) );
+	}
+
+	/** Recovery reset retains the compare-and-swap conflict guard. */
+	public function test_unreadable_document_reset_rejects_a_concurrent_replacement(): void {
+		$GLOBALS['worldgraph_import_journal_state']['meta'][ 77 ][ Generation_Run_Defaults::META_KEY ] = 'legacy-corrupt-value';
+		$snapshot = [];
+		$document = $this->document_for_write( 77, $snapshot, true );
+
+		$concurrent = [
+			'version' => Generation_Run_Defaults::VERSION,
+			'entries' => [
+				'c:1:t:10' => [
+					'connection_id' => 1,
+					'template_id'   => 10,
+					'fingerprint'   => str_repeat( 'a', 64 ),
+					'values'        => [ 'steps' => 45 ],
+				],
+			],
+		];
+		$GLOBALS['worldgraph_import_journal_state']['meta'][ 77 ][ Generation_Run_Defaults::META_KEY ] = $concurrent;
+
+		$result = $this->invoke_defaults_helper( 'persist_document', 77, $document, $snapshot );
+		$this->assertInstanceOf( WP_Error::class, $result );
+		$this->assertSame( 'worldgraph_generation_default_conflict', $result->get_error_code() );
+		$this->assertSame( $concurrent, \WorldGraph\Utils\get_post_meta( 77, Generation_Run_Defaults::META_KEY, true ) );
+	}
+
+	/** An oversized legacy document is exposed and recoverable as unreadable. */
+	public function test_explicit_reset_can_clear_an_oversized_document(): void {
+		$this->store_document(
+			77,
+			[
+				'c:1:t:10' => [
+					'connection_id' => 1,
+					'template_id'   => 10,
+					'fingerprint'   => str_repeat( 'a', 64 ),
+					'values'        => [ 'negative_prompt' => str_repeat( 'x', 70000 ) ],
+				],
+			]
+		);
+		$layer = $this->invoke_defaults_helper( 'read_layer', 77, 1, 10, $this->description() );
+		$this->assertTrue( $layer['has_entry'] );
+		$this->assertSame( 'invalid_document', $layer['status'] );
+
+		$snapshot = [];
+		$blocked  = $this->document_for_write( 77, $snapshot );
+		$this->assertInstanceOf( WP_Error::class, $blocked );
+		$this->assertSame( 'worldgraph_generation_default_document_large', $blocked->get_error_code() );
+
+		$snapshot = [];
+		$document = $this->document_for_write( 77, $snapshot, true );
+		$this->assertTrue( $this->invoke_defaults_helper( 'persist_document', 77, $document, $snapshot ) );
+		$this->assertSame( '', \WorldGraph\Utils\get_post_meta( 77, Generation_Run_Defaults::META_KEY, true ) );
 	}
 }
 }

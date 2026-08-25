@@ -121,7 +121,7 @@
             "name": "lens",
             "aria-label": "",
             "type": "text",
-            "instructions": "",
+            "instructions": "Optional focal length or lens language for this Shot, for example 40mm. Leave blank to inherit the containing Scene default.",
             "required": 0,
             "conditional_logic": 0,
             "wrapper": {
@@ -141,7 +141,7 @@
             "name": "camera_movement",
             "aria-label": "",
             "type": "select",
-            "instructions": "Choose one primary camera behavior for generated video. Leave blank when the Template or reference frames should determine it.",
+            "instructions": "Choose one primary camera behavior for generated video. Leave blank to inherit the containing Scene default; if both are blank, the Template or reference frames decide. Choose Locked Off to suppress Scene movement explicitly.",
             "required": 0,
             "conditional_logic": 0,
             "wrapper": {
