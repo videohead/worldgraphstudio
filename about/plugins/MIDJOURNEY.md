@@ -36,15 +36,16 @@ Data Cloud remain outside this initial reviewed execution allowlist.
 MidJourney is configured from **World Graph Studio > Connections** and is not a
 first-run Setup Wizard choice.
 
-Create a published, enabled Connection with:
+Create a published, enabled Connection for either or both transports with:
 
 - Provider Type: `midjourney`
 - Endpoint URL: `https://api.midjourney-api.com`
 - MCP Endpoint URL: `https://midjourney.mcp.acedata.cloud/mcp`
-- API Key / OAuth Reference: the midjourney-api.com key, preferably
+- API Key / OAuth Reference: the midjourney-api.com key when REST is enabled,
+  preferably
   `env://MIDJOURNEY_API_KEY`
-- MCP API Key / OAuth Reference: the Ace Data Cloud Midjourney service token,
-  preferably `env://ACEDATACLOUD_API_TOKEN`
+- MCP API Key / OAuth Reference: the Ace Data Cloud Midjourney service token
+  when MCP is enabled, preferably `env://ACEDATACLOUD_API_TOKEN`
 - Environment: `production`
 
 Obtain the REST key from the
@@ -61,7 +62,8 @@ environment variable matching `^[A-Z_][A-Z0-9_]*$`.
 ## Provisioned Templates
 
 Saving or successfully testing the Connection idempotently creates or updates
-two text-to-image Templates:
+the text-to-image Template for each configured credential. Configuring both
+credentials creates both Templates:
 
 | Template reference | Transport | Defaults |
 | --- | --- | --- |
@@ -149,12 +151,14 @@ cancellation and does not retry an ambiguous submission.
 
 ## Connection check and workflow refresh
 
-**Check connection** requires both configured transports:
+**Check connection** requires at least one credential and validates each
+configured transport:
 
-1. the REST status lookup must authenticate and return a valid bounded JSON
-   envelope;
-2. MCP must complete initialization and expose both required tools; and
-3. both transport-specific Templates must provision successfully.
+1. when the REST credential is present, the status lookup must authenticate
+   and return a valid bounded JSON envelope;
+2. when the MCP credential is present, MCP must complete initialization and
+   expose both required tools; and
+3. every configured transport-specific Template must provision successfully.
 
 Core persists the Connection status, validation timestamp, bounded health
 data, and `midjourney_catalog_*` workflow-refresh metadata. Disabling the
@@ -196,4 +200,3 @@ Connection prevents new work and automatic adapter loading.
 - [AceDataCloud/MidjourneyMCP](https://github.com/AceDataCloud/MidjourneyMCP)
 - [Ace Data Cloud terms](https://docs.acedata.cloud/en/resources/terms)
 - [Ace Data Cloud privacy](https://docs.acedata.cloud/en/resources/privacy)
-

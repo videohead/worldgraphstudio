@@ -93,14 +93,15 @@ retention, retries, upload formats, OAuth behavior, and troubleshooting.
 MidJourney is not a first-run wizard choice because it represents two separate
 third-party services and credentials. Finish or skip the wizard, then open
 **World Graph Studio > Connections** and create a **MidJourney** Connection
-with:
+for either transport or both with:
 
 - Endpoint URL: `https://api.midjourney-api.com`
 - MCP Endpoint URL: `https://midjourney.mcp.acedata.cloud/mcp`
-- API Key / OAuth Reference: the midjourney-api.com key, preferably
+- API Key / OAuth Reference: the midjourney-api.com key when using REST,
+  preferably
   `env://MIDJOURNEY_API_KEY`
-- MCP API Key / OAuth Reference: the Ace Data Cloud MidJourney service token,
-  preferably `env://ACEDATACLOUD_API_TOKEN`
+- MCP API Key / OAuth Reference: the Ace Data Cloud MidJourney service token
+  when using MCP, preferably `env://ACEDATACLOUD_API_TOKEN`
 - Environment: `production`
 
 Midjourney does not provide an official public API. midjourney-api.com operates
@@ -108,13 +109,13 @@ the REST bridge, and Ace Data Cloud operates the independent MCP service. A
 Midjourney web subscription, the REST key, and the Ace Data Cloud token cannot
 replace one another.
 
-Testing performs a non-generating REST task-status lookup, completes MCP
-`2025-03-26` initialization, verifies `midjourney_imagine` and
-`midjourney_get_task`, and provisions `api:imagine` plus
-`mcp:midjourney_imagine` text-to-image Templates. Both paths poll
-asynchronously and import every final image. See the [MidJourney Connection
-guide](../../../../../about/plugins/MIDJOURNEY.md) for modes, lifecycle,
-security boundaries, and troubleshooting.
+Testing validates each configured transport: REST performs a non-generating
+task-status lookup, while MCP completes `2025-03-26` initialization and
+verifies `midjourney_imagine` plus `midjourney_get_task`. The matching
+`api:imagine`, `mcp:midjourney_imagine`, or both text-to-image Templates are
+provisioned. Both paths poll asynchronously and import every final image. See
+the [MidJourney Connection guide](../../../../../about/plugins/MIDJOURNEY.md)
+for modes, lifecycle, security boundaries, and troubleshooting.
 
 ### Local ComfyUI HTTP API plus optional MCP
 

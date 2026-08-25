@@ -180,42 +180,63 @@ final class Builtin_Connection_Tests {
 
 	/** Test midjourney-api.com REST, AceData Cloud MCP, and Templates. */
 	public static function test_midjourney( int $connection_id, array $record ): array {
-		$api = \WorldGraph\Utils\Midjourney_API::test_configuration(
-			(string) ( $record['endpoint_url'] ?? '' ),
-			(string) ( $record['credential_reference'] ?? '' )
-		);
-		if ( is_wp_error( $api ) ) {
-			return self::outcome( false, 'MidJourney REST check failed: ' . $api->get_error_message() );
+		$api_credential = trim( (string) ( $record['credential_reference'] ?? '' ) );
+		$mcp_credential = trim( (string) ( $record['mcp_credential_reference'] ?? '' ) );
+		if ( '' === $api_credential && '' === $mcp_credential ) {
+			return self::outcome( false, 'Add a midjourney-api.com key, an AceData Cloud MCP token, or both before testing this Connection.' );
 		}
 
-		$tools = \WorldGraph\Utils\Midjourney_MCP::available_tools( $connection_id );
-		if ( is_wp_error( $tools ) ) {
-			return self::outcome( false, 'MidJourney MCP check failed: ' . $tools->get_error_message(), [ 'api_authenticated' => true ] );
-		}
-
-		$missing = array_values( array_diff( \WorldGraph\Utils\Midjourney_MCP::REQUIRED_TOOLS, $tools ) );
-		if ( ! empty( $missing ) ) {
-			return self::outcome(
-				false,
-				sprintf( 'MidJourney MCP is reachable but does not expose required tools: %s.', implode( ', ', $missing ) ),
-				[ 'api_authenticated' => true, 'mcp_tool_count' => count( $tools ), 'missing_tools' => $missing ]
+		$health     = [];
+		$transports = [];
+		if ( '' !== $api_credential ) {
+			$api = \WorldGraph\Utils\Midjourney_API::test_configuration(
+				(string) ( $record['endpoint_url'] ?? '' ),
+				$api_credential
 			);
+			if ( is_wp_error( $api ) ) {
+				return self::outcome( false, 'MidJourney REST check failed: ' . $api->get_error_message() );
+			}
+
+			$health['api_authenticated'] = true;
+			$transports[]                = 'REST';
+		}
+
+		if ( '' !== $mcp_credential ) {
+			$tools = \WorldGraph\Utils\Midjourney_MCP::available_tools( $connection_id );
+			if ( is_wp_error( $tools ) ) {
+				return self::outcome( false, 'MidJourney MCP check failed: ' . $tools->get_error_message(), $health );
+			}
+
+			$missing = array_values( array_diff( \WorldGraph\Utils\Midjourney_MCP::REQUIRED_TOOLS, $tools ) );
+			if ( ! empty( $missing ) ) {
+				$health['mcp_tool_count'] = count( $tools );
+				$health['missing_tools']  = $missing;
+				return self::outcome(
+					false,
+					sprintf( 'MidJourney MCP is reachable but does not expose required tools: %s.', implode( ', ', $missing ) ),
+					$health
+				);
+			}
+
+			$health['mcp_tool_count'] = count( $tools );
+			$transports[]             = 'MCP';
 		}
 
 		$provisioned = \WorldGraph\Templates\Template_Manager::provision_for_connection( $connection_id );
 		if ( is_wp_error( $provisioned ) ) {
-			return self::outcome(
-				false,
-				$provisioned->get_error_message(),
-				[ 'api_authenticated' => true, 'mcp_tool_count' => count( $tools ) ]
-			);
+			return self::outcome( false, $provisioned->get_error_message(), $health );
 		}
 
-		$template_ids = (array) ( $provisioned['template_ids'] ?? [] );
+		$template_ids           = (array) ( $provisioned['template_ids'] ?? [] );
+		$health['template_ids'] = $template_ids;
 		return self::outcome(
 			true,
-			sprintf( 'Connected to midjourney-api.com REST and AceData Cloud MidJourney MCP; %d MCP tools and %d transport-specific Templates are available.', count( $tools ), count( $template_ids ) ),
-			[ 'api_authenticated' => true, 'mcp_tool_count' => count( $tools ), 'template_ids' => $template_ids ]
+			sprintf(
+				'MidJourney %1$s check passed; %2$d transport-specific Template(s) are available.',
+				implode( ' and ', $transports ),
+				count( $template_ids )
+			),
+			$health
 		);
 	}
 

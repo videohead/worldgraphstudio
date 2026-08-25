@@ -187,7 +187,7 @@ class Higgsfield_MCP {
 			return $initialized;
 		}
 
-		$version = (string) ( $initialized['result']['protocolVersion'] ?? '' );
+		$version = is_scalar( $initialized['result']['protocolVersion'] ?? null ) ? (string) $initialized['result']['protocolVersion'] : '';
 		$session = (string) ( $initialized['session_id'] ?? '' );
 		if ( ! in_array( $version, self::LEGACY_PROTOCOL_VERSIONS, true ) ) {
 			self::close_legacy_session( $endpoint, $token, $version, $session );
@@ -268,15 +268,24 @@ class Higgsfield_MCP {
 		}
 
 		$status  = (int) $response['status'];
-		$message = self::decode_response_for_id( (string) $response['body'], $id );
+		$body    = (string) $response['body'];
+		$message = self::decode_response_for_id( $body, $id );
 		if ( 401 === $status || 403 === $status ) {
 			return new WP_Error( 'higgsfield_mcp_unauthorized', __( 'Higgsfield MCP OAuth authorization is missing or expired.', 'worldgraph' ), [ 'status' => $status ] );
 		}
-		if ( 400 === $status && self::should_fallback_to_legacy( $message ) ) {
-			return new WP_Error( 'higgsfield_mcp_legacy_required', __( 'Higgsfield MCP requires initialization-era negotiation.', 'worldgraph' ) );
+		if ( 400 === $status ) {
+			$modern_error = self::modern_error_response( $body );
+			if ( self::should_fallback_to_legacy( $modern_error ) ) {
+				return new WP_Error( 'higgsfield_mcp_legacy_required', __( 'Higgsfield MCP requires initialization-era negotiation.', 'worldgraph' ) );
+			}
+
+			return self::response_error( $modern_error, $status );
 		}
 		if ( $status < 200 || $status >= 300 ) {
 			return self::response_error( $message, $status );
+		}
+		if ( ! self::content_type_is_valid( (string) ( $response['content_type'] ?? '' ) ) ) {
+			return new WP_Error( 'higgsfield_mcp_content_type_invalid', __( 'Higgsfield MCP returned an unsupported response content type.', 'worldgraph' ) );
 		}
 		if ( is_wp_error( $message ) ) {
 			return $message;
@@ -292,12 +301,24 @@ class Higgsfield_MCP {
 		if ( ! is_array( $result ) ) {
 			return new WP_Error( 'higgsfield_mcp_invalid_response', __( 'Higgsfield MCP returned an invalid result.', 'worldgraph' ) );
 		}
-		$result_type = sanitize_key( (string) ( $result['resultType'] ?? '' ) );
+		$result_type = is_scalar( $result['resultType'] ?? null ) ? sanitize_key( (string) $result['resultType'] ) : '';
 		if ( 'input_required' === $result_type ) {
 			return new WP_Error( 'higgsfield_mcp_input_required_unsupported', __( 'Higgsfield MCP requested an interactive round trip that this background client cannot service.', 'worldgraph' ) );
 		}
 		if ( 'complete' !== $result_type ) {
 			return new WP_Error( 'higgsfield_mcp_result_incomplete', __( 'Higgsfield MCP did not return a complete result.', 'worldgraph' ) );
+		}
+		if (
+			'tools/list' === $method
+			&& (
+				! array_key_exists( 'ttlMs', $result )
+				|| ! is_numeric( $result['ttlMs'] )
+				|| (float) $result['ttlMs'] < 0
+				|| ! is_string( $result['cacheScope'] ?? null )
+				|| ! in_array( $result['cacheScope'], [ 'public', 'private' ], true )
+			)
+		) {
+			return new WP_Error( 'higgsfield_mcp_cache_contract_invalid', __( 'Higgsfield MCP returned invalid tools/list cache metadata.', 'worldgraph' ) );
 		}
 
 		unset( $result['resultType'] );
@@ -333,6 +354,9 @@ class Higgsfield_MCP {
 		if ( $status < 200 || $status >= 300 ) {
 			return self::response_error( $message, $status );
 		}
+		if ( ! self::content_type_is_valid( (string) ( $response['content_type'] ?? '' ) ) ) {
+			return new WP_Error( 'higgsfield_mcp_content_type_invalid', __( 'Higgsfield MCP returned an unsupported response content type.', 'worldgraph' ) );
+		}
 		if ( is_wp_error( $message ) ) {
 			return $message;
 		}
@@ -360,7 +384,14 @@ class Higgsfield_MCP {
 		if ( is_wp_error( $response ) ) {
 			return $response;
 		}
-		if ( 202 !== (int) $response['status'] || '' !== trim( (string) $response['body'] ) ) {
+		$status = (int) $response['status'];
+		if ( 401 === $status || 403 === $status ) {
+			return new WP_Error( 'higgsfield_mcp_unauthorized', __( 'Higgsfield MCP OAuth authorization is missing or expired.', 'worldgraph' ), [ 'status' => $status ] );
+		}
+		if ( 404 === $status && '' !== $session ) {
+			return new WP_Error( 'higgsfield_mcp_session_expired', __( 'Higgsfield MCP expired the negotiated session.', 'worldgraph' ), [ 'status' => 404 ] );
+		}
+		if ( 202 !== $status || '' !== trim( (string) $response['body'] ) ) {
 			return new WP_Error( 'higgsfield_mcp_initialized_rejected', __( 'Higgsfield MCP did not accept the initialized notification.', 'worldgraph' ) );
 		}
 
@@ -422,6 +453,7 @@ class Higgsfield_MCP {
 			'status'     => (int) wp_remote_retrieve_response_code( $response ),
 			'body'       => (string) wp_remote_retrieve_body( $response ),
 			'session_id' => (string) wp_remote_retrieve_header( $response, 'mcp-session-id' ),
+			'content_type' => (string) wp_remote_retrieve_header( $response, 'content-type' ),
 		];
 	}
 
@@ -431,6 +463,29 @@ class Higgsfield_MCP {
 	 * @return array<string, mixed>|WP_Error|null
 	 */
 	public static function decode_response_for_id( string $body, string $request_id ) {
+		$messages = self::decode_messages( $body );
+		if ( is_wp_error( $messages ) ) {
+			return $messages;
+		}
+
+		foreach ( $messages as $message ) {
+			if (
+				! is_array( $message )
+				|| '2.0' !== ( $message['jsonrpc'] ?? null )
+				|| ! array_key_exists( 'id', $message )
+				|| ! is_scalar( $message['id'] )
+				|| (string) $message['id'] !== $request_id
+			) {
+				continue;
+			}
+			return $message;
+		}
+
+		return null;
+	}
+
+	/** Decode bounded JSON or fully framed SSE into candidate JSON-RPC messages. */
+	private static function decode_messages( string $body ) {
 		if ( strlen( $body ) > self::MAX_RESPONSE_BYTES ) {
 			return new WP_Error( 'higgsfield_mcp_response_too_large', __( 'Higgsfield MCP returned an oversized response.', 'worldgraph' ) );
 		}
@@ -439,40 +494,54 @@ class Higgsfield_MCP {
 		$decoded  = json_decode( $trimmed, true );
 		if ( is_array( $decoded ) ) {
 			$messages = self::is_list( $decoded ) ? $decoded : [ $decoded ];
-		} elseif ( '' !== $trimmed ) {
-			$events = preg_split( '/\r?\n\r?\n/', $body );
-			if ( ! is_array( $events ) || count( $events ) > self::MAX_EVENTS ) {
-				return new WP_Error( 'higgsfield_mcp_sse_invalid', __( 'Higgsfield MCP returned too many SSE events.', 'worldgraph' ) );
+			return count( $messages ) <= self::MAX_EVENTS
+				? $messages
+				: new WP_Error( 'higgsfield_mcp_response_limit', __( 'Higgsfield MCP returned too many JSON-RPC messages.', 'worldgraph' ) );
+		}
+		if ( '' === $trimmed ) {
+			return [];
+		}
+
+		$events = preg_split( '/(?:\r\n|\r|\n){2}/', $body );
+		if ( ! is_array( $events ) || count( $events ) > self::MAX_EVENTS ) {
+			return new WP_Error( 'higgsfield_mcp_sse_invalid', __( 'Higgsfield MCP returned too many SSE events.', 'worldgraph' ) );
+		}
+		foreach ( $events as $event ) {
+			$data_lines = [];
+			foreach ( preg_split( '/\r\n|\r|\n/', (string) $event ) as $line ) {
+				if ( str_starts_with( $line, ':' ) ) {
+					continue;
+				}
+				if ( 'data:' === substr( $line, 0, 5 ) ) {
+					$data_lines[] = ltrim( substr( $line, 5 ), ' ' );
+				}
 			}
-			foreach ( $events as $event ) {
-				$data_lines = [];
-				foreach ( preg_split( '/\r?\n/', (string) $event ) as $line ) {
-					if ( str_starts_with( $line, ':' ) ) {
-						continue;
-					}
-					if ( 'data:' === substr( $line, 0, 5 ) ) {
-						$data_lines[] = ltrim( substr( $line, 5 ), ' ' );
-					}
-				}
-				if ( empty( $data_lines ) ) {
-					continue;
-				}
-				$event_data = implode( "\n", $data_lines );
-				if ( '[DONE]' === trim( $event_data ) ) {
-					continue;
-				}
-				$message = json_decode( $event_data, true );
-				if ( is_array( $message ) ) {
-					$messages[] = $message;
-				}
+			if ( empty( $data_lines ) ) {
+				continue;
+			}
+			$event_data = implode( "\n", $data_lines );
+			if ( '[DONE]' === trim( $event_data ) ) {
+				continue;
+			}
+			$message = json_decode( $event_data, true );
+			if ( is_array( $message ) ) {
+				$messages[] = $message;
 			}
 		}
 
+		return $messages;
+	}
+
+	/** Extract the first valid current-era JSON-RPC error without requiring an ID. */
+	private static function modern_error_response( string $body ) {
+		$messages = self::decode_messages( $body );
+		if ( is_wp_error( $messages ) ) {
+			return $messages;
+		}
 		foreach ( $messages as $message ) {
-			if ( ! is_array( $message ) || ! array_key_exists( 'id', $message ) || (string) $message['id'] !== $request_id ) {
-				continue;
+			if ( is_array( $message ) && '2.0' === ( $message['jsonrpc'] ?? null ) && is_array( $message['error'] ?? null ) ) {
+				return $message;
 			}
-			return $message;
 		}
 
 		return null;
@@ -483,16 +552,17 @@ class Higgsfield_MCP {
 		if ( is_wp_error( $message ) ) {
 			return false;
 		}
-		if ( ! is_array( $message ) || ! is_array( $message['error'] ?? null ) ) {
-			return false;
-		}
-		$error_text = strtolower( (string) ( $message['error']['message'] ?? '' ) );
-		$error_code = (int) ( $message['error']['code'] ?? 0 );
-		if ( -32020 === $error_code || str_contains( $error_text, 'headermismatch' ) || str_contains( $error_text, 'unsupportedprotocolversion' ) || str_contains( $error_text, 'missingrequiredclientcapability' ) ) {
-			return false;
-		}
+		$error_code = is_array( $message ) && is_int( $message['error']['code'] ?? null )
+			? $message['error']['code']
+			: null;
 
-		return str_contains( $error_text, 'initialize' ) || str_contains( $error_text, 'not initialized' ) || -32002 === $error_code;
+		return ! in_array( $error_code, [ -32020, -32021, -32022 ], true );
+	}
+
+	/** Accept only the two response media types defined for Streamable HTTP. */
+	private static function content_type_is_valid( string $content_type ): bool {
+		$content_type = strtolower( trim( explode( ';', $content_type, 2 )[0] ) );
+		return in_array( $content_type, [ 'application/json', 'text/event-stream' ], true );
 	}
 
 	/** Convert one HTTP/JSON-RPC failure into a bounded provider error. */
@@ -525,7 +595,7 @@ class Higgsfield_MCP {
 
 	/** Merge and sanitize one tools/list page. */
 	private static function merge_tools( array $catalog, $tools ) {
-		if ( ! is_array( $tools ) ) {
+		if ( ! is_array( $tools ) || ! self::is_list( $tools ) ) {
 			return new WP_Error( 'higgsfield_mcp_catalog_invalid', __( 'Higgsfield MCP returned an invalid tool catalog.', 'worldgraph' ) );
 		}
 		foreach ( $tools as $tool ) {
@@ -535,12 +605,19 @@ class Higgsfield_MCP {
 			if ( ! is_array( $tool ) ) {
 				continue;
 			}
-			$name = trim( sanitize_text_field( (string) ( $tool['name'] ?? '' ) ) );
+			$name = is_string( $tool['name'] ?? null ) ? trim( sanitize_text_field( $tool['name'] ) ) : '';
 			if ( '' === $name || strlen( $name ) > 128 || ! preg_match( '#^[A-Za-z0-9_.:/-]+$#', $name ) ) {
 				continue;
 			}
-			$schema = is_array( $tool['inputSchema'] ?? null ) ? $tool['inputSchema'] : ( is_array( $tool['input_schema'] ?? null ) ? $tool['input_schema'] : [] );
+			$schema = is_array( $tool['inputSchema'] ?? null ) ? $tool['inputSchema'] : null;
+			if ( ! is_array( $schema ) || 'object' !== ( $schema['type'] ?? null ) ) {
+				continue;
+			}
 			if ( ! self::header_annotations_are_valid( $schema ) ) {
+				continue;
+			}
+			$remaining = self::MAX_SCHEMA_ITEMS;
+			if ( ! self::schema_is_within_limits( $schema, 0, $remaining ) ) {
 				continue;
 			}
 			$remaining = self::MAX_SCHEMA_ITEMS;
@@ -551,7 +628,7 @@ class Higgsfield_MCP {
 			}
 			$catalog[ $name ] = [
 				'name'        => $name,
-				'description' => substr( sanitize_textarea_field( (string) ( $tool['description'] ?? '' ) ), 0, 2000 ),
+				'description' => is_string( $tool['description'] ?? null ) ? substr( sanitize_textarea_field( $tool['description'] ), 0, 2000 ) : '',
 				'inputSchema' => $schema,
 			];
 		}
@@ -571,7 +648,10 @@ class Higgsfield_MCP {
 			return true;
 		}
 		if ( array_key_exists( 'x-mcp-header', $node ) ) {
-			$name = (string) $node['x-mcp-header'];
+			if ( ! is_string( $node['x-mcp-header'] ) ) {
+				return false;
+			}
+			$name = $node['x-mcp-header'];
 			$type = $node['type'] ?? '';
 			$key  = strtolower( $name );
 			if ( ! $static_property || ! is_string( $type ) || ! in_array( $type, [ 'string', 'integer', 'boolean' ], true ) || ! preg_match( '/^[!#$%&\'*+.^_`|~0-9A-Za-z-]+$/', $name ) || isset( $headers[ $key ] ) ) {
@@ -590,6 +670,24 @@ class Higgsfield_MCP {
 				continue;
 			}
 			if ( is_array( $value ) && ! self::validate_schema_annotations( $value, false, false, $headers ) ) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	/** Reject, rather than truncate, schemas that exceed discovery budgets. */
+	private static function schema_is_within_limits( $value, int $depth, int &$remaining ): bool {
+		if ( $remaining <= 0 || $depth > self::MAX_SCHEMA_DEPTH ) {
+			return false;
+		}
+		--$remaining;
+		if ( ! is_array( $value ) ) {
+			return true;
+		}
+		foreach ( $value as $item ) {
+			if ( ! self::schema_is_within_limits( $item, $depth + 1, $remaining ) ) {
 				return false;
 			}
 		}
@@ -627,7 +725,7 @@ class Higgsfield_MCP {
 	/** Resolve and validate one saved Higgsfield Connection. */
 	private static function connection( int $connection_id ) {
 		$connection = Connection_Repository::get( $connection_id );
-		if ( ! is_array( $connection ) || 'higgsfield' !== ( $connection['provider_type'] ?? '' ) ) {
+		if ( ! is_array( $connection ) || 'publish' !== ( $connection['status_wp'] ?? '' ) || 'higgsfield' !== ( $connection['provider_type'] ?? '' ) ) {
 			return new WP_Error( 'higgsfield_mcp_connection_invalid', __( 'Select a Higgsfield Connection first.', 'worldgraph' ) );
 		}
 		if ( 'disabled' === ( $connection['status'] ?? '' ) ) {

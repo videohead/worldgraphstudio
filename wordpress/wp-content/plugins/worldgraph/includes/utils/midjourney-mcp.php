@@ -70,6 +70,12 @@ class Midjourney_MCP {
 	/** Maximum task ID bytes accepted from provider or job state. */
 	const MAX_TASK_ID_BYTES = 256;
 
+	/** Maximum distinct image outputs retained from one provider result. */
+	const MAX_OUTPUT_URLS = 32;
+
+	/** Maximum provider-returned media URL size. */
+	const MAX_MEDIA_URL_BYTES = 8192;
+
 	/** Maximum bearer-token bytes accepted from a literal or environment reference. */
 	const MAX_CREDENTIAL_BYTES = 8192;
 
@@ -156,7 +162,8 @@ class Midjourney_MCP {
 			return new WP_Error( 'midjourney_mcp_prompt_too_large', __( 'The Midjourney prompt is too long.', 'worldgraph' ) );
 		}
 
-		$mode = strtolower( trim( (string) ( $parameters['mode'] ?? 'fast' ) ) );
+		$mode_value = $parameters['mode'] ?? 'fast';
+		$mode       = is_scalar( $mode_value ) ? strtolower( trim( (string) $mode_value ) ) : '';
 		if ( ! in_array( $mode, [ 'fast', 'relax', 'turbo' ], true ) ) {
 			return new WP_Error( 'midjourney_mcp_mode_invalid', __( 'Select fast, relax, or turbo Midjourney generation mode.', 'worldgraph' ) );
 		}
@@ -165,7 +172,7 @@ class Midjourney_MCP {
 		if ( is_wp_error( $translation ) ) {
 			return $translation;
 		}
-		$split_images = self::boolean_parameter( $parameters['split_images'] ?? false, 'split_images' );
+		$split_images = self::boolean_parameter( $parameters['split_images'] ?? true, 'split_images' );
 		if ( is_wp_error( $split_images ) ) {
 			return $split_images;
 		}
@@ -191,7 +198,16 @@ class Midjourney_MCP {
 			self::credential_reference( $connection )
 		);
 
-		return is_wp_error( $result ) ? $result : self::normalize_result( $result );
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+
+		$normalized = self::normalize_result( $result );
+		if ( '' === $normalized['job_id'] ) {
+			return new WP_Error( 'midjourney_mcp_task_id_missing', __( 'Midjourney MCP accepted the request without returning a task ID.', 'worldgraph' ) );
+		}
+
+		return $normalized;
 	}
 
 	/**
@@ -220,7 +236,21 @@ class Midjourney_MCP {
 			self::credential_reference( $connection )
 		);
 
-		return is_wp_error( $result ) ? $result : self::normalize_result( $result, true );
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+
+		$normalized = self::normalize_result( $result, true );
+		if ( '' === $normalized['job_id'] ) {
+			$normalized['job_id'] = $job_id;
+		} elseif ( ! hash_equals( $job_id, $normalized['job_id'] ) ) {
+			return new WP_Error( 'midjourney_mcp_job_id_mismatch', __( 'Midjourney MCP returned a different task than the one requested.', 'worldgraph' ) );
+		}
+		if ( 'completed' === $normalized['status'] && empty( $normalized['output_media'] ) ) {
+			return new WP_Error( 'midjourney_mcp_output_missing', __( 'Midjourney MCP reported completion without a valid HTTPS image output.', 'worldgraph' ) );
+		}
+
+		return $normalized;
 	}
 
 	/**
@@ -231,14 +261,7 @@ class Midjourney_MCP {
 	 */
 	public static function decode_tool_result( array $result ) {
 		if ( ! empty( $result['isError'] ) ) {
-			$message = __( 'Midjourney MCP tool call failed.', 'worldgraph' );
-			foreach ( (array) ( $result['content'] ?? [] ) as $content ) {
-				if ( is_array( $content ) && is_scalar( $content['text'] ?? null ) ) {
-					$message = substr( sanitize_text_field( (string) $content['text'] ), 0, 500 );
-					break;
-				}
-			}
-			return new WP_Error( 'midjourney_mcp_tool_error', $message );
+			return new WP_Error( 'midjourney_mcp_tool_error', __( 'Midjourney MCP tool call failed.', 'worldgraph' ) );
 		}
 
 		foreach ( [ 'structuredContent', 'structured_content' ] as $key ) {
@@ -277,21 +300,21 @@ class Midjourney_MCP {
 	 * @return array<string, mixed>
 	 */
 	public static function normalize_result( array $payload, bool $polled = false ): array {
-		$job_id        = self::first_scalar( $payload, [ 'task_id', 'taskId', 'id' ] );
+		$job_id         = self::first_scalar( $payload, [ 'task_id', 'taskId', 'id' ] );
 		$provider_state = self::first_scalar( $payload, [ 'state', 'status' ] );
-		$output_media  = self::image_outputs( $payload );
-		$status        = self::normalize_status( $provider_state );
-		$response      = is_array( $payload['response'] ?? null ) ? $payload['response'] : [];
-		$polling       = is_array( $payload['mcp_task_polling'] ?? null ) ? $payload['mcp_task_polling'] : [];
+		$output_media   = self::image_outputs( $payload );
+		$status         = self::normalize_status( $provider_state );
+		$response       = is_array( $payload['response'] ?? null ) ? $payload['response'] : [];
+		$polling        = is_array( $payload['mcp_task_polling'] ?? null ) ? $payload['mcp_task_polling'] : [];
+		$validated_id   = self::task_id( $job_id );
+		$job_id         = is_wp_error( $validated_id ) ? '' : $validated_id;
 
 		$response_success = array_key_exists( 'success', $response ) && is_bool( $response['success'] ) ? $response['success'] : null;
 		$top_success      = array_key_exists( 'success', $payload ) && is_bool( $payload['success'] ) ? $payload['success'] : null;
 		if ( $polled ) {
-			if ( 'cancelled' === $status ) {
-				$status = 'cancelled';
-			} elseif ( false === $response_success || false === $top_success || true === ( $polling['is_failed'] ?? false ) ) {
+			if ( ! in_array( $status, [ 'failed', 'cancelled' ], true ) && ( false === $response_success || false === $top_success || true === ( $polling['is_failed'] ?? false ) ) ) {
 				$status = 'failed';
-			} elseif ( true === $response_success || true === ( $polling['is_complete'] ?? false ) ) {
+			} elseif ( ! in_array( $status, [ 'failed', 'cancelled' ], true ) && ( true === $response_success || true === ( $polling['is_complete'] ?? false ) ) ) {
 				$status = 'completed';
 			}
 		} elseif ( false === $top_success ) {
@@ -314,9 +337,8 @@ class Midjourney_MCP {
 			$result['output_media'] = $output_media;
 		}
 
-		$error = self::provider_error_message( $payload );
-		if ( '' !== $error ) {
-			$result['error'] = $error;
+		if ( 'failed' === $status ) {
+			$result['error'] = __( 'Midjourney generation failed.', 'worldgraph' );
 		}
 
 		return $result;
@@ -715,11 +737,9 @@ class Midjourney_MCP {
 
 	/** Normalize a JSON-RPC error without retaining arbitrary provider data. */
 	private static function jsonrpc_error( $error, int $status = 0 ): WP_Error {
-		$message = is_array( $error ) && is_scalar( $error['message'] ?? null )
-			? substr( sanitize_text_field( (string) $error['message'] ), 0, 500 )
-			: __( 'Midjourney MCP returned a JSON-RPC error.', 'worldgraph' );
+		unset( $error );
 
-		return new WP_Error( 'midjourney_mcp_error', $message, [ 'status' => $status ] );
+		return new WP_Error( 'midjourney_mcp_error', __( 'Midjourney MCP returned a JSON-RPC error.', 'worldgraph' ), [ 'status' => $status ] );
 	}
 
 	/** Merge and sanitize one tools/list page. */
@@ -734,7 +754,11 @@ class Midjourney_MCP {
 			if ( ! is_array( $tool ) ) {
 				continue;
 			}
-			$name = trim( sanitize_text_field( (string) ( $tool['name'] ?? '' ) ) );
+			$name_value = $tool['name'] ?? '';
+			if ( ! is_scalar( $name_value ) ) {
+				continue;
+			}
+			$name = trim( sanitize_text_field( (string) $name_value ) );
 			if ( '' === $name || strlen( $name ) > 128 || ! preg_match( '#^[A-Za-z0-9_.:/-]+$#', $name ) ) {
 				continue;
 			}
@@ -745,9 +769,10 @@ class Midjourney_MCP {
 			if ( ! is_array( $schema ) || ! is_string( $encoded ) || strlen( $encoded ) > self::MAX_SCHEMA_BYTES ) {
 				continue;
 			}
+			$description      = is_scalar( $tool['description'] ?? null ) ? (string) $tool['description'] : '';
 			$catalog[ $name ] = [
 				'name'        => $name,
-				'description' => substr( sanitize_textarea_field( (string) ( $tool['description'] ?? '' ) ), 0, 2000 ),
+				'description' => substr( sanitize_textarea_field( $description ), 0, 2000 ),
 				'inputSchema' => $schema,
 			];
 		}
@@ -788,8 +813,16 @@ class Midjourney_MCP {
 		if ( ! is_array( $connection ) || 'midjourney' !== ( $connection['provider_type'] ?? '' ) ) {
 			return new WP_Error( 'midjourney_mcp_connection_invalid', __( 'Select a Midjourney Connection first.', 'worldgraph' ) );
 		}
-		if ( 'disabled' === ( $connection['status'] ?? '' ) ) {
+		if ( isset( $connection['status_wp'] ) && 'publish' !== (string) $connection['status_wp'] ) {
+			return new WP_Error( 'midjourney_mcp_connection_unpublished', __( 'The selected Midjourney Connection is not published.', 'worldgraph' ) );
+		}
+
+		$status = (string) ( $connection['status'] ?? '' );
+		if ( 'disabled' === $status ) {
 			return new WP_Error( 'midjourney_mcp_connection_disabled', __( 'The selected Midjourney Connection is disabled.', 'worldgraph' ) );
+		}
+		if ( '' !== $status && ! in_array( $status, [ 'unverified', 'verified', 'error' ], true ) ) {
+			return new WP_Error( 'midjourney_mcp_connection_invalid', __( 'The selected Midjourney Connection has an invalid status.', 'worldgraph' ) );
 		}
 
 		return $connection;
@@ -856,6 +889,16 @@ class Midjourney_MCP {
 		if ( is_bool( $value ) ) {
 			return $value;
 		}
+		if ( ! is_scalar( $value ) ) {
+			return new WP_Error(
+				'midjourney_mcp_parameter_invalid',
+				sprintf(
+					/* translators: %s: provider parameter name. */
+					__( 'Midjourney parameter %s must be true or false.', 'worldgraph' ),
+					$name
+				)
+			);
+		}
 		if ( 1 === $value || '1' === $value || 'true' === strtolower( trim( (string) $value ) ) ) {
 			return true;
 		}
@@ -912,6 +955,10 @@ class Midjourney_MCP {
 
 	/** Decode optional JSON embedded in a structuredContent result wrapper. */
 	private static function decode_structured_result( array $structured ) {
+		$encoded = wp_json_encode( $structured );
+		if ( ! is_string( $encoded ) || strlen( $encoded ) > self::MAX_TOOL_RESULT_BYTES ) {
+			return new WP_Error( 'midjourney_mcp_tool_result_too_large', __( 'Midjourney MCP returned an oversized tool result.', 'worldgraph' ) );
+		}
 		if ( is_scalar( $structured['result'] ?? null ) ) {
 			$text = trim( (string) $structured['result'] );
 			if ( strlen( $text ) > self::MAX_TOOL_RESULT_BYTES ) {
@@ -945,7 +992,7 @@ class Midjourney_MCP {
 
 	/** Recursively collect URLs only beneath documented image/result fields. */
 	private static function collect_image_urls( $value, bool $image_context, int $depth, int &$remaining, array &$urls ): void {
-		if ( $remaining <= 0 || $depth > 8 ) {
+		if ( $remaining <= 0 || $depth > 8 || count( $urls ) >= self::MAX_OUTPUT_URLS ) {
 			return;
 		}
 		--$remaining;
@@ -962,8 +1009,8 @@ class Midjourney_MCP {
 			return;
 		}
 
-		$image_keys     = [ 'image_url', 'imageurl', 'raw_image_url', 'rawimageurl' ];
-		$image_list_keys = [ 'sub_image_urls', 'subimageurls', 'image_urls', 'imageurls', 'images' ];
+		$image_keys      = [ 'image_url', 'imageurl', 'raw_image_url', 'rawimageurl' ];
+		$image_list_keys = [ 'sub_image_urls', 'subimageurls', 'image_urls', 'imageurls', 'images', 'output_media', 'outputmedia' ];
 		$container_keys = [ 'response', 'data', 'result', 'output', 'outputs', 'items', 'media' ];
 		foreach ( $value as $key => $item ) {
 			$is_list_item = is_int( $key );
@@ -985,11 +1032,12 @@ class Midjourney_MCP {
 
 	/** Require an HTTPS media URL without credentials or a non-default port. */
 	private static function is_safe_https_url( string $url ): bool {
-		if ( '' === $url || strlen( $url ) > 2048 ) {
+		if ( '' === $url || strlen( $url ) > self::MAX_MEDIA_URL_BYTES ) {
 			return false;
 		}
 		$parts = wp_parse_url( $url );
 		return is_array( $parts )
+			&& false !== wp_http_validate_url( $url )
 			&& 'https' === strtolower( (string) ( $parts['scheme'] ?? '' ) )
 			&& '' !== trim( (string) ( $parts['host'] ?? '' ) )
 			&& ! isset( $parts['user'] )
@@ -997,18 +1045,11 @@ class Midjourney_MCP {
 			&& ( ! isset( $parts['port'] ) || 443 === (int) $parts['port'] );
 	}
 
-	/** Extract a bounded provider error message without retaining response data. */
-	private static function provider_error_message( array $payload ): string {
-		$error = $payload['error'] ?? ( is_array( $payload['response'] ?? null ) ? ( $payload['response']['error'] ?? '' ) : '' );
-		if ( is_array( $error ) ) {
-			$error = $error['message'] ?? $error['detail'] ?? '';
-		}
-
-		return is_scalar( $error ) ? substr( sanitize_text_field( (string) $error ), 0, 500 ) : '';
-	}
-
 	/** Return the first scalar value found beneath known response wrappers. */
-	private static function first_scalar( array $data, array $keys ): string {
+	private static function first_scalar( array $data, array $keys, int $depth = 0 ): string {
+		if ( $depth > 8 ) {
+			return '';
+		}
 		foreach ( $keys as $key ) {
 			if ( isset( $data[ $key ] ) && is_scalar( $data[ $key ] ) ) {
 				return (string) $data[ $key ];
@@ -1016,7 +1057,7 @@ class Midjourney_MCP {
 		}
 		foreach ( [ 'response', 'data', 'result' ] as $wrapper ) {
 			if ( is_array( $data[ $wrapper ] ?? null ) ) {
-				$value = self::first_scalar( $data[ $wrapper ], $keys );
+				$value = self::first_scalar( $data[ $wrapper ], $keys, $depth + 1 );
 				if ( '' !== $value ) {
 					return $value;
 				}

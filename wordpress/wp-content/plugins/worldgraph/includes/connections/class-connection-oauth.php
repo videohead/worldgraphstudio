@@ -28,8 +28,9 @@ final class Connection_OAuth {
 	private const TIMEOUT            = 30;
 	private const MAX_RESPONSE_BYTES = 65536;
 	private const STATE_TTL          = 600;
+	private const STATE_LOCK_TTL     = 30;
 	private const REFRESH_LEEWAY      = 60;
-	private const REFRESH_LOCK_TTL    = 120;
+	private const MUTATION_LOCK_TTL   = 120;
 	private const TOKEN_MAX_BYTES     = 16384;
 
 	/** The one external host temporarily permitted for an authorization redirect. */
@@ -116,6 +117,7 @@ final class Connection_OAuth {
 			'registration_failed' => [ 'error', sprintf( __( '%s could not register or resolve its OAuth client. Confirm the site callback URL and try again.', 'worldgraph' ), $label ) ],
 			'token_failed'        => [ 'error', sprintf( __( '%s did not complete the OAuth token exchange. Try connecting again.', 'worldgraph' ), $label ) ],
 			'storage_failed'      => [ 'error', __( 'World Graph Studio could not store the OAuth credential securely.', 'worldgraph' ) ],
+			'busy'                => [ 'error', __( 'Another request is updating this authorization. Retry shortly.', 'worldgraph' ) ],
 		];
 		if ( $profile === $notice_profile && isset( $notices[ $notice_key ] ) ) {
 			printf(
@@ -260,12 +262,20 @@ final class Connection_OAuth {
 			wp_die( esc_html__( 'The OAuth state is invalid.', 'worldgraph' ) );
 		}
 		$transient_key = self::state_transient( $state );
-		$pending       = get_transient( $transient_key );
-		delete_transient( $transient_key );
+		$state_lock    = self::acquire_state_lock( $state );
+		if ( is_wp_error( $state_lock ) ) {
+			wp_die( esc_html__( 'The OAuth request expired, was already used, or is already being processed.', 'worldgraph' ) );
+		}
 		try {
-			$pending = is_string( $pending ) ? json_decode( Credential_Store::decrypt( $pending ), true ) : null;
-		} catch ( \Throwable ) {
-			$pending = null;
+			$pending = get_transient( $transient_key );
+			delete_transient( $transient_key );
+			try {
+				$pending = is_string( $pending ) ? json_decode( Credential_Store::decrypt( $pending ), true ) : null;
+			} catch ( \Throwable ) {
+				$pending = null;
+			}
+		} finally {
+			self::release_lock( $state_lock );
 		}
 		if ( ! is_array( $pending ) ) {
 			wp_die( esc_html__( 'The OAuth request expired or was already used.', 'worldgraph' ) );
@@ -306,17 +316,29 @@ final class Connection_OAuth {
 		if ( '' !== (string) $config['resource'] ) {
 			$form['resource'] = (string) $config['resource'];
 		}
-		$tokens = self::token_request( $config, $form );
-		if ( is_wp_error( $tokens ) ) {
-			self::redirect_to_connection( $connection_id, $profile, 'token_failed' );
+		$lock = self::acquire_credential_lock( $connection_id, (string) $context['provider'], $profile );
+		if ( is_wp_error( $lock ) ) {
+			self::redirect_to_connection( $connection_id, $profile, 'busy' );
+		}
+		$outcome = 'storage_failed';
+		try {
+			$revision = Credential_Store::connection_secret_revision( $connection_id, (string) $config['credential_field'] );
+			if ( ! is_wp_error( $revision ) ) {
+				$tokens = self::token_request( $config, $form );
+				if ( is_wp_error( $tokens ) ) {
+					$outcome = 'token_failed';
+				} else {
+					$envelope = self::envelope_from_response( $tokens, (string) $context['provider'], $profile, (string) $pending['client_id'], $config );
+					$outcome  = ! is_wp_error( $envelope ) && self::store_envelope( $connection_id, $config, $envelope, $revision )
+						? 'connected'
+						: 'storage_failed';
+				}
+			}
+		} finally {
+			self::release_lock( $lock );
 		}
 
-		$envelope = self::envelope_from_response( $tokens, (string) $context['provider'], $profile, (string) $pending['client_id'], $config );
-		if ( is_wp_error( $envelope ) || ! self::store_envelope( $connection_id, $config, $envelope ) ) {
-			self::redirect_to_connection( $connection_id, $profile, 'storage_failed' );
-		}
-
-		self::redirect_to_connection( $connection_id, $profile, 'connected' );
+		self::redirect_to_connection( $connection_id, $profile, $outcome );
 	}
 
 	/** Remove only the credential field declared by this provider OAuth contract. */
@@ -328,10 +350,16 @@ final class Connection_OAuth {
 		if ( is_wp_error( $context ) ) {
 			wp_die( esc_html__( 'This Connection does not have a valid OAuth configuration.', 'worldgraph' ) );
 		}
-		if ( ! Credential_Store::store_connection_secret( $connection_id, (string) $context['config']['credential_field'], '' ) ) {
-			self::redirect_to_connection( $connection_id, $profile, 'storage_failed' );
+		$lock = self::acquire_credential_lock( $connection_id, (string) $context['provider'], $profile );
+		if ( is_wp_error( $lock ) ) {
+			self::redirect_to_connection( $connection_id, $profile, 'busy' );
 		}
-		self::redirect_to_connection( $connection_id, $profile, 'disconnected' );
+		try {
+			$stored = Credential_Store::store_connection_secret( $connection_id, (string) $context['config']['credential_field'], '' );
+		} finally {
+			self::release_lock( $lock );
+		}
+		self::redirect_to_connection( $connection_id, $profile, $stored ? 'disconnected' : 'storage_failed' );
 	}
 
 	/** Allow the current trusted manifest's authorization host for one redirect. */
@@ -387,6 +415,7 @@ final class Connection_OAuth {
 			return $reference;
 		}
 		$reference = (string) $reference;
+		$initial_revision = hash( 'sha256', "worldgraph-connection-secret\0" . $reference );
 		$external  = str_starts_with( trim( $reference ), 'env://' );
 		$resolved  = Credential_Store::resolve_reference( $reference );
 		if ( is_wp_error( $resolved ) ) {
@@ -415,22 +444,45 @@ final class Connection_OAuth {
 			return new WP_Error( 'worldgraph_oauth_reconnect_required', __( 'The provider authorization expired. Reconnect it from the Connection editor.', 'worldgraph' ) );
 		}
 
-		$lock = self::acquire_refresh_lock( $connection_id, $provider, $profile );
+		$lock = self::acquire_credential_lock( $connection_id, $provider, $profile );
 		if ( is_wp_error( $lock ) ) {
 			return $lock;
 		}
 		try {
-			// Another request may have refreshed immediately before this lock.
-			$latest     = Credential_Store::load_connection_secret( $connection_id, $field );
-			$latest     = is_wp_error( $latest ) ? '' : trim( (string) $latest );
-			$latest_env = self::credential_envelope( $latest, $provider, $config );
-			if ( ! $force_refresh && is_array( $latest_env ) && self::envelope_is_fresh( $latest_env ) ) {
+			// Re-resolve only the latest stored value after acquiring the mutation lock.
+			$latest_reference = Credential_Store::load_connection_secret( $connection_id, $field );
+			if ( is_wp_error( $latest_reference ) ) {
+				return $latest_reference;
+			}
+			$latest_reference = (string) $latest_reference;
+			$latest_revision  = Credential_Store::connection_secret_revision( $connection_id, $field );
+			if ( is_wp_error( $latest_revision ) ) {
+				return $latest_revision;
+			}
+			$latest_external = str_starts_with( trim( $latest_reference ), 'env://' );
+			$latest_resolved = Credential_Store::resolve_reference( $latest_reference );
+			if ( is_wp_error( $latest_resolved ) ) {
+				return $latest_resolved;
+			}
+			$latest_resolved = trim( (string) $latest_resolved );
+			$latest_env      = self::credential_envelope( $latest_resolved, $provider, $config );
+			if ( is_wp_error( $latest_env ) ) {
+				return $latest_env;
+			}
+			$credential_changed = ! hash_equals( $initial_revision, $latest_revision );
+			if ( is_array( $latest_env ) && self::envelope_is_fresh( $latest_env ) && ( ! $force_refresh || $credential_changed ) ) {
 				return (string) $latest_env['access_token'];
 			}
-			if ( is_array( $latest_env ) ) {
-				$refresh_token = (string) ( $latest_env['refresh_token'] ?? $refresh_token );
-				$client_id     = (string) ( $latest_env['client_id'] ?? $client_id );
+			if ( ! is_array( $latest_env ) ) {
+				return self::valid_token( $latest_resolved ) && $credential_changed
+					? $latest_resolved
+					: new WP_Error( 'worldgraph_oauth_reconnect_required', __( 'The stored provider authorization changed while refresh was waiting. Retry with the current credential.', 'worldgraph' ) );
 			}
+			if ( $latest_external ) {
+				return new WP_Error( 'worldgraph_oauth_external_rotation_required', __( 'The env:// OAuth credential must be refreshed by its external secret manager.', 'worldgraph' ) );
+			}
+			$refresh_token = (string) ( $latest_env['refresh_token'] ?? '' );
+			$client_id     = (string) ( $latest_env['client_id'] ?? '' );
 			if ( ! self::valid_token( $refresh_token ) || ! self::valid_client_id( $client_id ) ) {
 				return new WP_Error( 'worldgraph_oauth_reconnect_required', __( 'The provider authorization expired. Reconnect it from the Connection editor.', 'worldgraph' ) );
 			}
@@ -451,13 +503,13 @@ final class Connection_OAuth {
 				return new WP_Error( 'worldgraph_oauth_refresh_failed', __( 'The provider authorization could not be refreshed. Reconnect it from the Connection editor.', 'worldgraph' ) );
 			}
 			$updated = self::envelope_from_response( $tokens, $provider, $profile, $client_id, $config, $refresh_token );
-			if ( is_wp_error( $updated ) || ! self::store_envelope( $connection_id, $config, $updated ) ) {
+			if ( is_wp_error( $updated ) || ! self::store_envelope( $connection_id, $config, $updated, $latest_revision ) ) {
 				return new WP_Error( 'worldgraph_oauth_storage_failed', __( 'World Graph Studio could not securely store the refreshed authorization.', 'worldgraph' ) );
 			}
 
 			return (string) $updated['access_token'];
 		} finally {
-			self::release_refresh_lock( $lock );
+			self::release_lock( $lock );
 		}
 	}
 
@@ -512,6 +564,11 @@ final class Connection_OAuth {
 			return new WP_Error( 'worldgraph_oauth_configuration_missing', __( 'This provider does not declare OAuth.', 'worldgraph' ) );
 		}
 		if ( is_array( $oauth['profiles'] ?? null ) ) {
+			foreach ( $oauth['profiles'] as $declared_profile => $declared_config ) {
+				if ( ! is_string( $declared_profile ) || sanitize_key( $declared_profile ) !== $declared_profile || ! is_array( $declared_config ) ) {
+					return new WP_Error( 'worldgraph_oauth_profile_invalid', __( 'This provider declares an invalid OAuth profile.', 'worldgraph' ) );
+				}
+			}
 			$raw = is_array( $oauth['profiles'][ $profile ] ?? null ) ? $oauth['profiles'][ $profile ] : [];
 		} else {
 			$raw = 'default' === $profile ? $oauth : [];
@@ -520,35 +577,54 @@ final class Connection_OAuth {
 			return new WP_Error( 'worldgraph_oauth_profile_invalid', __( 'This provider does not declare that OAuth profile.', 'worldgraph' ) );
 		}
 
-		$field = sanitize_key( (string) ( $raw['credential_field'] ?? 'mcp_credential_reference' ) );
+		$field = is_scalar( $raw['credential_field'] ?? null ) ? sanitize_key( (string) $raw['credential_field'] ) : '';
 		if ( ! in_array( $field, Credential_Store::CONNECTION_FIELDS, true ) ) {
 			return new WP_Error( 'worldgraph_oauth_credential_field_invalid', __( 'The provider OAuth credential field is invalid.', 'worldgraph' ) );
 		}
-		$authorization_endpoint = self::trusted_https_endpoint( (string) ( $raw['authorization_endpoint'] ?? '' ) );
-		$token_endpoint         = self::trusted_https_endpoint( (string) ( $raw['token_endpoint'] ?? '' ) );
-		$registration_endpoint  = '' === trim( (string) ( $raw['registration_endpoint'] ?? '' ) )
+		if ( is_array( $oauth['profiles'] ?? null ) ) {
+			foreach ( $oauth['profiles'] as $declared_profile => $declared_config ) {
+				if ( $profile === $declared_profile ) {
+					continue;
+				}
+				$declared_field = is_scalar( $declared_config['credential_field'] ?? null ) ? sanitize_key( (string) $declared_config['credential_field'] ) : '';
+				if ( $field === $declared_field ) {
+					return new WP_Error( 'worldgraph_oauth_credential_field_conflict', __( 'OAuth profiles for one provider must use different credential fields.', 'worldgraph' ) );
+				}
+			}
+		}
+		$authorization_url      = is_scalar( $raw['authorization_endpoint'] ?? null ) ? (string) $raw['authorization_endpoint'] : '';
+		$token_url              = is_scalar( $raw['token_endpoint'] ?? null ) ? (string) $raw['token_endpoint'] : '';
+		$registration_url       = is_scalar( $raw['registration_endpoint'] ?? null ) ? (string) $raw['registration_endpoint'] : '';
+		$authorization_endpoint = self::trusted_https_endpoint( $authorization_url );
+		$token_endpoint         = self::trusted_https_endpoint( $token_url );
+		$registration_endpoint  = '' === trim( $registration_url )
 			? ''
-			: self::trusted_https_endpoint( (string) $raw['registration_endpoint'] );
+			: self::trusted_https_endpoint( $registration_url );
 		if ( is_wp_error( $authorization_endpoint ) || is_wp_error( $token_endpoint ) || is_wp_error( $registration_endpoint ) ) {
 			return new WP_Error( 'worldgraph_oauth_endpoint_invalid', __( 'The provider OAuth endpoints must be fixed HTTPS URLs.', 'worldgraph' ) );
 		}
 
-		$resource = trim( (string) ( $raw['resource'] ?? '' ) );
+		$resource = is_scalar( $raw['resource'] ?? null ) ? trim( (string) $raw['resource'] ) : '';
 		if ( '' !== $resource ) {
 			$resource = self::trusted_https_endpoint( $resource );
 			if ( is_wp_error( $resource ) ) {
 				return new WP_Error( 'worldgraph_oauth_resource_invalid', __( 'The provider OAuth resource must be a fixed HTTPS URL.', 'worldgraph' ) );
 			}
 		}
-		$scopes = array_values( array_unique( array_filter( array_map( 'strval', (array) ( $raw['scopes'] ?? [] ) ) ) ) );
-		if ( empty( $scopes ) || count( $scopes ) > 30 ) {
+		$scopes = $raw['scopes'] ?? null;
+		if ( ! is_array( $scopes ) || $scopes !== array_values( $scopes ) || empty( $scopes ) || count( $scopes ) > 30 ) {
 			return new WP_Error( 'worldgraph_oauth_scopes_invalid', __( 'The provider OAuth scopes are invalid.', 'worldgraph' ) );
 		}
 		foreach ( $scopes as $scope ) {
-			if ( strlen( $scope ) > 200 || ! preg_match( '#^[A-Za-z0-9._~:/-]+$#', $scope ) ) {
+			if ( ! is_string( $scope ) || strlen( $scope ) > 200 || ! preg_match( '#^[A-Za-z0-9._~:/-]+$#', $scope ) ) {
 				return new WP_Error( 'worldgraph_oauth_scopes_invalid', __( 'The provider OAuth scopes are invalid.', 'worldgraph' ) );
 			}
 		}
+		$unique_scopes = array_values( array_unique( $scopes ) );
+		if ( count( $unique_scopes ) !== count( $scopes ) ) {
+			return new WP_Error( 'worldgraph_oauth_scopes_invalid', __( 'The provider OAuth scopes are invalid.', 'worldgraph' ) );
+		}
+		$scopes = $unique_scopes;
 		$auth_method = is_scalar( $raw['token_endpoint_auth_method'] ?? null ) ? (string) $raw['token_endpoint_auth_method'] : 'none';
 		if ( 'none' !== $auth_method ) {
 			return new WP_Error( 'worldgraph_oauth_auth_method_unsupported', __( 'This OAuth service currently supports public PKCE clients.', 'worldgraph' ) );
@@ -560,6 +636,12 @@ final class Connection_OAuth {
 		$client_id_from_filter = true === ( $raw['client_id_from_filter'] ?? false );
 		if ( '' === $client_id && '' === (string) $registration_endpoint && ! $client_id_from_filter ) {
 			return new WP_Error( 'worldgraph_oauth_client_missing', __( 'This OAuth profile must declare dynamic registration, a public client ID, or a deployment-supplied client ID.', 'worldgraph' ) );
+		}
+
+		foreach ( [ 'authorization_parameters', 'token_parameters', 'registration_parameters' ] as $parameter_group ) {
+			if ( self::contains_confidential_client_parameter( $raw[ $parameter_group ] ?? [] ) ) {
+				return new WP_Error( 'worldgraph_oauth_confidential_parameter_forbidden', __( 'Public-client OAuth profiles cannot declare confidential-client parameters.', 'worldgraph' ) );
+			}
 		}
 
 		$label = substr( sanitize_text_field( (string) ( $raw['service_label'] ?? $manifest['label'] ?? $provider ) ), 0, 100 );
@@ -601,6 +683,20 @@ final class Connection_OAuth {
 		return $safe;
 	}
 
+	/** Reject static parameters that would silently turn PKCE into a confidential client. */
+	private static function contains_confidential_client_parameter( $parameters ): bool {
+		if ( ! is_array( $parameters ) ) {
+			return false;
+		}
+		foreach ( array_keys( $parameters ) as $key ) {
+			if ( in_array( strtolower( (string) $key ), [ 'client_secret', 'client_assertion', 'client_assertion_type' ], true ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
 	/** Validate a trusted manifest endpoint and prohibit embedded authority/query data. */
 	private static function trusted_https_endpoint( string $url ) {
 		$url   = trim( $url );
@@ -626,13 +722,14 @@ final class Connection_OAuth {
 		$meta_key     = self::client_id_meta( $provider, $profile );
 		$binding_key  = $meta_key . '_binding';
 		$binding_hash = self::client_registration_hash( $config, $redirect_uri );
-		$client_id    = (string) get_post_meta( $connection_id, $meta_key, true );
-		$saved_hash   = (string) get_post_meta( $connection_id, $binding_key, true );
-		if ( ! self::valid_client_id( $client_id ) || ! hash_equals( $binding_hash, $saved_hash ) ) {
-			$client_id = (string) $config['client_id'];
-		}
+		$client_id    = (string) $config['client_id'];
 		$client_id = (string) apply_filters( 'worldgraph_connection_oauth_client_id', $client_id, $provider, $profile, $connection_id, $config );
 		if ( self::valid_client_id( $client_id ) ) {
+			return $client_id;
+		}
+		$client_id  = (string) get_post_meta( $connection_id, $meta_key, true );
+		$saved_hash = (string) get_post_meta( $connection_id, $binding_key, true );
+		if ( self::valid_client_id( $client_id ) && hash_equals( $binding_hash, $saved_hash ) ) {
 			return $client_id;
 		}
 		if ( '' === (string) $config['registration_endpoint'] ) {
@@ -735,17 +832,36 @@ final class Connection_OAuth {
 
 	/** Build one versioned, provider-bound credential envelope. */
 	private static function envelope_from_response( array $tokens, string $provider, string $profile, string $client_id, array $config, string $fallback_refresh_token = '' ) {
-		$access_token  = is_scalar( $tokens['access_token'] ?? null ) ? (string) $tokens['access_token'] : '';
-		$token_type    = is_scalar( $tokens['token_type'] ?? null ) ? strtolower( (string) $tokens['token_type'] ) : 'bearer';
-		$refresh_token = is_scalar( $tokens['refresh_token'] ?? null ) ? (string) $tokens['refresh_token'] : $fallback_refresh_token;
+		$access_token = is_scalar( $tokens['access_token'] ?? null ) ? (string) $tokens['access_token'] : '';
+		$token_type   = is_scalar( $tokens['token_type'] ?? null ) ? strtolower( (string) $tokens['token_type'] ) : '';
+		if ( array_key_exists( 'refresh_token', $tokens ) && ! is_scalar( $tokens['refresh_token'] ) ) {
+			return new WP_Error( 'worldgraph_oauth_token_invalid', __( 'The provider returned an invalid OAuth token.', 'worldgraph' ) );
+		}
+		$refresh_token = is_scalar( $tokens['refresh_token'] ?? null ) ? (string) $tokens['refresh_token'] : '';
+		if ( '' === $refresh_token ) {
+			$refresh_token = $fallback_refresh_token;
+		}
 		if ( ! self::valid_token( $access_token ) || 'bearer' !== $token_type || ! self::valid_client_id( $client_id ) || ( '' !== $refresh_token && ! self::valid_token( $refresh_token ) ) ) {
 			return new WP_Error( 'worldgraph_oauth_token_invalid', __( 'The provider returned an invalid OAuth token.', 'worldgraph' ) );
 		}
-		$has_expiry = array_key_exists( 'expires_in', $tokens ) && is_numeric( $tokens['expires_in'] );
+		$has_expiry = array_key_exists( 'expires_in', $tokens );
+		if (
+			$has_expiry
+			&& ! is_int( $tokens['expires_in'] )
+			&& ! ( is_string( $tokens['expires_in'] ) && ctype_digit( $tokens['expires_in'] ) )
+		) {
+			return new WP_Error( 'worldgraph_oauth_token_invalid', __( 'The provider returned an invalid OAuth token expiry.', 'worldgraph' ) );
+		}
+		if ( $has_expiry && (int) $tokens['expires_in'] < 0 ) {
+			return new WP_Error( 'worldgraph_oauth_token_invalid', __( 'The provider returned an invalid OAuth token expiry.', 'worldgraph' ) );
+		}
 		$expires_in = $has_expiry
 			? max( 0, min( DAY_IN_SECONDS * 365, (int) $tokens['expires_in'] ) )
 			: 0;
 
+		if ( array_key_exists( 'scope', $tokens ) && ! is_scalar( $tokens['scope'] ) ) {
+			return new WP_Error( 'worldgraph_oauth_token_invalid', __( 'The provider returned an invalid OAuth scope.', 'worldgraph' ) );
+		}
 		$scope_value = is_scalar( $tokens['scope'] ?? null ) ? (string) $tokens['scope'] : implode( ' ', (array) $config['scopes'] );
 		$scope = preg_split( '/\s+/', trim( sanitize_text_field( $scope_value ) ) );
 		$scope = is_array( $scope ) ? array_slice( array_values( array_filter( $scope ) ), 0, 30 ) : (array) $config['scopes'];
@@ -765,14 +881,14 @@ final class Connection_OAuth {
 		];
 	}
 
-	/** Persist and verify one envelope through the protected Connection field. */
-	private static function store_envelope( int $connection_id, array $config, array $envelope ): bool {
+	/** Persist and verify one envelope through an unchanged protected field. */
+	private static function store_envelope( int $connection_id, array $config, array $envelope, string $expected_revision ): bool {
 		$encoded = wp_json_encode( $envelope );
 		if ( ! is_string( $encoded ) || strlen( $encoded ) > self::TOKEN_MAX_BYTES ) {
 			return false;
 		}
 		$field = (string) $config['credential_field'];
-		if ( ! Credential_Store::store_connection_secret( $connection_id, $field, $encoded ) ) {
+		if ( ! Credential_Store::store_connection_secret_if_revision( $connection_id, $field, $expected_revision, $encoded ) ) {
 			return false;
 		}
 		$stored = Credential_Store::load_connection_secret( $connection_id, $field );
@@ -795,12 +911,34 @@ final class Connection_OAuth {
 			! is_array( $decoded )
 			|| 'worldgraph-oauth' !== (string) ( $decoded['kind'] ?? '' )
 			|| 1 !== (int) ( $decoded['version'] ?? 0 )
+			|| 'Bearer' !== ( $decoded['token_type'] ?? null )
 			|| $provider !== (string) ( $decoded['provider_type'] ?? '' )
 			|| (string) $config['profile'] !== (string) ( $decoded['profile'] ?? '' )
 			|| ! hash_equals( self::config_hash( $config ), (string) ( $decoded['configuration_hash'] ?? '' ) )
 			|| (string) $config['token_endpoint'] !== (string) ( $decoded['token_endpoint'] ?? '' )
 		) {
 			return new WP_Error( 'worldgraph_oauth_envelope_invalid', __( 'The stored OAuth credential is invalid or belongs to a different provider.', 'worldgraph' ) );
+		}
+		$expires_at    = $decoded['expires_at'] ?? null;
+		$access_token  = is_string( $decoded['access_token'] ?? null ) ? $decoded['access_token'] : '';
+		$refresh_token = is_string( $decoded['refresh_token'] ?? null ) ? $decoded['refresh_token'] : '';
+		$client_id     = is_string( $decoded['client_id'] ?? null ) ? $decoded['client_id'] : '';
+		$scope         = $decoded['scope'] ?? null;
+		if (
+			! is_int( $expires_at )
+			|| $expires_at < 0
+			|| ! self::valid_token( $access_token )
+			|| ( '' !== $refresh_token && ! self::valid_token( $refresh_token ) )
+			|| ! self::valid_client_id( $client_id )
+			|| ! is_array( $scope )
+			|| count( $scope ) > 30
+		) {
+			return new WP_Error( 'worldgraph_oauth_envelope_invalid', __( 'The stored OAuth credential is invalid or belongs to a different provider.', 'worldgraph' ) );
+		}
+		foreach ( $scope as $scope_item ) {
+			if ( ! is_string( $scope_item ) || strlen( $scope_item ) > 200 || ! preg_match( '#^[A-Za-z0-9._~:/-]+$#', $scope_item ) ) {
+				return new WP_Error( 'worldgraph_oauth_envelope_invalid', __( 'The stored OAuth credential is invalid or belongs to a different provider.', 'worldgraph' ) );
+			}
 		}
 
 		return $decoded;
@@ -891,6 +1029,8 @@ final class Connection_OAuth {
 					$config['scopes'],
 					$config['client_name'],
 					$config['registration_parameters'],
+					$config['client_id'],
+					$config['client_id_from_filter'],
 				]
 			)
 		);
@@ -929,23 +1069,43 @@ final class Connection_OAuth {
 		return rtrim( strtr( base64_encode( $value ), '+/', '-_' ), '=' );
 	}
 
-	/** Acquire an expiring atomic refresh lock for token-rotation safety. */
-	private static function acquire_refresh_lock( int $connection_id, string $provider, string $profile ) {
+	/** Acquire a short atomic lock while consuming one OAuth state. */
+	private static function acquire_state_lock( string $state ) {
+		return self::acquire_option_lock(
+			'_worldgraph_oauth_state_' . hash( 'sha256', $state ),
+			self::STATE_LOCK_TTL,
+			'worldgraph_oauth_state_locked',
+			__( 'This OAuth response is already being processed.', 'worldgraph' )
+		);
+	}
+
+	/** Acquire an expiring lock shared by all OAuth credential mutations. */
+	private static function acquire_credential_lock( int $connection_id, string $provider, string $profile ) {
 		$blog_id     = function_exists( 'get_current_blog_id' ) ? get_current_blog_id() : 0;
-		$option_name = '_worldgraph_oauth_refresh_' . md5( $blog_id . ':' . $provider . ':' . $profile . ':' . $connection_id );
-		$token       = ( time() + self::REFRESH_LOCK_TTL ) . ':' . wp_generate_uuid4();
-		$lock        = [ 'option_name' => $option_name, 'token' => $token ];
+		$option_name = '_worldgraph_oauth_mutation_' . md5( $blog_id . ':' . $provider . ':' . $profile . ':' . $connection_id );
+		return self::acquire_option_lock(
+			$option_name,
+			self::MUTATION_LOCK_TTL,
+			'worldgraph_oauth_mutation_locked',
+			__( 'Another request is updating this provider authorization. Retry shortly.', 'worldgraph' )
+		);
+	}
+
+	/** Atomically acquire or take over one expired option-backed lock. */
+	private static function acquire_option_lock( string $option_name, int $ttl, string $error_code, string $error_message ) {
+		$token = ( time() + $ttl ) . ':' . wp_generate_uuid4();
+		$lock  = [ 'option_name' => $option_name, 'token' => $token ];
 		if ( add_option( $option_name, $token, '', 'no' ) ) {
 			return $lock;
 		}
 
 		$current = (string) get_option( $option_name, '' );
 		if ( (int) ( explode( ':', $current, 2 )[0] ?? 0 ) >= time() ) {
-			return new WP_Error( 'worldgraph_oauth_refresh_locked', __( 'Another request is refreshing this provider authorization. Retry shortly.', 'worldgraph' ) );
+			return new WP_Error( $error_code, $error_message );
 		}
 		global $wpdb;
 		if ( ! is_object( $wpdb ) || empty( $wpdb->options ) ) {
-			return new WP_Error( 'worldgraph_oauth_refresh_locked', __( 'Another request is refreshing this provider authorization. Retry shortly.', 'worldgraph' ) );
+			return new WP_Error( $error_code, $error_message );
 		}
 		$updated = $wpdb->update( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
 			$wpdb->options,
@@ -955,14 +1115,14 @@ final class Connection_OAuth {
 			[ '%s', '%s' ]
 		);
 		if ( 1 !== (int) $updated ) {
-			return new WP_Error( 'worldgraph_oauth_refresh_locked', __( 'Another request is refreshing this provider authorization. Retry shortly.', 'worldgraph' ) );
+			return new WP_Error( $error_code, $error_message );
 		}
 		wp_cache_delete( $option_name, 'options' );
 		return $lock;
 	}
 
-	/** Release only the refresh lock token owned by this request. */
-	private static function release_refresh_lock( array $lock ): void {
+	/** Release only the option-lock token owned by this request. */
+	private static function release_lock( array $lock ): void {
 		global $wpdb;
 		if ( ! is_object( $wpdb ) || empty( $wpdb->options ) ) {
 			return;
@@ -977,7 +1137,7 @@ final class Connection_OAuth {
 
 	/** Redirect to the Connection editor with a bounded status key. */
 	private static function redirect_to_connection( int $connection_id, string $profile, string $status ): void {
-		$status = in_array( $status, [ 'connected', 'disconnected', 'denied', 'registration_failed', 'token_failed', 'storage_failed' ], true ) ? $status : 'token_failed';
+		$status = in_array( $status, [ 'connected', 'disconnected', 'denied', 'registration_failed', 'token_failed', 'storage_failed', 'busy' ], true ) ? $status : 'token_failed';
 		$url    = add_query_arg(
 			[ 'post' => $connection_id, 'action' => 'edit', 'worldgraph_connection_oauth' => $status, 'oauth_profile' => sanitize_key( $profile ) ],
 			admin_url( 'post.php' )

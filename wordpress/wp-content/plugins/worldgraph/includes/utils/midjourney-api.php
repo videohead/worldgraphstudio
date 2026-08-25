@@ -398,6 +398,9 @@ class Midjourney_API {
 		if ( class_exists( Credential_Store::class ) ) {
 			$resolved = Credential_Store::resolve_reference( $reference );
 			if ( is_wp_error( $resolved ) ) {
+				if ( 'worldgraph_credential_environment_missing' === $resolved->get_error_code() ) {
+					return new WP_Error( 'midjourney_api_credential_missing', __( 'The Midjourney API environment credential is unavailable.', 'worldgraph' ) );
+				}
 				return new WP_Error( 'midjourney_api_credential_invalid', __( 'The Midjourney API credential reference could not be resolved.', 'worldgraph' ) );
 			}
 			return trim( (string) $resolved );
@@ -561,15 +564,9 @@ class Midjourney_API {
 		return null;
 	}
 
-	/** Return a bounded task failure message that cannot contain request secrets. */
+	/** Return a stable task failure message without retaining provider response text. */
 	private static function failure_message( array $payload ): string {
-		$message = $payload['failReason'] ?? $payload['message'] ?? $payload['error'] ?? '';
-		if ( is_array( $message ) ) {
-			$message = $message['message'] ?? '';
-		}
-		if ( is_scalar( $message ) && '' !== trim( (string) $message ) ) {
-			return substr( sanitize_text_field( (string) $message ), 0, 500 );
-		}
+		unset( $payload );
 
 		return __( 'Midjourney generation failed.', 'worldgraph' );
 	}

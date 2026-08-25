@@ -321,6 +321,77 @@ class Credential_Store {
 	}
 
 	/**
+	 * Return a non-secret revision for compare-and-swap credential mutations.
+	 *
+	 * @return string|\WP_Error Stable revision or a storage error.
+	 */
+	public static function connection_secret_revision( int $post_id, string $field_name ) {
+		$plaintext = self::load_connection_secret( $post_id, $field_name );
+		return is_wp_error( $plaintext )
+			? $plaintext
+			: hash( 'sha256', "worldgraph-connection-secret\0" . (string) $plaintext );
+	}
+
+	/**
+	 * Atomically replace a Connection secret only while its revision is unchanged.
+	 *
+	 * This prevents an in-flight OAuth refresh from restoring a disconnected
+	 * credential or overwriting a newer authorization, literal token, or env://
+	 * reference. The database comparison uses the exact encrypted value captured
+	 * immediately before the write; the plaintext revision is never persisted.
+	 */
+	public static function store_connection_secret_if_revision( int $post_id, string $field_name, string $expected_revision, string $plaintext ): bool {
+		if (
+			! in_array( $field_name, self::CONNECTION_FIELDS, true )
+			|| 'worldgraph_conn' !== get_post_type( $post_id )
+			|| 64 !== strlen( $expected_revision )
+			|| ! ctype_xdigit( $expected_revision )
+			|| strlen( $plaintext ) > 65536
+		) {
+			return false;
+		}
+
+		$current_stored = (string) get_post_meta( $post_id, $field_name, true );
+		try {
+			$current_plaintext = self::decrypt( $current_stored );
+			$replacement       = '' === $plaintext ? '' : self::encrypt( $plaintext );
+		} catch ( \RuntimeException $exception ) {
+			self::$storage_error = true;
+			return false;
+		}
+		$current_revision = hash( 'sha256', "worldgraph-connection-secret\0" . $current_plaintext );
+		if ( ! hash_equals( $expected_revision, $current_revision ) ) {
+			return false;
+		}
+
+		$exists = metadata_exists( 'post', $post_id, $field_name );
+		if ( ! $exists ) {
+			$updated = (bool) add_post_meta( $post_id, $field_name, $replacement, true );
+		} else {
+			global $wpdb;
+			if ( ! is_object( $wpdb ) || empty( $wpdb->postmeta ) ) {
+				return false;
+			}
+			$updated = 1 === (int) $wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Exact-value CAS is required for credential mutation safety.
+				$wpdb->prepare(
+					"UPDATE {$wpdb->postmeta} SET meta_value = %s WHERE post_id = %d AND meta_key = %s AND BINARY meta_value = BINARY %s",
+					$replacement,
+					$post_id,
+					$field_name,
+					$current_stored
+				)
+			);
+		}
+		if ( ! $updated ) {
+			return false;
+		}
+
+		wp_cache_delete( $post_id, 'post_meta' );
+		$loaded = self::load_connection_secret( $post_id, $field_name );
+		return is_string( $loaded ) && hash_equals( hash( 'sha256', $plaintext ), hash( 'sha256', $loaded ) );
+	}
+
+	/**
 	 * Convert a masked submitted option value back to its current plaintext for
 	 * a trusted server-side copy into a Connection record.
 	 */

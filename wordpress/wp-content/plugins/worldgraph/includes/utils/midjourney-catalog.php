@@ -182,7 +182,7 @@ class Midjourney_Catalog {
 	private static function api_definitions(): array {
 		return [
 			[
-				'reference'   => 'api:imagine',
+				'reference'   => Midjourney_API::TEMPLATE,
 				'name'        => 'MidJourney API — Imagine',
 				'description' => 'Generate an image from a text prompt through the midjourney-api.com REST service.',
 				'transport'   => 'api',
@@ -224,7 +224,7 @@ class Midjourney_Catalog {
 					'mode'         => 'fast',
 					'translation'  => false,
 					'split_images' => true,
-					'timeout'      => 480,
+					'timeout'      => Midjourney_MCP::DEFAULT_GENERATION_TIMEOUT,
 				],
 				'schema'      => [
 					'$schema'              => 'https://json-schema.org/draft/2020-12/schema',
@@ -236,7 +236,12 @@ class Midjourney_Catalog {
 						'mode'         => [ 'type' => 'string', 'enum' => [ 'fast', 'relax', 'turbo' ], 'default' => 'fast' ],
 						'translation'  => [ 'type' => 'boolean', 'default' => false ],
 						'split_images' => [ 'type' => 'boolean', 'default' => true ],
-						'timeout'      => [ 'type' => 'integer', 'minimum' => 60, 'maximum' => 1200, 'default' => 480 ],
+						'timeout'      => [
+							'type'    => 'integer',
+							'minimum' => Midjourney_MCP::MIN_GENERATION_TIMEOUT,
+							'maximum' => Midjourney_MCP::MAX_GENERATION_TIMEOUT,
+							'default' => Midjourney_MCP::DEFAULT_GENERATION_TIMEOUT,
+						],
 					],
 					'required'             => [ 'prompt' ],
 				],

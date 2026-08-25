@@ -277,9 +277,10 @@ Neither credential is a Midjourney browser-subscription credential, and a key
 from one intermediary cannot authenticate the other.
 
 Configure this provider from **World Graph Studio > Connections**, not the
-first-run Setup Wizard. Prefer `env://MIDJOURNEY_API_KEY` for REST and a
-service-scoped `env://ACEDATACLOUD_API_TOKEN` reference for MCP. Saving or
-testing provisions `api:imagine` and `mcp:midjourney_imagine` text-to-image
+first-run Setup Wizard. Configure either transport or both: prefer
+`env://MIDJOURNEY_API_KEY` for REST and a service-scoped
+`env://ACEDATACLOUD_API_TOKEN` reference for MCP. Saving or testing provisions
+the matching `api:imagine`, `mcp:midjourney_imagine`, or both text-to-image
 Templates. The REST Template accepts `fast` or `relaxed`; the MCP Template
 accepts `fast`, `relax`, or `turbo`.
 

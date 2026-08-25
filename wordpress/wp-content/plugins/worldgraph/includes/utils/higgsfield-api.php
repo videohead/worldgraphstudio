@@ -244,12 +244,14 @@ class Higgsfield_API {
 
 	/** Map documented provider states and every supported output URL. */
 	public static function normalize_result( array $payload, string $expected_kind = '' ): array {
-		$job_id = sanitize_text_field( (string) ( $payload['request_id'] ?? '' ) );
-		$status = self::normalize_status( (string) ( $payload['status'] ?? '' ) );
+		$provider_job_id = is_scalar( $payload['request_id'] ?? null ) ? (string) $payload['request_id'] : '';
+		$provider_status = is_scalar( $payload['status'] ?? null ) ? (string) $payload['status'] : '';
+		$job_id          = sanitize_text_field( $provider_job_id );
+		$status          = self::normalize_status( $provider_status );
 		$result = [
 			'job_id'         => $job_id,
 			'status'         => $status,
-			'provider_status' => sanitize_key( (string) ( $payload['status'] ?? '' ) ),
+			'provider_status' => sanitize_key( $provider_status ),
 			'transport'      => 'api',
 		];
 
@@ -302,17 +304,22 @@ class Higgsfield_API {
 		}
 
 		$allowed = json_decode( $raw, true );
-		if ( ! is_array( $allowed ) ) {
+		if ( ! is_array( $allowed ) || $allowed !== array_values( $allowed ) ) {
 			return false;
 		}
+		foreach ( $allowed as $allowed_reference ) {
+			if ( ! is_string( $allowed_reference ) || ! isset( self::OPERATIONS[ $allowed_reference ] ) ) {
+				return false;
+			}
+		}
 
-		return in_array( $reference, array_values( array_filter( $allowed, 'is_string' ) ), true );
+		return in_array( $reference, $allowed, true );
 	}
 
 	/** Resolve and validate one saved Higgsfield Connection. */
 	private static function connection( int $connection_id ) {
 		$connection = Connection_Repository::get( $connection_id );
-		if ( ! is_array( $connection ) || 'higgsfield' !== ( $connection['provider_type'] ?? '' ) ) {
+		if ( ! is_array( $connection ) || 'publish' !== ( $connection['status_wp'] ?? '' ) || 'higgsfield' !== ( $connection['provider_type'] ?? '' ) ) {
 			return new WP_Error( 'higgsfield_api_connection_invalid', __( 'Select a Higgsfield Connection first.', 'worldgraph' ) );
 		}
 		if ( 'disabled' === ( $connection['status'] ?? '' ) ) {
@@ -448,46 +455,52 @@ class Higgsfield_API {
 	/** Validate reviewed fields without forwarding arbitrary Template values. */
 	private static function normalize_operation_body( string $reference, array $body ) {
 		if ( isset( $body['num_images'] ) ) {
-			$body['num_images'] = (int) $body['num_images'];
-			if ( $body['num_images'] < 1 || $body['num_images'] > 4 ) {
+			if ( ! is_int( $body['num_images'] ) || $body['num_images'] < 1 || $body['num_images'] > 4 ) {
 				return new WP_Error( 'higgsfield_api_parameter_invalid', __( 'Higgsfield num_images must be between 1 and 4.', 'worldgraph' ) );
 			}
 		}
 		if ( isset( $body['aspect_ratio'] ) ) {
 			$allowed = [ '1:1', '4:3', '3:4', '3:2', '2:3', '5:4', '4:5', '16:9', '9:16', '21:9' ];
-			if ( ! in_array( (string) $body['aspect_ratio'], $allowed, true ) ) {
+			if ( ! is_string( $body['aspect_ratio'] ) || ! in_array( $body['aspect_ratio'], $allowed, true ) ) {
 				return new WP_Error( 'higgsfield_api_parameter_invalid', __( 'Select an aspect ratio supported by the Higgsfield Template.', 'worldgraph' ) );
 			}
 		}
 		if ( isset( $body['resolution'] ) ) {
-			$body['resolution'] = sanitize_text_field( (string) $body['resolution'] );
-			if ( ! in_array( $body['resolution'], [ '2K', '4K' ], true ) ) {
+			if ( ! is_string( $body['resolution'] ) || ! in_array( $body['resolution'], [ '2K', '4K' ], true ) ) {
 				return new WP_Error( 'higgsfield_api_parameter_invalid', __( 'Select a resolution supported by the Higgsfield Template.', 'worldgraph' ) );
 			}
 		}
 		if ( isset( $body['seed'] ) ) {
-			$body['seed'] = (int) $body['seed'];
-			if ( $body['seed'] < 1 || $body['seed'] > 1000000 ) {
+			if ( ! is_int( $body['seed'] ) || $body['seed'] < 1 || $body['seed'] > 1000000 ) {
 				return new WP_Error( 'higgsfield_api_parameter_invalid', __( 'Higgsfield seed must be between 1 and 1000000.', 'worldgraph' ) );
 			}
 		}
 		if ( isset( $body['enhance_prompt'] ) ) {
-			$body['enhance_prompt'] = rest_sanitize_boolean( $body['enhance_prompt'] );
+			if ( ! is_bool( $body['enhance_prompt'] ) ) {
+				return new WP_Error( 'higgsfield_api_parameter_invalid', __( 'Higgsfield enhance_prompt must be a boolean.', 'worldgraph' ) );
+			}
 		}
 		if ( isset( $body['duration'] ) ) {
-			$body['duration'] = (int) $body['duration'];
-			if ( ! in_array( $body['duration'], [ 5, 10 ], true ) ) {
+			if ( ! is_int( $body['duration'] ) || ! in_array( $body['duration'], [ 5, 10 ], true ) ) {
 				return new WP_Error( 'higgsfield_api_parameter_invalid', __( 'Kling video duration must be 5 or 10 seconds.', 'worldgraph' ) );
 			}
 		}
 		if ( isset( $body['cfg_scale'] ) ) {
-			$body['cfg_scale'] = (float) $body['cfg_scale'];
-			if ( $body['cfg_scale'] < 0 || $body['cfg_scale'] > 1 ) {
+			if (
+				( ! is_int( $body['cfg_scale'] ) && ! is_float( $body['cfg_scale'] ) )
+				|| ! is_finite( (float) $body['cfg_scale'] )
+				|| $body['cfg_scale'] < 0
+				|| $body['cfg_scale'] > 1
+				|| abs( (float) $body['cfg_scale'] * 100 - round( (float) $body['cfg_scale'] * 100 ) ) > 0.000001
+			) {
 				return new WP_Error( 'higgsfield_api_parameter_invalid', __( 'Kling CFG scale must be between 0 and 1.', 'worldgraph' ) );
 			}
 		}
 		if ( isset( $body['negative_prompt'] ) ) {
-			$body['negative_prompt'] = substr( sanitize_textarea_field( (string) $body['negative_prompt'] ), 0, 5000 );
+			if ( ! is_string( $body['negative_prompt'] ) || strlen( $body['negative_prompt'] ) > 5000 ) {
+				return new WP_Error( 'higgsfield_api_parameter_invalid', __( 'Higgsfield negative_prompt must be a string no longer than 5000 bytes.', 'worldgraph' ) );
+			}
+			$body['negative_prompt'] = sanitize_textarea_field( $body['negative_prompt'] );
 		}
 
 		$allowed = array_flip( array_merge( [ 'prompt' ], (array) ( self::OPERATIONS[ $reference ]['parameters'] ?? [] ), [ 'image_url', 'end_image_url' ] ) );

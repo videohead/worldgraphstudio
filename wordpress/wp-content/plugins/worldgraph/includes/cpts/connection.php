@@ -104,7 +104,12 @@ class Connection {
 		switch ( (string) ( $field['name'] ?? '' ) ) {
 			case 'provider_type':
 				$value = sanitize_key( (string) $value );
-				return in_array( $value, self::provider_types(), true ) ? $value : '';
+				if ( ! in_array( $value, self::provider_types(), true ) ) {
+					return '';
+				}
+				return self::provider_change_has_credentials( (int) $post_id, $value )
+					? sanitize_key( (string) \WorldGraph\Utils\worldgraph_get_field_value( (int) $post_id, 'provider_type' ) )
+					: $value;
 
 			case 'environment':
 				$value = sanitize_key( (string) $value );
@@ -167,8 +172,15 @@ class Connection {
 		}
 
 		$name = (string) ( $field['name'] ?? '' );
-		if ( 'provider_type' === $name && ! in_array( sanitize_key( (string) $value ), self::provider_types(), true ) ) {
-			return __( 'Select a supported provider type.', 'worldgraph' );
+		if ( 'provider_type' === $name ) {
+			$value = sanitize_key( (string) $value );
+			if ( ! in_array( $value, self::provider_types(), true ) ) {
+				return __( 'Select a supported provider type.', 'worldgraph' );
+			}
+			$post_id = isset( $_POST['post_ID'] ) ? absint( wp_unslash( $_POST['post_ID'] ) ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Missing -- SCF owns the enclosing save nonce; this is a read-only validation check.
+			if ( $post_id && self::provider_change_has_credentials( $post_id, $value ) ) {
+				return __( 'Clear both saved credential fields before changing this Connection’s provider type.', 'worldgraph' );
+			}
 		}
 		if ( 'environment' === $name && ! in_array( sanitize_key( (string) $value ), self::ENVIRONMENTS, true ) ) {
 			return __( 'Select a supported environment.', 'worldgraph' );
@@ -190,6 +202,21 @@ class Connection {
 		}
 
 		return $valid;
+	}
+
+	/** Prevent a masked secret or OAuth envelope from crossing provider boundaries. */
+	private static function provider_change_has_credentials( int $post_id, string $new_provider ): bool {
+		$current_provider = sanitize_key( (string) \WorldGraph\Utils\worldgraph_get_field_value( $post_id, 'provider_type' ) );
+		if ( '' === $current_provider || $current_provider === $new_provider ) {
+			return false;
+		}
+		foreach ( \WorldGraph\Utils\Credential_Store::CONNECTION_FIELDS as $field_name ) {
+			if ( '' !== (string) get_post_meta( $post_id, $field_name, true ) ) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	/**
@@ -787,7 +814,7 @@ class Connection {
 			$synced_at = (string) get_post_meta( $post->ID, 'midjourney_catalog_synced_at', true );
 			$error     = (string) get_post_meta( $post->ID, 'midjourney_catalog_error', true );
 			?>
-			<p><?php echo esc_html__( 'World Graph Studio maintains separate text-to-image Templates for midjourney-api.com REST and the AceData Cloud MidJourney MCP server. Saving or checking this Connection refreshes those Templates.', 'worldgraph' ); ?></p>
+			<p><?php echo esc_html__( 'World Graph Studio maintains a separate text-to-image Template for each configured MidJourney REST or MCP credential. Saving or checking this Connection refreshes the matching Templates.', 'worldgraph' ); ?></p>
 			<ul>
 				<li><?php echo esc_html__( 'API Key authenticates api.midjourney-api.com; MCP API Key authenticates midjourney.mcp.acedata.cloud. These independent operators issue different credentials.', 'worldgraph' ); ?></li>
 				<li><?php echo esc_html__( 'The REST Template supports fast or relaxed mode. The MCP Template supports fast, relax, or turbo mode; the different relax spellings follow each provider contract.', 'worldgraph' ); ?></li>
