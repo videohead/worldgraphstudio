@@ -50,6 +50,22 @@ class Test_Dramaturgy_Tool extends TestCase {
 		return $method->invoke( null, $analysis, $question, 'Focus question' );
 	}
 
+	/** Invoke the context-specific prompt contract helper. */
+	private function build_specificity_contract( array $context, string $lens, string $question ): string {
+		$method = new ReflectionMethod( Dramaturgy_Tool::class, 'build_specificity_contract' );
+		$method->setAccessible( true );
+
+		return $method->invoke( null, $context, $lens, $question );
+	}
+
+	/** Invoke the refinement heuristic helper. */
+	private function should_refine_analysis( string $analysis, string $question, array $context ): bool {
+		$method = new ReflectionMethod( Dramaturgy_Tool::class, 'should_refine_analysis' );
+		$method->setAccessible( true );
+
+		return $method->invoke( null, $analysis, $question, $context );
+	}
+
 	/** A supplied question must control the reading rather than trail the prompt. */
 	public function test_focus_question_has_an_explicit_analytical_job(): void {
 		$question = 'Where does the protagonist lose agency?';
@@ -115,5 +131,49 @@ class Test_Dramaturgy_Tool extends TestCase {
 		$this->assertStringContainsString( 'maxlength="<?php echo esc_attr( (string) self::MAX_FOCUS_QUESTION_LENGTH ); ?>"', $php_source );
 		$this->assertStringContainsString( 'question: submittedQuestion', $js_source );
 		$this->assertStringContainsString( 'response.data.focused', $js_source );
+	}
+
+	/** The specificity contract must force anchored claims and practical framing. */
+	public function test_specificity_contract_includes_anchor_index_and_bullet_requirements(): void {
+		$contract = $this->build_specificity_contract(
+			[
+				'post_title'     => 'Little Red Riding Hood',
+				'project_logline' => 'A child meets a predator on a forest path.',
+				'all_characters' => [
+					[ 'name' => 'Little Red Riding Hood' ],
+					[ 'name' => 'Wolf' ],
+				],
+				'all_scenes' => [
+					[ 'title' => 'Forest path' ],
+					[ 'title' => 'Grandmother\'s house' ],
+				],
+			],
+			'character',
+			'How does the wolf believe he will achieve his goals?'
+		);
+
+		$this->assertStringContainsString( '<storygraph_anchor_index>', $contract );
+		$this->assertStringContainsString( 'Source title: Little Red Riding Hood', $contract );
+		$this->assertStringContainsString( 'Character: Wolf', $contract );
+		$this->assertStringContainsString( 'begin with "- Evidence:"', $contract );
+		$this->assertStringContainsString( 'begin with "- Question:"', $contract );
+		$this->assertStringContainsString( 'active tactic, immediate obstacle, and cost/risk', $contract );
+	}
+
+	/** Generic or ungrounded drafts should trigger one server-owned rewrite pass. */
+	public function test_refinement_trigger_detects_shallow_or_ungrounded_output(): void {
+		$context = [
+			'post_title'     => 'Little Red Riding Hood',
+			'all_characters' => [
+				[ 'name' => 'Little Red Riding Hood' ],
+				[ 'name' => 'Wolf' ],
+			],
+		];
+
+		$generic = "Dramatic situation\nThis is a classic tale.\n\nEvidence and movement\nThe action unfolds.\n\nTensions or questions\nWhat happens next?\n\nPractical possibilities\nCould be stronger.";
+		$grounded = "Dramatic situation\nWolf believes deception will secure access to Grandmother by redirecting Little Red Riding Hood.\n\nEvidence and movement\n- Evidence: \"Little Red Riding Hood\" chooses the forest path while \"Wolf\" redirects her route.\n\nTensions or questions\nThe plan depends on timing and isolation around Grandmother's house.\n\nPractical possibilities\n- Question: Which beat shows Wolf shifting from reconnaissance to execution?";
+
+		$this->assertTrue( $this->should_refine_analysis( $generic, 'How does the wolf believe he will achieve his goals?', $context ) );
+		$this->assertFalse( $this->should_refine_analysis( $grounded, 'How does the wolf believe he will achieve his goals?', $context ) );
 	}
 }

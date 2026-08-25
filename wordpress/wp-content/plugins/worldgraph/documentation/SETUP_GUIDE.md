@@ -60,6 +60,33 @@ Choose this for Story Graph-only use or when generation happens in an external
 web application. The wizard does not create or update the managed generation
 Connection in this mode, and it does not delete Connections that already exist.
 
+### Higgsfield (Connections screen only)
+
+Higgsfield is not a first-run wizard choice because its hosted MCP service
+requires a saved, published Connection before the administrator can complete a
+browser OAuth redirect. Finish or skip the wizard, then open **World Graph
+Studio > Connections** and create a **Higgsfield** Connection with:
+
+- Endpoint URL: `https://platform.higgsfield.ai`
+- MCP Endpoint URL: `https://mcp.higgsfield.ai/mcp`
+- API Key / OAuth Reference: the REST credential in
+  `KEY_ID:KEY_SECRET` form, preferably
+  `env://HIGGSFIELD_API_CREDENTIAL`
+- Environment: `production`
+
+Save the published enabled Connection, use **Connect Higgsfield MCP**, and
+approve `openid`, `email`, and `offline_access` with the Higgsfield account.
+The OAuth authorization is stored separately in `mcp_credential_reference`;
+it does not replace the REST key pair. The site admin URL must be HTTPS except
+on a loopback development host.
+
+Testing requires both transports: a non-destructive REST authentication check,
+a non-empty bounded MCP `tools/list` catalog, and provisioning of three reviewed
+REST Templates. All generation uses REST. MCP is discovery/readiness only and
+does not execute discovered tools. See the [Higgsfield Connection
+guide](../../../../../about/plugins/HIGGSFIELD.md) for operation references,
+retention, retries, upload formats, OAuth behavior, and troubleshooting.
+
 ### Local ComfyUI HTTP API plus optional MCP
 
 Use this when ComfyUI runs on the same workstation or a reachable private host.
@@ -233,6 +260,10 @@ not expose separate fallback fields. Do not expect the wizard to save
 - provisions the managed local ComfyUI Template where applicable; and
 - sets `worldgraph_setup_complete = true`.
 
+Higgsfield is intentionally absent from this managed wizard save. Configure it
+afterward on the Connections screen so its saved-record OAuth state and callback
+can be bound to the exact Connection.
+
 The generation credential entered in this form is stored on the managed
 Connection's `credential_reference` meta. For Suno, the separate AceData Cloud
 token is stored in `mcp_credential_reference`. The LLM key is stored in
@@ -266,6 +297,8 @@ Provider-specific behavior:
 - ElevenLabs verifies voices/models and synchronizes Templates;
 - Suno verifies the SunoAPI.org credit endpoint and required AceData Cloud MCP
   tools, then synchronizes transport-specific Templates;
+- Higgsfield verifies REST authentication and OAuth MCP discovery, then
+  provisions three reviewed REST-only image/video Templates;
 - VideoDraft verifies hosted MCP generation and Project tools, then
   synchronizes live-schema Templates;
 - Comfy Cloud's Connection test currently verifies credential presence; catalog
@@ -389,6 +422,12 @@ For Suno, also confirm that the MCP field contains an AceData Cloud token, not
 the SunoAPI.org key. The combined Suno Connection test fails when either the
 REST credit check or required MCP-tool check fails.
 
+For Higgsfield, do not paste the REST `KEY_ID:KEY_SECRET` into the MCP field.
+Save the Connection, use **Connect Higgsfield MCP**, and reconnect the account
+if the OAuth envelope has expired or no longer matches the trusted provider
+profile. Do not add guessed MCP tool names: Higgsfield MCP is catalog discovery
+only in this adapter.
+
 ### No Template appears in the Assets metabox
 
 - Confirm the Template is published with `status = active`.
@@ -425,3 +464,4 @@ REST credit check or required MCP-tool check fails.
 - [ComfyUI Template Catalog](../../../../../about/plugins/COMFY_TEMPLATE_CATALOG.md)
 - [Deployment and Connections](../../../../../about/Deployment_and_Connections.md)
 - [Suno Integration](../../../../../about/plugins/SUNO.md)
+- [Higgsfield Connection](../../../../../about/plugins/HIGGSFIELD.md)

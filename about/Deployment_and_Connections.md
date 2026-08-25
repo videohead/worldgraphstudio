@@ -3,6 +3,8 @@
 World Graph Studio keeps stories, Story Graph data, and specialist creative
 advisors in WordPress. Generative media workflows can run through configured
 tools including ComfyUI, fal, ElevenLabs, Suno, VideoDraft, and OpenRouter.
+The delivered Higgsfield adapter adds reviewed REST image/video generation and
+OAuth-protected MCP catalog inspection.
 Neither a GPU nor a generation connection is required for writing, planning, continuity,
 collaboration, asset tracking, JSON/FDX import, or Markdown export.
 AI-assisted and generated-media features require the corresponding configured
@@ -20,13 +22,19 @@ Every World Graph Studio user needs:
 1. A WordPress.org-capable host, WP Local, or a local Docker/Lando deployment.
 2. Optionally, a local ComfyUI installation, Comfy Cloud account, fal account,
    ElevenLabs account, separate SunoAPI.org and AceData Cloud accounts, a
-   VideoDraft account with a personal access token, an OpenRouter account with
-   an API key, or another manually managed asset source.
+   Higgsfield developer API credential plus an eligible Higgsfield account for
+   MCP, a VideoDraft account with a personal access token, an OpenRouter
+   account with an API key, or another manually managed asset source.
 3. Optionally, an API-connected LLM: a local OpenAI-compatible server such as
    llama.cpp, Ollama, vLLM, or LM Studio; or a hosted provider API such as
    OpenAI or Anthropic.
 
-Browser-only subscriptions, including ChatGPT, Claude, and Claude Code subscriptions without an API credential, are not supported by the World Graph Studio server integration at this time. Hosted LLM providers require an API key; a local LLM must expose an OpenAI-compatible API endpoint and any credential it requires.
+Except where a Connection exposes an explicit provider-account OAuth control
+(currently Higgsfield MCP), browser-only subscriptions are not server API
+credentials. ChatGPT, Claude, and Claude Code subscriptions without an API
+credential do not authenticate the hosted LLM integrations. Hosted LLM
+providers require an API key; a local LLM must expose an OpenAI-compatible API
+endpoint and any credential it requires.
 
 ## Upgrading a renamed installation
 
@@ -88,6 +96,13 @@ still call the lazy loader to test or repair a Connection.
 Third-party code can extend the manifest through
 `worldgraph_conn_adapters`, provide a callable `loader`, and declare health,
 post-save/admin, Template-provisioning, and generation-client capabilities.
+Compatible providers can also declare named `oauth.profiles` and reuse core's
+administrator-only public-client authorization-code + S256 PKCE lifecycle,
+optional dynamic client registration, one-time state, encrypted token envelope,
+refresh lock, and disconnect controls. OAuth profiles select one protected
+Connection credential field; they do not grant provider operations by
+themselves.
+
 The same manifest may declare guided setup choices with `setup_options`. The
 `files` shorthand resolves paths inside the main World Graph Studio plugin and
 is therefore intended for bundled implementations, not files owned by an
@@ -242,6 +257,54 @@ final track into the media library before completing the generation record.
 See [Suno Integration](plugins/SUNO.md) for credential setup, Template
 contracts, callback-token behavior, polling, import, limits, and
 troubleshooting.
+
+## Higgsfield REST and MCP
+
+Higgsfield uses one `higgsfield` Connection with deliberately separate
+transports and credentials:
+
+- REST API: `https://platform.higgsfield.ai`, authenticated with
+  `Authorization: Key KEY_ID:KEY_SECRET` from `credential_reference`;
+- hosted MCP: `https://mcp.higgsfield.ai/mcp`, authenticated through a
+  Higgsfield account OAuth profile stored in `mcp_credential_reference`.
+
+Configure this provider from **World Graph Studio > Connections**, not the
+first-run Setup Wizard. Enter the combined REST credential as
+`KEY_ID:KEY_SECRET`, preferably through
+`env://HIGGSFIELD_API_CREDENTIAL`, save the published enabled Connection, then
+use **Connect Higgsfield MCP**. The shared OAuth broker requests `openid`,
+`email`, and `offline_access`, uses authorization code with S256 PKCE and
+provider dynamic client registration, and stores the provider-bound token
+envelope encrypted at rest. The production WordPress admin callback must be
+HTTPS; loopback HTTP is a development-only exception.
+
+Testing performs a non-destructive REST authentication lookup, discovers a
+non-empty bounded MCP `tools/list` catalog, and provisions these reviewed REST
+Templates:
+
+- `api:higgsfield-ai/soul/standard` for text-to-image;
+- `api:higgsfield-ai/dop/standard` for image-plus-text-to-video; and
+- `api:kling-video/v2.1/pro/image-to-video` for
+  image-plus-text-to-video.
+
+Generation is REST-only. The adapter submits only those fixed operations,
+polls the stable request-status endpoint, maps terminal states, uploads
+authorized local media through Higgsfield's presigned upload flow when needed,
+and imports every supported final output into WordPress. `Model Access` can be
+a JSON allowlist of exact references from the list above.
+
+Higgsfield's remote operation schemas can change independently and its public
+MCP documentation does not publish stable tool names/input/result contracts.
+World Graph Studio therefore does not provision discovered MCP tools as active
+Templates and exposes no arbitrary MCP `tools/call`. MCP is an authenticated
+runtime discovery/readiness surface only. There is no documented REST submit
+idempotency key, so an ambiguous paid POST is not automatically retried.
+Higgsfield documents output availability for at least seven days; the imported
+WordPress media remains the project copy.
+
+See [Higgsfield Connection](plugins/HIGGSFIELD.md) for exact Template inputs,
+OAuth behavior, request states, upload types, retention, security boundaries,
+troubleshooting, and official provider references.
 
 ## VideoDraft MCP and Project Sync
 

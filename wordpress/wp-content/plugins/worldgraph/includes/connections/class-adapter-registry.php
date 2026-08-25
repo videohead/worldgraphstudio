@@ -175,6 +175,66 @@ class Adapter_Registry {
 					'media_inputs'       => false,
 				],
 			],
+			'higgsfield' => [
+				'label'        => 'Higgsfield',
+				'description'  => 'Generate images and videos through reviewed Higgsfield REST operations and validate its OAuth-protected MCP catalog.',
+				'icon'         => 'dashicons-format-video',
+				'endpoint'     => 'https://platform.higgsfield.ai',
+				'mcp_endpoint' => 'https://mcp.higgsfield.ai/mcp',
+				'files'        => [
+					'includes/utils/higgsfield-api.php',
+					'includes/utils/higgsfield-mcp.php',
+					'includes/utils/higgsfield-catalog.php',
+				],
+				'oauth'        => [
+					'profiles' => [
+						'mcp' => [
+							'service_label'          => 'Higgsfield MCP',
+							'credential_field'       => 'mcp_credential_reference',
+							'authorization_endpoint' => 'https://mcp.higgsfield.ai/oauth2/authorize',
+							'token_endpoint'         => 'https://mcp.higgsfield.ai/oauth2/token',
+							'registration_endpoint'  => 'https://mcp.higgsfield.ai/oauth2/register',
+							'resource'               => 'https://mcp.higgsfield.ai/mcp',
+							'scopes'                 => [ 'openid', 'email', 'offline_access' ],
+							'token_endpoint_auth_method' => 'none',
+							'client_name'            => 'World Graph Studio',
+							'admin_intro'            => 'Higgsfield generation runs through its REST API. Its separate hosted MCP service uses Higgsfield account OAuth and is inspected at runtime for provider-published tools.',
+							'credential_help'        => 'For REST, enter KEY_ID:KEY_SECRET in the API Key / OAuth field, or use an env:// reference. MCP authorization is stored separately.',
+							'usage_notice'           => 'Higgsfield may charge your account for provider usage. Review its plan and usage controls before generating media.',
+							'connect_label'          => 'Connect Higgsfield MCP',
+							'disconnect_label'       => 'Disconnect Higgsfield MCP',
+						],
+					],
+				],
+				'callbacks'    => [
+					'test'         => [ Builtin_Connection_Tests::class, 'test_higgsfield' ],
+					'render_admin' => [ Connection_OAuth::class, 'render_admin' ],
+				],
+				'templates'    => [
+					'provision'          => [ 'WorldGraph\\Utils\\Higgsfield_Catalog', 'provision' ],
+					'delay'              => 5,
+					'status_meta_prefix' => 'higgsfield_catalog',
+				],
+				'generation'   => [
+					'client'                => 'WorldGraph\\Utils\\Higgsfield_API',
+					'poll'                  => true,
+					'poll_with_template'    => true,
+					'poll_error_limit'      => 10,
+					'permanent_error_codes' => [
+						'higgsfield_api_unauthorized',
+						'higgsfield_api_credential_missing',
+						'higgsfield_api_credential_invalid',
+						'higgsfield_api_endpoint_invalid',
+						'higgsfield_api_connection_invalid',
+						'higgsfield_api_connection_disabled',
+						'higgsfield_api_operation_not_allowed',
+						'higgsfield_api_job_id_invalid',
+						'higgsfield_api_not_found',
+					],
+					'adapter'               => 'higgsfield_api',
+					'media_inputs'          => true,
+				],
+			],
 			'videodraft' => [
 				'label'         => 'VideoDraft',
 				'description'   => 'Generate image, video, and audio assets and synchronize projects through VideoDraft MCP.',
@@ -301,6 +361,7 @@ class Adapter_Registry {
 
 		$adapter['callbacks'] = isset( $adapter['callbacks'] ) && is_array( $adapter['callbacks'] ) ? $adapter['callbacks'] : [];
 		$adapter['templates'] = isset( $adapter['templates'] ) && is_array( $adapter['templates'] ) ? $adapter['templates'] : [];
+		$adapter['oauth']     = isset( $adapter['oauth'] ) && is_array( $adapter['oauth'] ) ? $adapter['oauth'] : [];
 		if ( ! empty( $adapter['templates'] ) ) {
 			$adapter['templates']['delay'] = max( 1, absint( $adapter['templates']['delay'] ?? 5 ) );
 		}

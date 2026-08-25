@@ -143,6 +143,41 @@ final class Builtin_Connection_Tests {
 		);
 	}
 
+	/** Test Higgsfield REST authentication, MCP OAuth discovery, and Templates. */
+	public static function test_higgsfield( int $connection_id, array $record ): array {
+		$api = \WorldGraph\Utils\Higgsfield_API::test_configuration(
+			(string) ( $record['endpoint_url'] ?? '' ),
+			(string) ( $record['credential_reference'] ?? '' )
+		);
+		if ( is_wp_error( $api ) ) {
+			return self::outcome( false, $api->get_error_message() );
+		}
+
+		$tools = \WorldGraph\Utils\Higgsfield_MCP::available_tools( $connection_id );
+		if ( is_wp_error( $tools ) ) {
+			return self::outcome( false, $tools->get_error_message(), [ 'api_authenticated' => true ] );
+		}
+		if ( empty( $tools ) ) {
+			return self::outcome( false, 'Higgsfield MCP returned no usable tools.', [ 'api_authenticated' => true, 'mcp_tool_count' => 0 ] );
+		}
+
+		$provisioned = \WorldGraph\Templates\Template_Manager::provision_for_connection( $connection_id );
+		if ( is_wp_error( $provisioned ) ) {
+			return self::outcome(
+				false,
+				$provisioned->get_error_message(),
+				[ 'api_authenticated' => true, 'mcp_tool_count' => count( $tools ) ]
+			);
+		}
+
+		$template_ids = (array) ( $provisioned['template_ids'] ?? [] );
+		return self::outcome(
+			true,
+			sprintf( 'Connected to Higgsfield REST and MCP; %d MCP tool(s) discovered and %d reviewed REST Template(s) available.', count( $tools ), count( $template_ids ) ),
+			[ 'api_authenticated' => true, 'mcp_tool_count' => count( $tools ), 'template_ids' => $template_ids ]
+		);
+	}
+
 	/** Test VideoDraft generation, project-sync tools, and Template provisioning. */
 	public static function test_videodraft( int $connection_id, array $record ): array {
 		unset( $record );

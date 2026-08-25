@@ -178,7 +178,14 @@ class Higgsfield_Catalog {
 		if ( ! is_array( $allowed ) || $allowed !== array_values( $allowed ) ) {
 			return new WP_Error( 'higgsfield_catalog_allowlist_invalid', __( 'Higgsfield Model Access must be a JSON array of exact API operation references.', 'worldgraph' ) );
 		}
-		$allowed = array_values( array_unique( array_filter( $allowed, 'is_string' ) ) );
+		if ( count( $allowed ) !== count( array_filter( $allowed, 'is_string' ) ) ) {
+			return new WP_Error( 'higgsfield_catalog_allowlist_invalid', __( 'Higgsfield Model Access entries must be exact API operation-reference strings.', 'worldgraph' ) );
+		}
+		$allowed = array_values( array_unique( $allowed ) );
+		$known   = array_column( $definitions, 'reference' );
+		if ( ! empty( array_diff( $allowed, $known ) ) ) {
+			return new WP_Error( 'higgsfield_catalog_allowlist_invalid', __( 'Higgsfield Model Access contains an operation that this adapter has not reviewed.', 'worldgraph' ) );
+		}
 		$selected = array_values(
 			array_filter(
 				$definitions,

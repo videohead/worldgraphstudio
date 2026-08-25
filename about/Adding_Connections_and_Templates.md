@@ -87,6 +87,7 @@ accepts older scalar or partial shapes for backward compatibility.
 | `callbacks.test` | Non-destructive provider readiness check |
 | `callbacks.after_save` | Optional synchronous, lightweight post-save hook; normally schedule work rather than perform network discovery |
 | `callbacks.render_admin` | Optional trusted wp-admin renderer for provider-specific Connection guidance or controls |
+| `oauth.profiles` | Optional provider-neutral public-client OAuth profiles, each bound to one protected Connection credential field |
 | `templates.provision` | Idempotently create or update provider-managed Templates |
 | `templates.delay` | Optional delay, in seconds, before scheduled provisioning; defaults to the core delay |
 | `templates.status_meta_prefix` | Optional non-secret prefix for `Template_Manager`-authoritative `_synced_at` and `_error` setup status |
@@ -195,6 +196,94 @@ before this callback and does not need to be duplicated here.
 configurator. It may render provider-specific guidance and capability-
 protected controls, but must escape untrusted output, use nonces for mutations,
 and never print credentials. Omit it when the generic Connection UI is enough.
+
+## Reusable OAuth profiles
+
+Do not build a provider-specific authorization controller when a service uses
+public-client OAuth 2.0 authorization code with S256 PKCE. Declare one or more
+trusted profiles in the adapter manifest and use the shared
+`WorldGraph\Connections\Connection_OAuth` broker:
+
+```php
+use WorldGraph\Connections\Connection_OAuth;
+
+'oauth' => [
+	'profiles' => [
+		'mcp' => [
+			'service_label'          => 'Acme MCP',
+			'credential_field'       => 'mcp_credential_reference',
+			'authorization_endpoint' => 'https://identity.example.com/oauth2/authorize',
+			'token_endpoint'         => 'https://identity.example.com/oauth2/token',
+			'registration_endpoint'  => 'https://identity.example.com/oauth2/register',
+			'resource'               => 'https://mcp.example.com/mcp',
+			'scopes'                 => [ 'openid', 'offline_access' ],
+			'token_endpoint_auth_method' => 'none',
+			'client_name'            => 'World Graph Studio',
+			'admin_intro'            => 'Connect the account used by Acme MCP.',
+			'usage_notice'           => 'Provider usage may be billable.',
+		],
+	],
+],
+'callbacks' => [
+	'render_admin' => [ Connection_OAuth::class, 'render_admin' ],
+],
+```
+
+Each profile needs a unique `sanitize_key()`-compatible name and chooses either
+`credential_reference` or `mcp_credential_reference`. It must declare fixed
+HTTPS authorization and token endpoints, at least one bounded scope, and
+either a public `client_id` or a fixed dynamic-client-registration endpoint.
+The only supported token endpoint authentication method is `none`; a provider
+that requires a client secret needs a separately reviewed extension rather
+than storing that secret in the manifest. Optional `resource` and bounded
+scalar `authorization_parameters`, `token_parameters`, and
+`registration_parameters` are trusted adapter configuration. Core-supplied
+protocol fields take precedence.
+
+The shared broker owns:
+
+- capability and nonce checks plus a fixed admin callback;
+- one-time, encrypted, ten-minute state bound to the user, Connection,
+  provider, profile, redirect URI, and security-relevant profile hash;
+- authorization-code exchange with S256 PKCE;
+- public dynamic client registration when declared, rejecting returned client
+  secrets;
+- a provider/profile/configuration-bound, versioned token envelope in the
+  chosen encrypted Connection field;
+- access-token expiry handling, refresh-token rotation, and a bounded atomic
+  per-Connection refresh lock; and
+- local disconnect controls that clear only the declared credential field.
+
+The broker accepts a deployment-supplied public client ID through
+`worldgraph_connection_oauth_client_id`. Dynamic registration is used only
+when no valid saved, manifest, or filtered public ID exists. The fixed callback
+requires an HTTPS WordPress administrator URL, except for loopback development.
+The Connection must already be published, enabled, and manageable by the
+current administrator before authorization begins.
+
+Provider clients retrieve a saved token through:
+
+```php
+Connection_OAuth::access_token(
+	$connection_id,
+	'mcp',
+	'acme_media'
+);
+```
+
+Use `token_from_reference( $provider, $profile, $reference )` only when a
+provider test must validate an explicit credential reference. A plain bearer
+or `env://` value remains compatible, but WordPress cannot refresh it; its
+external secret manager owns rotation. Never serialize the broker's token or
+versioned envelope.
+
+Profiles are authentication configuration, not execution grants. The provider
+adapter must still implement endpoint validation, protocol negotiation,
+operation/tool allowlists, request schemas, health testing, and output handling.
+Multiple profiles may be declared, but two independent profiles must not share
+one credential field unless replacing each other is the intended contract.
+OAuth controls currently belong on the saved Connection editor, not the
+first-run Setup Wizard.
 
 ## Provision provider Templates
 
@@ -492,6 +581,11 @@ media import work end to end.
   redacted at every browser/REST boundary.
 - Never copy credentials into manifests, URLs, Templates, capabilities,
   health data, logs, errors, job metadata, or test fixtures.
+- Declare public-client OAuth endpoints, scopes, resource, and credential-field
+  binding in trusted manifest code; use the shared broker instead of a
+  provider-specific callback or token-refresh implementation.
+- Never put a confidential OAuth client secret in a manifest, browser field,
+  URL, one-time state, health response, or generated Template.
 - Use safe WordPress HTTP APIs and a reviewed scheme/host/port/DNS policy for
   configured endpoints and provider-returned download URLs. A local-network
   exception must be narrow and explicit.
@@ -525,6 +619,10 @@ Add focused tests under
   permanent-error polling policy, and every output;
 - endpoint validation, authentication headers, parameter/tool allowlists,
   malformed provider data, size bounds, and permissions; and
+- reusable OAuth profile validation, state replay/expiry/user binding, PKCE,
+  registration or static client resolution, token-envelope binding, refresh
+  rotation/locking, forced refresh, disconnect, and secret redaction when an
+  OAuth profile is declared; and
 - compatibility for the existing bundled adapters and third-party filter
   registration.
 

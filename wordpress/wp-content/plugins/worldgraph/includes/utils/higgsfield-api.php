@@ -249,7 +249,7 @@ class Higgsfield_API {
 		$result = [
 			'job_id'         => $job_id,
 			'status'         => $status,
-			'provider_status'=> sanitize_key( (string) ( $payload['status'] ?? '' ) ),
+			'provider_status' => sanitize_key( (string) ( $payload['status'] ?? '' ) ),
 			'transport'      => 'api',
 		];
 
@@ -461,7 +461,7 @@ class Higgsfield_API {
 		}
 		if ( isset( $body['resolution'] ) ) {
 			$body['resolution'] = sanitize_text_field( (string) $body['resolution'] );
-			if ( ! in_array( $body['resolution'], [ '720p', '1080p', '2K', '4K' ], true ) ) {
+			if ( ! in_array( $body['resolution'], [ '2K', '4K' ], true ) ) {
 				return new WP_Error( 'higgsfield_api_parameter_invalid', __( 'Select a resolution supported by the Higgsfield Template.', 'worldgraph' ) );
 			}
 		}

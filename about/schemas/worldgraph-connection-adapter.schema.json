@@ -1,9 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://worldgraph.studio/schemas/worldgraph-connection-adapter/1.0.0",
+  "$id": "https://worldgraph.studio/schemas/worldgraph-connection-adapter/1.1.0",
   "title": "World Graph Studio Connection adapter manifest",
   "description": "Strict portable authoring profile for entries returned through worldgraph_conn_adapters. It intentionally requires explicit labels and normalized object shapes even where the PHP runtime accepts older compatibility forms. Runtime closures must be represented by a function/class string or a [class, method] array before validation.",
-  "x-worldgraph-schema-version": "1.0.0",
+  "x-worldgraph-schema-version": "1.1.0",
   "type": "object",
   "propertyNames": {
     "pattern": "^[a-z][a-z0-9_-]*$"
@@ -83,6 +83,151 @@
         "render_admin": {
           "description": "Optional trusted wp-admin callable (WP_Post connection_post, array adapter): void. It must escape output and protect mutations with capabilities and nonces.",
           "$ref": "#/$defs/callable"
+        }
+      },
+      "patternProperties": {
+        "^x-": true
+      },
+      "additionalProperties": false
+    },
+    "oauthStaticParameters": {
+      "description": "Trusted bounded scalar parameters added by the adapter. Protocol-owned parameters are always supplied by core and take precedence.",
+      "type": "object",
+      "maxProperties": 30,
+      "additionalProperties": {
+        "type": [
+          "string",
+          "number",
+          "integer",
+          "boolean"
+        ]
+      }
+    },
+    "oauthProfile": {
+      "type": "object",
+      "required": [
+        "credential_field",
+        "authorization_endpoint",
+        "token_endpoint",
+        "scopes"
+      ],
+      "properties": {
+        "service_label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "credential_field": {
+          "enum": [
+            "credential_reference",
+            "mcp_credential_reference"
+          ]
+        },
+        "authorization_endpoint": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://"
+        },
+        "token_endpoint": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://"
+        },
+        "registration_endpoint": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://"
+        },
+        "resource": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://"
+        },
+        "scopes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 30,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._~:/-]+$"
+          }
+        },
+        "token_endpoint_auth_method": {
+          "const": "none"
+        },
+        "client_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "client_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "admin_intro": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "credential_help": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "usage_notice": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "connect_label": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "disconnect_label": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "authorization_parameters": {
+          "$ref": "#/$defs/oauthStaticParameters"
+        },
+        "token_parameters": {
+          "$ref": "#/$defs/oauthStaticParameters"
+        },
+        "registration_parameters": {
+          "$ref": "#/$defs/oauthStaticParameters"
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "registration_endpoint"
+          ]
+        },
+        {
+          "required": [
+            "client_id"
+          ]
+        }
+      ],
+      "patternProperties": {
+        "^x-": true
+      },
+      "additionalProperties": false
+    },
+    "oauth": {
+      "type": "object",
+      "required": [
+        "profiles"
+      ],
+      "properties": {
+        "profiles": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9_-]*$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/oauthProfile"
+          }
         }
       },
       "patternProperties": {
@@ -284,6 +429,9 @@
         },
         "callbacks": {
           "$ref": "#/$defs/callbacks"
+        },
+        "oauth": {
+          "$ref": "#/$defs/oauth"
         },
         "templates": {
           "$ref": "#/$defs/templates"

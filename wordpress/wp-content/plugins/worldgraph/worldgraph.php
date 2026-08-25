@@ -239,6 +239,7 @@ function init(): void {
 	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/utils/generation-modality.php';
 	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/utils/template-run-controls.php';
 	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/utils/connection-adapters.php';
+	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/connections/class-connection-oauth.php';
 	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/templates/class-template-manager.php';
 	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/utils/generation-batch.php';
 	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/utils/relationships.php';
@@ -270,6 +271,7 @@ function init(): void {
 	// Credential filters must be active before Connections and provider modules
 	// read or write any protected values.
 	Utils\Credential_Store::init();
+	Connections\Connection_OAuth::init();
 
 	// Register CPTs.
 	CPT\Project::init();

@@ -299,7 +299,7 @@ class Connection {
 				'label'       => 'Provider Type',
 				'required'    => true,
 				'options'     => array_combine( $provider_types, $provider_types ),
-				'description' => 'Provider adapter used by the paired Templates, such as ComfyUI, FAL, Google Gemini, or Veo.',
+				'description' => 'Provider adapter used by the paired Templates, such as ComfyUI, fal, Higgsfield, ElevenLabs, or Suno.',
 			],
 			'environment'          => [
 				'type'        => 'select',
@@ -338,25 +338,25 @@ class Connection {
 				'type'        => 'text',
 				'label'       => 'Endpoint URL',
 				'required'    => true,
-				'description' => 'Provider endpoint. For SunoAPI.org use https://api.sunoapi.org; for ElevenLabs use https://api.elevenlabs.io/v1; for local ComfyUI use its HTTP API base URL.',
+				'description' => 'Provider endpoint. For Higgsfield use https://platform.higgsfield.ai; for SunoAPI.org use https://api.sunoapi.org; for ElevenLabs use https://api.elevenlabs.io/v1; for local ComfyUI use its HTTP API base URL.',
 			],
 			'mcp_endpoint_url'     => [
 				'type'        => 'text',
 				'label'       => 'MCP Endpoint URL',
 				'required'    => false,
-				'description' => 'Streamable HTTP MCP endpoint. Required for fal; use https://suno.mcp.acedata.cloud/mcp for Suno MCP; optional for local ComfyUI discovery and downloads.',
+				'description' => 'Streamable HTTP MCP endpoint. Required for fal; use https://mcp.higgsfield.ai/mcp for Higgsfield and https://suno.mcp.acedata.cloud/mcp for Suno; optional for local ComfyUI discovery and downloads.',
 			],
 			'credential_reference' => [
 				'type'        => 'text',
 				'label'       => 'API Key / OAuth (Reference)',
 				'required'    => false,
-				'description' => 'REST/API credential or environment reference, e.g. env://SUNO_API_KEY, env://ELEVENLABS_API_KEY, or env://COMFYUI_API_KEY.',
+				'description' => 'REST/API credential or environment reference, e.g. env://HIGGSFIELD_API_CREDENTIAL, env://SUNO_API_KEY, env://ELEVENLABS_API_KEY, or env://COMFYUI_API_KEY. Higgsfield expects KEY_ID:KEY_SECRET.',
 			],
 			'mcp_credential_reference' => [
 				'type'        => 'text',
 				'label'       => 'MCP API Key / OAuth (Reference)',
 				'required'    => false,
-				'description' => 'Optional separate credential for the MCP endpoint. Suno MCP requires an AceData Cloud token such as env://ACEDATACLOUD_API_TOKEN, which is distinct from a SunoAPI.org key.',
+				'description' => 'Optional separate credential for the MCP endpoint. OAuth-enabled adapters manage this field through their Connect control; Suno MCP accepts an AceData Cloud token such as env://ACEDATACLOUD_API_TOKEN.',
 			],
 			'mcp_configuration'     => [
 				'type'        => 'textarea',
@@ -393,7 +393,7 @@ class Connection {
 				'format'      => 'json',
 				'label'       => 'Model Access',
 				'required'    => false,
-				'description' => 'Optional JSON allowlist. fal uses model endpoint IDs; ElevenLabs uses voice IDs; Suno uses model version IDs. Empty lets the adapter select a default.',
+				'description' => 'Optional JSON allowlist. Higgsfield uses reviewed api: operation references; fal uses model endpoint IDs; ElevenLabs uses voice IDs; Suno uses model version IDs. Empty lets the adapter select a default.',
 			],
 			'enabled_structures'   => [
 				'type'        => 'textarea',
@@ -690,6 +690,7 @@ class Connection {
 			'fal_catalog'        => __( 'Workflow setup', 'worldgraph' ),
 			'elevenlabs_catalog' => __( 'Workflow setup', 'worldgraph' ),
 			'suno_catalog'       => __( 'Workflow setup', 'worldgraph' ),
+			'higgsfield_catalog' => __( 'Workflow setup', 'worldgraph' ),
 			'videodraft_catalog' => __( 'Workflow setup', 'worldgraph' ),
 		];
 

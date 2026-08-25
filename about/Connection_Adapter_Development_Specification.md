@@ -23,13 +23,14 @@ A complete provider integration can cross several independent surfaces:
 
 1. the Connection adapter manifest and conditional loader;
 2. the `worldgraph_conn` control-plane record;
-3. an authenticated REST/API or MCP client;
-4. Connection testing and status updates;
-5. optional catalog discovery and World Graph Studio Template provisioning;
-6. optional generation submission, polling, result normalization, and media
+3. optional shared provider OAuth profiles and administrator authorization;
+4. an authenticated REST/API or MCP client;
+5. Connection testing and status updates;
+6. optional catalog discovery and World Graph Studio Template provisioning;
+7. optional generation submission, polling, result normalization, and media
    import;
-7. optional Setup Wizard and provider-specific admin UI;
-8. tests, operator documentation, and delivery-status updates.
+8. optional Setup Wizard and provider-specific admin UI;
+9. tests, operator documentation, and delivery-status updates.
 
 Adding a manifest entry alone makes a provider name known. It does **not** make
 the provider executable. An implementation is complete only for the surfaces
@@ -133,6 +134,7 @@ listed because several are not yet callback-driven.
 | Concern | Source of truth |
 | --- | --- |
 | Adapter metadata, capabilities, and lazy loading | `includes/connections/class-adapter-registry.php` (`includes/utils/connection-adapters.php` is the compatibility facade) |
+| Reusable outbound provider OAuth | `includes/connections/class-connection-oauth.php` plus trusted adapter `oauth.profiles` metadata |
 | Connection schema, save lifecycle, and admin configurator | `includes/cpts/connection.php` |
 | Persisted SCF schema | `acf-json/group_worldgraph_conn.json` |
 | Connection reads, resolution, defaults, and availability | `includes/utils/connection_repository.php` |
@@ -169,6 +171,9 @@ provider-specific document:
   policy;
 - supported environments and local-container networking needs;
 - authentication scheme and recommended `env://VARIABLE_NAME`;
+- for OAuth, the profile name, public-client grant, fixed authorization/token/
+  registration endpoints, resource, scopes, callback requirements, refresh
+  behavior, and protected Connection credential field;
 - whether REST and MCP use the same credential;
 - discovery endpoints or MCP tools and their response schemas;
 - operation/model IDs that become Template `provider_template_id` values;
@@ -284,6 +289,7 @@ add_filter(
 | `callbacks.test` | Optional health callback receiving `( connection_id, record )` |
 | `callbacks.after_save` | Optional lightweight callback after the common Connection save lifecycle |
 | `callbacks.render_admin` | Optional trusted renderer for provider-specific Connection controls |
+| `oauth.profiles` | Optional named public-client authorization-code + S256 PKCE contracts used by the shared Connection OAuth broker |
 | `templates.provision` | Optional idempotent Template provisioner receiving one Connection ID |
 | `templates.delay` | Positive delay for common background provisioning |
 | `templates.status_meta_prefix` | Optional stable prefix for `Template_Manager`-authoritative sync/error metadata |
@@ -306,7 +312,105 @@ executable by itself.
 The loader receives `( $provider_type, $adapter )`. Keep both arguments in an
 external loader's signature even if the first version does not use them.
 
-### 7.4 Lazy-loading behavior
+### 7.4 Reusable OAuth profile contract
+
+Use `WorldGraph\Connections\Connection_OAuth` when a provider supports a
+public OAuth 2.0 authorization-code client with S256 PKCE. Do not duplicate
+admin-post routes, callback state, token exchange, refresh locking, or token
+storage in a provider class. The broker is initialized once by core and reads
+only trusted adapter manifest metadata.
+
+A normalized manifest uses named profiles:
+
+```php
+'oauth' => [
+	'profiles' => [
+		'mcp' => [
+			'service_label'          => 'Acme MCP',
+			'credential_field'       => 'mcp_credential_reference',
+			'authorization_endpoint' => 'https://identity.example.com/oauth2/authorize',
+			'token_endpoint'         => 'https://identity.example.com/oauth2/token',
+			'registration_endpoint'  => 'https://identity.example.com/oauth2/register',
+			'resource'               => 'https://mcp.example.com/mcp',
+			'scopes'                 => [ 'openid', 'offline_access' ],
+			'token_endpoint_auth_method' => 'none',
+			'client_name'            => 'World Graph Studio',
+		],
+	],
+],
+'callbacks' => [
+	'render_admin' => [ Connection_OAuth::class, 'render_admin' ],
+],
+```
+
+Every profile must satisfy this contract:
+
+| Key | Contract |
+| --- | --- |
+| profile name | Unique `sanitize_key()`-compatible identifier within the adapter |
+| `credential_field` | Exactly `credential_reference` or `mcp_credential_reference` |
+| `authorization_endpoint` / `token_endpoint` | Fixed HTTPS URLs in trusted code; user-info, query, and fragment components are rejected |
+| `registration_endpoint` | Optional fixed HTTPS dynamic-client-registration URL; required when no public `client_id` can be resolved |
+| `client_id` | Optional bounded public identifier; never a confidential secret |
+| `resource` | Optional fixed HTTPS resource indicator |
+| `scopes` | One to 30 unique bounded scope tokens |
+| `token_endpoint_auth_method` | `none`; confidential-client authentication is not implemented |
+| `authorization_parameters`, `token_parameters`, `registration_parameters` | Optional bounded scalar adapter constants; protocol-owned fields supplied by core win |
+| presentation keys | Optional bounded `service_label`, `client_name`, admin/help/usage text, and connect/disconnect labels |
+
+The shared lifecycle is:
+
+1. A manageable, published, enabled Connection renders the shared profile
+   controls through `Connection_OAuth::render_admin()`.
+2. A nonce- and capability-protected start action resolves a valid saved,
+   manifest, or filtered public client ID. If none exists, the broker performs
+   dynamic registration and rejects any returned client secret or non-`none`
+   token authentication method.
+3. Core creates an unguessable state and verifier. The encrypted transient is
+   single-use, expires after ten minutes, and binds the current user,
+   Connection, provider, profile, client ID, redirect URI, verifier, and hash
+   of security-relevant profile configuration.
+4. The authorization redirect includes `response_type=code`, the exact fixed
+   callback, requested scopes, state, `code_challenge_method=S256`, and optional
+   resource. Only the manifest-owned authorization host is temporarily added
+   to WordPress's safe redirect allowlist.
+5. The callback deletes state before use, rechecks the user, Connection,
+   provider/profile/configuration binding and object permission, then exchanges
+   the code with the verifier through a bounded non-redirecting safe request.
+6. Core validates a Bearer response and stores a bounded versioned envelope
+   containing access/refresh tokens, expiry, client ID, scope, provider,
+   profile, configuration hash, and token endpoint through
+   `Credential_Store` authenticated encryption.
+7. `Connection_OAuth::access_token()` refreshes an expiring envelope with a
+   bounded atomic per-site/Connection/provider/profile lock, preserves or
+   rotates the refresh token, verifies storage, and never returns the envelope
+   beyond trusted server code. A forced refresh may be used once after a
+   provider `401`/`403`.
+8. Disconnect clears only the profile's declared local credential field. It
+   does not imply provider-side revocation or remote data deletion.
+
+The callback is the exact WordPress administrator URL
+`admin-post.php?action=worldgraph_connection_oauth_callback`. It requires HTTPS
+except on a loopback development host. A deployment can supply a public client
+ID through `worldgraph_connection_oauth_client_id`; the provider, profile,
+Connection ID, and normalized config are supplied to that filter. Dynamic
+registration is attempted only when no valid client ID is already available.
+
+Provider clients call
+`Connection_OAuth::access_token( $connection_id, $profile,
+$expected_provider )`. `token_from_reference()` exists for an explicit
+credential-reference test. A plain bearer value remains compatible but has no
+broker-managed refresh state. An `env://` token envelope is owned and rotated
+by the external secret manager; WordPress must not overwrite it during refresh.
+
+An OAuth profile authenticates access; it does not authorize arbitrary remote
+operations. The adapter must still validate the destination and implement its
+protocol, operation/tool allowlists, request/result schemas, and media boundary.
+Multiple profiles can represent separate services or accounts, but independent
+profiles must not overwrite the same Connection field. OAuth controls are a
+saved wp-admin Connection workflow and are not generic Setup Wizard behavior.
+
+### 7.5 Lazy-loading behavior
 
 `Connection_Adapters::load_configured()` asks
 `Connection_Repository::get_all()` for published Connections, currently capped
@@ -321,7 +425,7 @@ it does not load PHP.
 
 Do not require all provider clients unconditionally from `worldgraph.php`.
 
-### 7.5 Guided setup is an additional commitment
+### 7.6 Guided setup is an additional commitment
 
 Only add `setup_options` after the provider supports a reliable one-screen
 setup. A setup choice is not fully generic today. Adding one also requires
@@ -356,7 +460,7 @@ the flags produce a complete UI.
 A provider can be fully supported on **World Graph Studio > Connections**
 without appearing in the first-run wizard.
 
-### 7.6 Extension hooks and their limits
+### 7.7 Extension hooks and their limits
 
 | Hook or filter | What it can do | What it cannot do |
 | --- | --- | --- |
@@ -471,6 +575,15 @@ Requirements for new adapters:
 - redact provider response data that can echo tokens;
 - keep Connection routes administrator-only;
 - use `mcp_credential_reference` when REST and MCP credentials differ.
+
+For a manifest-declared OAuth profile, the chosen credential field may contain
+a versioned `worldgraph-oauth` token envelope instead of a single opaque token.
+The envelope is still one protected secret: do not decode, expose, log, copy,
+or partially persist it outside `Connection_OAuth`. It is bound to the
+Connection provider, profile, security-relevant configuration hash, and token
+endpoint so that changing trusted OAuth configuration requires reconnection.
+An `env://` value can supply a plain bearer or complete envelope, but its
+external secret manager—not WordPress—owns refresh rotation.
 
 Do not reuse one service's token for a second operator merely because both
 services represent the same brand or workflow.
@@ -744,6 +857,13 @@ verifying the target server. A provider that explicitly permits direct
 `tools/list`/`tools/call` outside either lifecycle is an MCP-shaped compatibility
 exception, not evidence that standard “stateless MCP” skips its protocol
 requirements.
+
+When the MCP service publishes a compatible public OAuth authorization-code
+contract, declare it as an adapter `oauth.profiles` entry and retrieve Bearer
+access through `Connection_OAuth`; do not add another provider-specific OAuth
+callback. OAuth discovery metadata informs the reviewed manifest, but runtime
+metadata must not be trusted to replace fixed authorization, token,
+registration, resource, or scope configuration automatically.
 
 If supporting both eras, attempt modern per-request metadata first and inspect
 structured HTTP/JSON-RPC errors before falling back. Do not mistake a modern
@@ -1143,6 +1263,12 @@ Every new adapter must satisfy this checklist:
 - [ ] Credentials are resolved server-side and never returned resolved; literal
       stored credentials are redacted/write-only or replaced by `env://`
       references before browser responses.
+- [ ] OAuth-capable providers use a trusted manifest profile and the shared
+      public-client PKCE lifecycle; endpoint/profile/credential-field binding,
+      one-time state, refresh rotation, locking, and disconnect are covered.
+- [ ] OAuth client secrets are not accepted, persisted in the manifest, or
+      exposed to the browser; providers requiring confidential clients have a
+      separately specified and reviewed implementation.
 - [ ] Logs, errors, health data, and fixtures contain no live secret.
 - [ ] Provider parameters and MCP tools are allowlisted.
 - [ ] MCP protocol version, per-era lifecycle, request metadata, headers,
@@ -1171,6 +1297,7 @@ mock all external traffic. At minimum cover the applicable rows:
 | Manifest | Provider metadata, default endpoint(s), lazy files/loader, and optional setup choice |
 | Connection | Provider choice, save normalization, environment/status, default uniqueness, disabled behavior, and health-test rejection until re-enabled |
 | Credentials | Literal test fixture, valid `env://` resolution, invalid variable name, and no secret leakage |
+| OAuth | When declared: profile/schema validation, HTTPS endpoints, public client or DCR, S256 PKCE, nonce/capability checks, one-time state expiry/replay/user/config binding, callback errors, envelope provider/profile/endpoint binding, expiry and refresh-token rotation under lock, forced refresh, disconnect, and redaction |
 | REST/API transport | Authentication header, URL/path building, parameter allowlist, timeout/error, invalid JSON/binary |
 | MCP transport | Current per-request metadata or complete legacy initialize/initialized lifecycle and, when a session ID is issued, session lifecycle; version/header validation; result types/MRTR policy; response-ID correlation; bounded JSON/SSE decoding; pagination; missing tools; tool `isError`; malformed result |
 | Tester | Success/error status, timestamp, bounded health report, and provisioning outcome |
@@ -1252,6 +1379,8 @@ A provider Connection is done for its claimed scope when:
 - an administrator can create, save, disable, select, and accurately test it;
 - lazy loading occurs only when configured or explicitly requested;
 - credentials and remote data stay within the documented security boundary;
+- any declared OAuth profile completes the shared callback/storage/refresh
+  lifecycle and does not broaden the provider's executable allowlist;
 - each claimed operation has an executable Template or feature-plugin action;
 - asynchronous work survives request boundaries and normalizes terminal
   states with bounded failure/retry behavior;
@@ -1266,16 +1395,21 @@ behavior that does not exist:
 
 - There is no shared Connection-adapter PHP interface.
 - The manifest provides lifecycle callbacks and generation client selection,
-  but no generic authenticated transport, protocol negotiation, schema trust,
-  provider parameter allowlist, result import, or cancellation interface.
+  but no generic API/MCP request transport, protocol negotiation, schema trust,
+  provider parameter allowlist, result import, or cancellation interface. The
+  shared OAuth broker supplies a Bearer token lifecycle, not the provider
+  request transport or its authorization policy.
 - Saved Connection testing, common Template scheduling/persistence, and worker
   client selection are registry-driven. Unsaved Setup Wizard live testing and
   some rich built-in readiness/parameter/import paths remain provider-specific.
 - `Capability_Sync` is a fixed local descriptor, not live provider discovery.
 - The Connection `capabilities` and `mcp_configuration` fields have no generic
   executor.
-- Credential resolution is duplicated across clients; not every historical
-  adapter supports every reference scheme.
+- Public-client authorization-code + S256 PKCE lifecycle is shared through
+  profile-driven `Connection_OAuth`, but non-OAuth credential resolution and
+  authentication headers remain duplicated across clients; not every
+  historical adapter supports every reference scheme. Confidential OAuth
+  clients and provider-side revocation are not generic broker capabilities.
 - Trusted server-side repository records expose decrypted credential values;
   callers must not serialize them. Administrator-only Connection list/item and
   resolve responses mask both credential fields, and literal values are stored

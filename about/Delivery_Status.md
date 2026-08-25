@@ -21,11 +21,11 @@ not been configured.
 | AI assistance | Gutenberg AI Editor, Story Graph context, configured LLM access, WordPress Abilities, and 50+ specialist agents loaded from extensible profiles |
 | Story intelligence | Search, optional semantic assistance, continuity checks, relationship analytics, summaries, and admin panels |
 | Generation | Connection and template records, validation, queued generation jobs, WP-Cron processing, job state, cancellation, result import, and provenance |
-| Provider adapters | A filterable, callback-driven Connection/Template/generation registry plus local ComfyUI HTTP workflows, Comfy Cloud MCP, fal MCP, ElevenLabs, SunoAPI.org REST, AceData Cloud Suno MCP, VideoDraft MCP, OpenRouter video generation REST, and manually managed external-generator workflows where configured |
+| Provider adapters | A filterable, callback-driven Connection/Template/generation registry plus local ComfyUI HTTP workflows, Comfy Cloud MCP, fal MCP, ElevenLabs, SunoAPI.org REST, AceData Cloud Suno MCP, Higgsfield reviewed REST generation with OAuth MCP catalog discovery, VideoDraft MCP, OpenRouter video generation REST, and manually managed external-generator workflows where configured |
 | Project interchange | Default-enabled Story Import & Export plugin with canonical World Graph Studio JSON import/export, Markdown screenplay/storyboard export, and preview/confirm LLM decomposition of supported persisted story documents; Final Draft FDX import; optional VideoDraft structural Project push/pull |
 | Synchronization | Optional bidirectional VideoDraft structural synchronization, with persistent remote-ID mappings |
 | Editorial format code | CMX 3600 and SMPTE 436m XML parsing, timecode, and format-generation functions; the bundled admin workflow remains incomplete |
-| Extension surfaces | Canonical import contract, bundled format and synchronization plugins, filterable Connection lifecycle/Template/generation adapters, profile-driven agents, REST APIs, and WordPress Abilities |
+| Extension surfaces | Canonical import contract, bundled format and synchronization plugins, filterable Connection lifecycle/Template/generation adapters, reusable manifest-profile public-client OAuth with PKCE/token refresh, profile-driven agents, REST APIs, and WordPress Abilities |
 | Administration | Setup wizard, connection management, plugin toggles, dashboards, and permission-aware REST/admin actions |
 
 “Delivered” describes code in the repository. Optional connections still need
@@ -39,6 +39,15 @@ the SunoAPI.org REST credential distinct from the AceData Cloud MCP credential.
 See [Suno Integration](plugins/SUNO.md) for the transport boundary and the
 [Integration Catalog](Integration_Catalog.md) for the complete table view,
 including source-only and experimental integrations.
+
+The delivered Higgsfield boundary provisions three reviewed REST Templates:
+Soul standard text-to-image, Higgsfield DoP standard image-to-video, and Kling
+Video 2.1 Pro image-to-video. It uses the REST API for all generation and keeps
+the `KEY_ID:KEY_SECRET` credential separate from Higgsfield account OAuth for
+the hosted MCP service. MCP support is authenticated, bounded runtime
+`tools/list` discovery only; discovered remote tools do not become executable
+Templates and the adapter exposes no arbitrary `tools/call`. See
+[Higgsfield Connection](plugins/HIGGSFIELD.md).
 
 The Story Import & Export feature is bundled at
 `plugins/story-import-export/` and enabled by default. JSON import/export and
@@ -91,6 +100,10 @@ commitments, and they do not reopen the closed roadmap category.
   them.
 - Hosted services can impose their own prices, quotas, licenses, moderation,
   and availability. World Graph Studio itself does not sell usage credits.
+- Higgsfield REST submits have no documented idempotency key and its operation
+  schemas are provider-owned and volatile. World Graph Studio executes only
+  three reviewed allowlisted operations, does not retry ambiguous submits, and
+  treats MCP as discovery rather than generation.
 - Self-hosting gives the operator control of deployment and data location; site
   visibility and access still depend on WordPress and hosting configuration.
 - Story-source uploads are retained as WordPress Media Library attachments;

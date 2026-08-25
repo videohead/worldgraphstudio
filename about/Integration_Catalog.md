@@ -43,6 +43,7 @@ mapping and format-level boundaries.
 | fal | Streamable HTTP MCP | Discovers model schemas, provisions text-to-image Templates, submits and polls image jobs, and imports results | fal API key |
 | ElevenLabs | REST API | Provisions speech, dialogue, sound-effect, music, and voice-design Templates and imports returned audio or previews | ElevenLabs API key |
 | Suno | SunoAPI.org REST plus AceData Cloud MCP | Provisions prompt-music, custom-music, and lyrics Templates, polls tasks, imports final songs, and retains normalized lyric results | Separate REST and MCP credentials |
+| [Higgsfield](plugins/HIGGSFIELD.md) | Higgsfield REST plus hosted OAuth MCP | Executes three reviewed REST image/video operations, polls requests, uploads authorized reference media, imports every supported output, and performs bounded runtime MCP `tools/list` discovery; it does not execute discovered MCP tools | REST `KEY_ID:KEY_SECRET` plus separate Higgsfield-account OAuth for MCP |
 | VideoDraft | Hosted JSON-RPC MCP | Discovers live image, video, and audio tools, provisions Templates, polls asynchronous work, uploads bound local references, and imports completed media | VideoDraft PAT |
 | OpenRouter | REST API | Submits text-to-video (and image-to-video/reference-to-video) jobs to any OpenRouter video model, polls asynchronous jobs, and imports completed video | OpenRouter API key |
 
@@ -84,7 +85,7 @@ lifecycle handling, result retrieval, and WordPress asset ingestion.
 | Extension unit | Addition contract | Stable services it reuses |
 | --- | --- | --- |
 | Format integration | Normalize input to the World Graph Studio document contract or project output from live Story Graph records | Validation, identity mapping, relationships, permissions, and persistence |
-| Connection integration | Register metadata, conditional loading, health/lifecycle callbacks, Template provisioning, generation dispatch, and optional guided setup through `worldgraph_conn_adapters`; implement explicit transport and output contracts | Stable Connection records, common Template scheduling/upserts, generation jobs, media import, and provenance |
+| Connection integration | Register metadata, conditional loading, health/lifecycle callbacks, optional named public-client OAuth profiles, Template provisioning, generation dispatch, and optional guided setup through `worldgraph_conn_adapters`; implement explicit transport and output contracts | Stable Connection records, shared authorization-code + PKCE/token-refresh broker, common Template scheduling/upserts, generation jobs, media import, and provenance |
 | Specialist agent | Add a focused `.agent.md` profile; router keywords are optional | Story Graph context, permission checks, bounded chat, editor selection, and configured LLM access |
 
 The current bundle contains 51 specialist agent profiles. See

@@ -250,10 +250,11 @@ class Test_Connection_Template_Extension_Contract extends TestCase {
 		$this->assertFileExists( $guide_path );
 		$schema = json_decode( (string) file_get_contents( $schema_path ), true );
 		$this->assertSame( JSON_ERROR_NONE, json_last_error() );
-		$this->assertSame( '1.0.0', $schema['x-worldgraph-schema-version'] ?? null );
+		$this->assertSame( '1.1.0', $schema['x-worldgraph-schema-version'] ?? null );
 
 		$adapter_properties = $schema['$defs']['adapter']['properties'] ?? [];
 		$this->assertArrayHasKey( 'callbacks', $adapter_properties );
+		$this->assertArrayHasKey( 'oauth', $adapter_properties );
 		$this->assertArrayHasKey( 'templates', $adapter_properties );
 		$this->assertArrayHasKey( 'generation', $adapter_properties );
 		$this->assertArrayHasKey( 'status_meta_prefix', $schema['$defs']['templates']['properties'] ?? [] );

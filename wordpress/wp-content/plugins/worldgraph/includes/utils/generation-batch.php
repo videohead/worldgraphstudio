@@ -312,7 +312,7 @@ class Generation_Batch {
 				}
 				$params['idempotency_key'] = $idempotency_key;
 			}
-			if ( 'videodraft' === $provider_type ) {
+			if ( Connection_Adapters::supports_media_inputs( (string) $provider_type ) ) {
 				$params['_worldgraph_job_id'] = $job_id;
 			}
 			if ( Local_ComfyUI::class === $client ) {

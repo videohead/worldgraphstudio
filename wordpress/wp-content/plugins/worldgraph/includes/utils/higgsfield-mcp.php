@@ -65,7 +65,7 @@ class Higgsfield_MCP {
 	 * @return array<int, string>|WP_Error
 	 */
 	public static function test_configuration( string $endpoint, string $credential_reference ) {
-		$token = Connection_OAuth::token_from_reference( 'higgsfield', $credential_reference );
+		$token = Connection_OAuth::token_from_reference( 'higgsfield', 'mcp', $credential_reference );
 		if ( is_wp_error( $token ) ) {
 			return $token;
 		}
@@ -101,12 +101,21 @@ class Higgsfield_MCP {
 			return $connection;
 		}
 
-		$token = Connection_OAuth::access_token( $connection_id, 'higgsfield' );
+		$token = Connection_OAuth::access_token( $connection_id, 'mcp', 'higgsfield' );
 		if ( is_wp_error( $token ) ) {
 			return $token;
 		}
 
-		return self::tool_catalog_for( self::endpoint( $connection ), $token );
+		$catalog = self::tool_catalog_for( self::endpoint( $connection ), $token );
+		if ( is_wp_error( $catalog ) && 'higgsfield_mcp_unauthorized' === $catalog->get_error_code() ) {
+			$token = Connection_OAuth::access_token( $connection_id, 'mcp', 'higgsfield', true );
+			if ( is_wp_error( $token ) ) {
+				return $token;
+			}
+			$catalog = self::tool_catalog_for( self::endpoint( $connection ), $token );
+		}
+
+		return $catalog;
 	}
 
 	/** Discover tools using current MCP first and a bounded legacy fallback. */
@@ -124,7 +133,12 @@ class Higgsfield_MCP {
 			return $modern;
 		}
 
-		return self::legacy_tool_catalog( $endpoint, $token );
+		$legacy = self::legacy_tool_catalog( $endpoint, $token );
+		if ( is_wp_error( $legacy ) && 'higgsfield_mcp_session_expired' === $legacy->get_error_code() ) {
+			$legacy = self::legacy_tool_catalog( $endpoint, $token );
+		}
+
+		return $legacy;
 	}
 
 	/** Follow current-era tools/list pagination with per-request metadata. */
@@ -313,6 +327,9 @@ class Higgsfield_MCP {
 		if ( 401 === $status || 403 === $status ) {
 			return new WP_Error( 'higgsfield_mcp_unauthorized', __( 'Higgsfield MCP OAuth authorization is missing or expired.', 'worldgraph' ), [ 'status' => $status ] );
 		}
+		if ( 404 === $status && '' !== $session ) {
+			return new WP_Error( 'higgsfield_mcp_session_expired', __( 'Higgsfield MCP expired the negotiated session.', 'worldgraph' ), [ 'status' => 404 ] );
+		}
 		if ( $status < 200 || $status >= 300 ) {
 			return self::response_error( $message, $status );
 		}
@@ -463,8 +480,11 @@ class Higgsfield_MCP {
 
 	/** Decide whether a current-era 400 is eligible for legacy negotiation. */
 	private static function should_fallback_to_legacy( $message ): bool {
+		if ( is_wp_error( $message ) ) {
+			return false;
+		}
 		if ( ! is_array( $message ) || ! is_array( $message['error'] ?? null ) ) {
-			return true;
+			return false;
 		}
 		$error_text = strtolower( (string) ( $message['error']['message'] ?? '' ) );
 		$error_code = (int) ( $message['error']['code'] ?? 0 );
@@ -542,11 +562,11 @@ class Higgsfield_MCP {
 	/** Validate current x-mcp-header annotations before retaining a tool. */
 	private static function header_annotations_are_valid( array $schema ): bool {
 		$headers = [];
-		return self::validate_schema_annotations( $schema, false, $headers );
+		return self::validate_schema_annotations( $schema, true, false, $headers );
 	}
 
 	/** Recursively validate where and how x-mcp-header appears. */
-	private static function validate_schema_annotations( $node, bool $static_property, array &$headers ): bool {
+	private static function validate_schema_annotations( $node, bool $properties_reachable, bool $static_property, array &$headers ): bool {
 		if ( ! is_array( $node ) ) {
 			return true;
 		}
@@ -563,13 +583,13 @@ class Higgsfield_MCP {
 		foreach ( $node as $key => $value ) {
 			if ( 'properties' === $key && is_array( $value ) ) {
 				foreach ( $value as $property_schema ) {
-					if ( ! self::validate_schema_annotations( $property_schema, true, $headers ) ) {
+					if ( ! self::validate_schema_annotations( $property_schema, $properties_reachable, $properties_reachable, $headers ) ) {
 						return false;
 					}
 				}
 				continue;
 			}
-			if ( is_array( $value ) && ! self::validate_schema_annotations( $value, false, $headers ) ) {
+			if ( is_array( $value ) && ! self::validate_schema_annotations( $value, false, false, $headers ) ) {
 				return false;
 			}
 		}
