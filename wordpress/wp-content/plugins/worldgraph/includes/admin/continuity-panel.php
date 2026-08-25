@@ -69,6 +69,7 @@ class Continuity_Panel {
 			[
 				'ajax_url'    => admin_url( 'admin-ajax.php' ),
 				'nonce'       => wp_create_nonce( 'worldgraph_validation' ),
+				'selected_project_id' => isset( $_GET['project_id'] ) ? absint( wp_unslash( $_GET['project_id'] ) ) : 0,
 				'strings'     => [
 					'running'    => 'Running continuity validation...',
 					'complete'   => 'Validation complete.',
@@ -104,9 +105,23 @@ class Continuity_Panel {
 			<?php
 		}
 
-		// Get stored issues.
-		$issues     = \WorldGraph\Utils\get_global_continuity_issues();
-		$summary    = self::compute_summary( $issues );
+		$selected_project_id = isset( $_GET['project_id'] ) ? absint( wp_unslash( $_GET['project_id'] ) ) : 0;
+		$projects            = get_posts( [
+			'post_type'      => 'worldgraph_project',
+			'post_status'    => 'any',
+			'posts_per_page' => -1,
+			'orderby'        => 'title',
+			'order'          => 'ASC',
+		] );
+
+		if ( $selected_project_id > 0 && 'worldgraph_project' === get_post_type( $selected_project_id ) ) {
+			$project_result = \WorldGraph\Utils\fetch_continuity_validation( 0, [], $selected_project_id );
+			$issues         = $project_result['issues'] ?? [];
+		} else {
+			$issues = \WorldGraph\Utils\get_global_continuity_issues();
+		}
+
+		$summary = self::compute_summary( $issues );
 
 		// Filter by severity if requested.
 		$filter = isset( $_GET['filter'] ) ? sanitize_key( wp_unslash( $_GET['filter'] ) ) : 'all';
@@ -115,6 +130,8 @@ class Continuity_Panel {
 		} else {
 			$filtered_issues = $issues;
 		}
+
+		$project_query_arg = $selected_project_id > 0 ? '&project_id=' . rawurlencode( (string) $selected_project_id ) : '';
 
 		// Group by category.
 		$by_category = self::group_by_category( $filtered_issues );
@@ -125,6 +142,15 @@ class Continuity_Panel {
 
 			<!-- Action buttons -->
 			<div class="worldgraph-actions">
+				<label for="worldgraph-project-filter" style="margin-right: 8px; font-weight: 600;"><?php esc_html_e( 'Project:', 'worldgraph' ); ?></label>
+				<select id="worldgraph-project-filter" style="min-width: 240px; margin-right: 10px;">
+					<option value="0"><?php esc_html_e( 'All projects', 'worldgraph' ); ?></option>
+					<?php foreach ( $projects as $project ) : ?>
+						<option value="<?php echo esc_attr( (string) $project->ID ); ?>" <?php selected( $selected_project_id, (int) $project->ID ); ?>>
+							<?php echo esc_html( $project->post_title ? $project->post_title : sprintf( __( 'Project #%d', 'worldgraph' ), (int) $project->ID ) ); ?>
+						</option>
+					<?php endforeach; ?>
+				</select>
 				<button type="button" id="worldgraph-run-validation" class="button button-primary">
 					<span class="dashicons dashicons-refresh" style="margin-top: 3px;"></span>
 					<?php esc_html_e( 'Run Validation', 'worldgraph' ); ?>
@@ -159,16 +185,16 @@ class Continuity_Panel {
 
 			<!-- Filter tabs -->
 			<div class="worldgraph-filter-tabs">
-				<a href="?page=worldgraph-continuity&filter=all" class="button <?php echo 'all' === $filter ? 'button-primary' : ''; ?>">
+				<a href="?page=worldgraph-continuity&filter=all<?php echo esc_attr( $project_query_arg ); ?>" class="button <?php echo 'all' === $filter ? 'button-primary' : ''; ?>">
 					<?php esc_html_e( 'All', 'worldgraph' ); ?> (<?php echo esc_html( count( $filtered_issues ) ); ?>)
 				</a>
-				<a href="?page=worldgraph-continuity&filter=error" class="button <?php echo 'error' === $filter ? 'button-primary' : ''; ?>">
+				<a href="?page=worldgraph-continuity&filter=error<?php echo esc_attr( $project_query_arg ); ?>" class="button <?php echo 'error' === $filter ? 'button-primary' : ''; ?>">
 					<?php esc_html_e( 'Errors', 'worldgraph' ); ?> (<?php echo esc_html( $summary['errors'] ); ?>)
 				</a>
-				<a href="?page=worldgraph-continuity&filter=warning" class="button <?php echo 'warning' === $filter ? 'button-primary' : ''; ?>">
+				<a href="?page=worldgraph-continuity&filter=warning<?php echo esc_attr( $project_query_arg ); ?>" class="button <?php echo 'warning' === $filter ? 'button-primary' : ''; ?>">
 					<?php esc_html_e( 'Warnings', 'worldgraph' ); ?> (<?php echo esc_html( $summary['warnings'] ); ?>)
 				</a>
-				<a href="?page=worldgraph-continuity&filter=info" class="button <?php echo 'info' === $filter ? 'button-primary' : ''; ?>">
+				<a href="?page=worldgraph-continuity&filter=info<?php echo esc_attr( $project_query_arg ); ?>" class="button <?php echo 'info' === $filter ? 'button-primary' : ''; ?>">
 					<?php esc_html_e( 'Info', 'worldgraph' ); ?> (<?php echo esc_html( $summary['infos'] ); ?>)
 				</a>
 			</div>
@@ -314,8 +340,13 @@ class Continuity_Panel {
 
 		$episode_id = isset( $_POST['episode_id'] ) ? absint( $_POST['episode_id'] ) : 0;
 		$scene_ids  = isset( $_POST['scene_ids'] ) ? array_map( 'absint', $_POST['scene_ids'] ) : [];
+		$project_id = isset( $_POST['project_id'] ) ? absint( $_POST['project_id'] ) : 0;
 
-		$result = \WorldGraph\Utils\fetch_continuity_validation( $episode_id, $scene_ids );
+		if ( $project_id > 0 && 'worldgraph_project' !== get_post_type( $project_id ) ) {
+			wp_send_json_error( 'Invalid project selected.', 400 );
+		}
+
+		$result = \WorldGraph\Utils\fetch_continuity_validation( $episode_id, $scene_ids, $project_id );
 
 		if ( ! empty( $result['error'] ) ) {
 			wp_send_json_error( 'Validation error: ' . $result['error'], 500 );

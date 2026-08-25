@@ -14,6 +14,7 @@
 		constructor() {
 			this.$runBtn = $('#worldgraph-run-validation');
 			this.$clearBtn = $('#worldgraph-clear-all');
+			this.$projectSelect = $('#worldgraph-project-filter');
 			this.$loading = $('#worldgraph-loading');
 			this.$summary = $('#worldgraph-summary');
 			this.$issuesContainer = null;
@@ -29,9 +30,23 @@
 			if (this.$runBtn.length) {
 				this.$runBtn.on('click', $.proxy(this.runValidation, this));
 			}
+			if (this.$projectSelect.length) {
+				this.$projectSelect.on('change', $.proxy(this.handleProjectChange, this));
+			}
 			if (this.$clearBtn.length) {
 				this.$clearBtn.on('click', $.proxy(this.clearIssues, this));
 			}
+		}
+
+		handleProjectChange() {
+			const projectId = parseInt(this.$projectSelect.val(), 10) || 0;
+			const url = new URL(window.location.href);
+			if (projectId > 0) {
+				url.searchParams.set('project_id', String(projectId));
+			} else {
+				url.searchParams.delete('project_id');
+			}
+			window.location.href = url.toString();
 		}
 
 		/**
@@ -51,7 +66,8 @@
 				action: 'worldgraph_run_validation',
 				nonce: window.worldgraph_continuity?.nonce || '',
 				episode_id: 0,
-				scene_ids: []
+					scene_ids: [],
+					project_id: parseInt(this.$projectSelect.val(), 10) || 0
 			};
 
 			$.ajax({

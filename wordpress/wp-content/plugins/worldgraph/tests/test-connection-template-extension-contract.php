@@ -213,6 +213,8 @@ class Test_Connection_Template_Extension_Contract extends TestCase {
 		$this->assertStringContainsString( "'_error'", $manager );
 		$this->assertStringContainsString( 'worldgraph_template_provisioning_status', $manager );
 		$this->assertStringContainsString( 'MAX_STATUS_MESSAGE_LENGTH', $manager );
+		$this->assertStringContainsString( 'Diagnostic observers are best-effort', $manager );
+		$this->assertStringContainsString( 'self::record_failure( $connection_id, $templates, \'provision\', $result )', $manager );
 
 		$normalize = new ReflectionMethod( Template_Manager::class, 'normalize_status_message' );
 		$normalize->setAccessible( true );
@@ -229,7 +231,7 @@ class Test_Connection_Template_Extension_Contract extends TestCase {
 		$this->assertStringContainsString( "get_post_stati( [], 'names' )", $repository );
 		$this->assertStringContainsString( "\$post_statuses[] = 'trash'", $repository );
 		$this->assertStringContainsString( 'acquire_identity_lock', $repository );
-		$this->assertStringContainsString( 'add_option( $option_name, $token', $repository );
+		$this->assertStringContainsString( "add_option( \$option_name, \$token, '', 'no' )", $repository );
 		$this->assertStringContainsString( '$wpdb->update(', $repository );
 		$this->assertStringContainsString( 'finally {', $repository );
 		$this->assertStringContainsString( 'release_identity_lock( $lock )', $repository );

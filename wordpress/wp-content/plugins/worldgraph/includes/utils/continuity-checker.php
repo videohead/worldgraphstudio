@@ -24,9 +24,14 @@ defined( 'ABSPATH' ) || exit;
  *     @type array $issues         Array of ContinuityIssue objects.
  * }
  */
-function fetch_continuity_validation( int $episode_id = 0, array $scene_ids = [] ): array {
+function fetch_continuity_validation( int $episode_id = 0, array $scene_ids = [], int $project_id = 0 ): array {
 	$issues = [];
-	$posts = ! empty( $scene_ids ) ? array_map( 'get_post', array_map( 'absint', $scene_ids ) ) : get_posts( [ 'post_type' => 'worldgraph_scene', 'post_parent' => $episode_id ?: 0, 'post_status' => 'any', 'posts_per_page' => -1 ] );
+	if ( $project_id > 0 && 'worldgraph_project' === get_post_type( $project_id ) ) {
+		$posts = continuity_project_validation_posts( $project_id );
+	} else {
+		$posts = ! empty( $scene_ids ) ? array_map( 'get_post', array_map( 'absint', $scene_ids ) ) : get_posts( [ 'post_type' => 'worldgraph_scene', 'post_parent' => $episode_id ?: 0, 'post_status' => 'any', 'posts_per_page' => -1 ] );
+	}
+
 	foreach ( array_filter( $posts ) as $post ) {
 		if ( '' === trim( wp_strip_all_tags( $post->post_content ) ) ) {
 			$post_type_label = continuity_entity_type_label( $post->post_type );
@@ -431,4 +436,192 @@ function continuity_entity_type_label( string $post_type ): string {
 	}
 
 	return ucfirst( str_replace( '_', ' ', $post_type ) );
+}
+
+/**
+ * Resolve the set of posts validated for a single project.
+ *
+ * @param int $project_id Project post ID.
+ * @return array<int, \WP_Post>
+ */
+function continuity_project_validation_posts( int $project_id ): array {
+	$scene_ids = continuity_project_scene_ids( $project_id );
+	$shot_ids  = continuity_project_shot_ids( $scene_ids );
+
+	$post_ids = array_values( array_unique( array_filter( array_map( 'absint', array_merge( $scene_ids, $shot_ids ) ) ) ) );
+	if ( empty( $post_ids ) ) {
+		return [];
+	}
+
+	$posts = get_posts( [
+		'post_type'      => [ 'worldgraph_scene', 'worldgraph_shot' ],
+		'post_status'    => 'any',
+		'posts_per_page' => -1,
+		'post__in'       => $post_ids,
+		'orderby'        => 'post__in',
+	] );
+
+	return array_values( array_filter( $posts, static function ( $post ): bool {
+		return $post instanceof \WP_Post;
+	} ) );
+}
+
+/**
+ * Resolve Scene IDs that belong to one Project through canonical and legacy links.
+ *
+ * @param int $project_id Project post ID.
+ * @return array<int, int>
+ */
+function continuity_project_scene_ids( int $project_id ): array {
+	$scene_ids   = [];
+	$episode_ids = [];
+
+	foreach ( continuity_relationship_targets( $project_id, 'worldgraph_project' ) as $target ) {
+		if ( 'worldgraph_scene' === $target['type'] ) {
+			$scene_ids[] = $target['id'];
+		} elseif ( 'worldgraph_episode' === $target['type'] ) {
+			$episode_ids[] = $target['id'];
+		}
+	}
+
+	$episodes = get_posts( [
+		'post_type'      => 'worldgraph_episode',
+		'post_status'    => 'any',
+		'posts_per_page' => -1,
+	] );
+	foreach ( $episodes as $episode ) {
+		$episode_id = absint( $episode->ID ?? 0 );
+		$owner_id   = absint( worldgraph_get_field_value( $episode_id, 'project' ) );
+		if ( $project_id === $owner_id || continuity_has_relationship_target( $episode_id, 'worldgraph_episode', $project_id, 'worldgraph_project' ) ) {
+			$episode_ids[] = $episode_id;
+		}
+	}
+	$episode_ids = array_values( array_unique( array_filter( array_map( 'absint', $episode_ids ) ) ) );
+
+	foreach ( $episode_ids as $episode_id ) {
+		foreach ( continuity_relationship_targets( $episode_id, 'worldgraph_episode' ) as $target ) {
+			if ( 'worldgraph_scene' === $target['type'] ) {
+				$scene_ids[] = $target['id'];
+			}
+		}
+	}
+
+	$scenes = get_posts( [
+		'post_type'      => 'worldgraph_scene',
+		'post_status'    => 'any',
+		'posts_per_page' => -1,
+	] );
+	foreach ( $scenes as $scene ) {
+		$scene_id = absint( $scene->ID ?? 0 );
+		if (
+			$project_id === absint( worldgraph_get_field_value( $scene_id, 'project' ) )
+			|| continuity_has_relationship_target( $scene_id, 'worldgraph_scene', $project_id, 'worldgraph_project' )
+		) {
+			$scene_ids[] = $scene_id;
+			continue;
+		}
+
+		$episode_id = absint( worldgraph_get_field_value( $scene_id, 'episode' ) );
+		if ( in_array( $episode_id, $episode_ids, true ) ) {
+			$scene_ids[] = $scene_id;
+			continue;
+		}
+
+		foreach ( continuity_relationship_targets( $scene_id, 'worldgraph_scene' ) as $target ) {
+			if ( 'worldgraph_episode' === $target['type'] && in_array( $target['id'], $episode_ids, true ) ) {
+				$scene_ids[] = $scene_id;
+				break;
+			}
+		}
+	}
+
+	return array_values( array_unique( array_filter( array_map( 'absint', $scene_ids ) ) ) );
+}
+
+/**
+ * Resolve Shot IDs that belong to the supplied Scene IDs.
+ *
+ * @param array<int, int> $scene_ids Scene post IDs.
+ * @return array<int, int>
+ */
+function continuity_project_shot_ids( array $scene_ids ): array {
+	$scene_ids = array_values( array_unique( array_filter( array_map( 'absint', $scene_ids ) ) ) );
+	if ( empty( $scene_ids ) ) {
+		return [];
+	}
+
+	$scene_lookup = array_fill_keys( $scene_ids, true );
+	$shot_ids     = [];
+	foreach ( $scene_ids as $scene_id ) {
+		foreach ( continuity_relationship_targets( $scene_id, 'worldgraph_scene' ) as $target ) {
+			if ( 'worldgraph_shot' === $target['type'] ) {
+				$shot_ids[] = $target['id'];
+			}
+		}
+	}
+
+	$shots = get_posts( [
+		'post_type'      => 'worldgraph_shot',
+		'post_status'    => 'any',
+		'posts_per_page' => -1,
+	] );
+	foreach ( $shots as $shot ) {
+		$shot_id  = absint( $shot->ID ?? 0 );
+		$scene_id = absint( worldgraph_get_field_value( $shot_id, 'scene' ) );
+		if ( isset( $scene_lookup[ $scene_id ] ) ) {
+			$shot_ids[] = $shot_id;
+			continue;
+		}
+
+		foreach ( continuity_relationship_targets( $shot_id, 'worldgraph_shot' ) as $target ) {
+			if ( 'worldgraph_scene' === $target['type'] && isset( $scene_lookup[ $target['id'] ] ) ) {
+				$shot_ids[] = $shot_id;
+				break;
+			}
+		}
+	}
+
+	return array_values( array_unique( array_filter( array_map( 'absint', $shot_ids ) ) ) );
+}
+
+/**
+ * Return normalized outgoing Story Graph targets for one source entity.
+ *
+ * @param int    $post_id Source post ID.
+ * @param string $post_type Source post type.
+ * @return array<int, array{id:int,type:string}>
+ */
+function continuity_relationship_targets( int $post_id, string $post_type ): array {
+	$targets = [];
+	foreach ( get_relationships( $post_id, $post_type, 'outgoing' ) as $relationship ) {
+		$target_id   = absint( $relationship['to_id'] ?? 0 );
+		$target_type = (string) ( $relationship['to_type'] ?? '' );
+		if ( $target_id > 0 && '' !== $target_type ) {
+			$targets[] = [
+				'id'   => $target_id,
+				'type' => $target_type,
+			];
+		}
+	}
+
+	return $targets;
+}
+
+/**
+ * Check whether a source entity has one outgoing edge to the supplied target.
+ *
+ * @param int    $post_id Source post ID.
+ * @param string $post_type Source post type.
+ * @param int    $target_id Target post ID.
+ * @param string $target_type Target post type.
+ * @return bool
+ */
+function continuity_has_relationship_target( int $post_id, string $post_type, int $target_id, string $target_type ): bool {
+	foreach ( continuity_relationship_targets( $post_id, $post_type ) as $target ) {
+		if ( $target_id === $target['id'] && $target_type === $target['type'] ) {
+			return true;
+		}
+	}
+
+	return false;
 }
