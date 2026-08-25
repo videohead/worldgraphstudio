@@ -460,8 +460,8 @@ class Test_Midjourney extends TestCase {
 		$this->assertStringContainsString( 'wp_safe_remote_request(', $mcp );
 		$this->assertStringContainsString( 'midjourney_mcp_job_id_mismatch', $mcp );
 		$this->assertStringContainsString( 'midjourney_mcp_output_missing', $mcp );
-		$this->assertStringContainsString( "if ( '' !== \$api_credential )", $health );
-		$this->assertStringContainsString( "if ( '' !== \$mcp_credential )", $health );
+		$this->assertStringContainsString( 'if ( $api_enabled )', $health );
+		$this->assertStringContainsString( 'if ( $mcp_enabled )', $health );
 
 		$call_tool = new ReflectionMethod( Midjourney_MCP::class, 'call_tool' );
 		$call_tool->setAccessible( true );

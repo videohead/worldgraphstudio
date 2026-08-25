@@ -347,29 +347,31 @@ Every profile must satisfy this contract:
 
 | Key | Contract |
 | --- | --- |
-| profile name | Unique `sanitize_key()`-compatible identifier within the adapter |
-| `credential_field` | Exactly `credential_reference` or `mcp_credential_reference` |
+| profile name | Unique `^[a-z][a-z0-9_-]{0,63}$` identifier within the adapter |
+| `credential_field` | Exactly `credential_reference` or `mcp_credential_reference`; no two profiles may select the same field |
 | `authorization_endpoint` / `token_endpoint` | Fixed HTTPS URLs in trusted code; user-info, query, and fragment components are rejected |
-| `registration_endpoint` | Optional fixed HTTPS dynamic-client-registration URL; required when no public `client_id` can be resolved |
+| `registration_endpoint` | Optional fixed HTTPS dynamic-client-registration URL; required when neither a public `client_id` nor a declared filter-supplied ID can be resolved |
 | `client_id` | Optional bounded public identifier; never a confidential secret |
+| `client_id_from_filter` | Set to literal `true` when deployment code must supply the public ID through `worldgraph_connection_oauth_client_id` |
 | `resource` | Optional fixed HTTPS resource indicator |
 | `scopes` | One to 30 unique bounded scope tokens |
 | `token_endpoint_auth_method` | `none`; confidential-client authentication is not implemented |
-| `authorization_parameters`, `token_parameters`, `registration_parameters` | Optional bounded scalar adapter constants; protocol-owned fields supplied by core win |
+| `authorization_parameters`, `token_parameters`, `registration_parameters` | Optional bounded scalar adapter constants; protocol-owned fields supplied by core win, and confidential-client keys such as `client_secret` or `client_assertion` are forbidden |
 | presentation keys | Optional bounded `service_label`, `client_name`, admin/help/usage text, and connect/disconnect labels |
 
 The shared lifecycle is:
 
 1. A manageable, published, enabled Connection renders the shared profile
    controls through `Connection_OAuth::render_admin()`.
-2. A nonce- and capability-protected start action resolves a valid saved,
-   manifest, or filtered public client ID. If none exists, the broker performs
-   dynamic registration and rejects any returned client secret or non-`none`
-   token authentication method.
+2. A nonce- and capability-protected start action resolves a valid manifest or
+   filtered public client ID first, then a callback/configuration-bound saved
+   dynamic registration. If none exists, the broker performs dynamic
+   registration and rejects any returned client secret or non-`none` token
+   authentication method.
 3. Core creates an unguessable state and verifier. The encrypted transient is
-   single-use, expires after ten minutes, and binds the current user,
-   Connection, provider, profile, client ID, redirect URI, verifier, and hash
-   of security-relevant profile configuration.
+   atomically consumed once, expires after ten minutes, and binds the current
+   user, Connection, provider, profile, client ID, redirect URI, verifier, and
+   hash of security-relevant profile configuration.
 4. The authorization redirect includes `response_type=code`, the exact fixed
    callback, requested scopes, state, `code_challenge_method=S256`, and optional
    resource. Only the manifest-owned authorization host is temporarily added
@@ -381,20 +383,24 @@ The shared lifecycle is:
    containing access/refresh tokens, expiry, client ID, scope, provider,
    profile, configuration hash, and token endpoint through
    `Credential_Store` authenticated encryption.
-7. `Connection_OAuth::access_token()` refreshes an expiring envelope with a
-   bounded atomic per-site/Connection/provider/profile lock, preserves or
-   rotates the refresh token, verifies storage, and never returns the envelope
-   beyond trusted server code. A forced refresh may be used once after a
-   provider `401`/`403`.
-8. Disconnect clears only the profile's declared local credential field. It
-   does not imply provider-side revocation or remote data deletion.
+7. Authorization callbacks, refresh, and disconnect share a bounded atomic
+   per-site/Connection/provider/profile mutation lock. Refresh re-reads only
+   the latest local envelope, preserves or rotates its refresh token, and uses
+   an exact encrypted-value compare-and-swap before storing; it cannot restore
+   a disconnected credential or overwrite a newer literal, envelope, or
+   `env://` reference. A forced refresh may be used once after a provider
+   `401`/`403`.
+8. Disconnect clears only the profile's declared local credential field and
+   verifies the clear. It does not imply provider-side revocation or remote
+   data deletion.
 
 The callback is the exact WordPress administrator URL
 `admin-post.php?action=worldgraph_connection_oauth_callback`. It requires HTTPS
 except on a loopback development host. A deployment can supply a public client
 ID through `worldgraph_connection_oauth_client_id`; the provider, profile,
 Connection ID, and normalized config are supplied to that filter. Dynamic
-registration is attempted only when no valid client ID is already available.
+registration is attempted only when no valid manifest, filtered, or
+callback/configuration-bound saved client ID is available.
 
 Provider clients call
 `Connection_OAuth::access_token( $connection_id, $profile,
@@ -407,8 +413,9 @@ An OAuth profile authenticates access; it does not authorize arbitrary remote
 operations. The adapter must still validate the destination and implement its
 protocol, operation/tool allowlists, request/result schemas, and media boundary.
 Multiple profiles can represent separate services or accounts, but independent
-profiles must not overwrite the same Connection field. OAuth controls are a
-saved wp-admin Connection workflow and are not generic Setup Wizard behavior.
+profiles are rejected if they select the same Connection field. OAuth controls
+are a saved wp-admin Connection workflow and are not generic Setup Wizard
+behavior.
 
 ### 7.5 Lazy-loading behavior
 
@@ -587,6 +594,11 @@ external secret manager—not WordPress—owns refresh rotation.
 
 Do not reuse one service's token for a second operator merely because both
 services represent the same brand or workflow.
+
+A Connection cannot change `provider_type` while either protected credential
+field is populated. Clear or disconnect both fields, save the Connection, and
+only then select another provider; this prevents masked credentials and OAuth
+envelopes from crossing a provider boundary.
 
 ## 9. Create and Manage Connections Through REST
 

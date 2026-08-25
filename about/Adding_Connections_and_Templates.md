@@ -229,36 +229,40 @@ use WorldGraph\Connections\Connection_OAuth;
 ],
 ```
 
-Each profile needs a unique `sanitize_key()`-compatible name and chooses either
-`credential_reference` or `mcp_credential_reference`. It must declare fixed
+Each profile needs a unique `^[a-z][a-z0-9_-]{0,63}$` name and chooses either
+`credential_reference` or `mcp_credential_reference`; two profiles cannot use
+the same field. It must declare fixed
 HTTPS authorization and token endpoints, at least one bounded scope, and
-either a public `client_id` or a fixed dynamic-client-registration endpoint.
+either a public `client_id`, `client_id_from_filter => true`, or a fixed
+dynamic-client-registration endpoint.
 The only supported token endpoint authentication method is `none`; a provider
 that requires a client secret needs a separately reviewed extension rather
 than storing that secret in the manifest. Optional `resource` and bounded
 scalar `authorization_parameters`, `token_parameters`, and
 `registration_parameters` are trusted adapter configuration. Core-supplied
-protocol fields take precedence.
+protocol fields take precedence, and confidential-client parameter names such
+as `client_secret` and `client_assertion` are rejected.
 
 The shared broker owns:
 
 - capability and nonce checks plus a fixed admin callback;
-- one-time, encrypted, ten-minute state bound to the user, Connection,
+- atomically consumed, encrypted, ten-minute state bound to the user, Connection,
   provider, profile, redirect URI, and security-relevant profile hash;
 - authorization-code exchange with S256 PKCE;
 - public dynamic client registration when declared, rejecting returned client
   secrets;
 - a provider/profile/configuration-bound, versioned token envelope in the
   chosen encrypted Connection field;
-- access-token expiry handling, refresh-token rotation, and a bounded atomic
-  per-Connection refresh lock; and
+- access-token expiry handling, refresh-token rotation, a bounded atomic
+  per-Connection credential-mutation lock, and compare-and-swap storage that
+  cannot overwrite a disconnect, manual replacement, or new `env://` value; and
 - local disconnect controls that clear only the declared credential field.
 
 The broker accepts a deployment-supplied public client ID through
 `worldgraph_connection_oauth_client_id`. A portable filter-only profile marks
 that requirement with `client_id_from_filter => true`; otherwise it declares a
 public `client_id` or `registration_endpoint`. Dynamic registration is used
-only when no valid callback/configuration-bound saved, manifest, or filtered
+only when no valid manifest, filtered, or callback/configuration-bound saved
 public ID exists. The fixed callback requires an HTTPS WordPress administrator
 URL, except for loopback development. The Connection must already be
 published, enabled, and manageable by the current administrator before
@@ -283,8 +287,13 @@ rotation. Never serialize the broker's token or versioned envelope.
 Profiles are authentication configuration, not execution grants. The provider
 adapter must still implement endpoint validation, protocol negotiation,
 operation/tool allowlists, request schemas, health testing, and output handling.
-Multiple profiles may be declared, but two independent profiles must not share
-one credential field unless replacing each other is the intended contract.
+
+Before changing an existing Connection's `provider_type`, clear or disconnect
+both credential fields and save once. Core otherwise retains the original
+provider to prevent a masked key or OAuth envelope from reaching a different
+provider adapter.
+Multiple profiles may be declared, but the runtime rejects profiles that share
+one credential field.
 OAuth controls currently belong on the saved Connection editor, not the
 first-run Setup Wizard.
 

@@ -62,8 +62,9 @@ environment variable matching `^[A-Z_][A-Z0-9_]*$`.
 ## Provisioned Templates
 
 Saving or successfully testing the Connection idempotently creates or updates
-the text-to-image Template for each configured credential. Configuring both
-credentials creates both Templates:
+the text-to-image Template for each configured credential enabled by Model
+Access. With Model Access empty, configuring both credentials creates both
+Templates:
 
 | Template reference | Transport | Defaults |
 | --- | --- | --- |
@@ -156,14 +157,14 @@ cancellation and does not retry an ambiguous submission.
 
 ## Connection check and workflow refresh
 
-**Check connection** requires at least one credential and validates each
-configured transport:
+**Check connection** requires at least one credential whose reference is
+enabled by Model Access and validates each enabled transport:
 
-1. when the REST credential is present, the status lookup must authenticate
+1. when REST is credentialed and enabled, the status lookup must authenticate
    and return a valid bounded JSON envelope;
-2. when the MCP credential is present, MCP must complete initialization and
+2. when MCP is credentialed and enabled, MCP must complete initialization and
    expose both required tools; and
-3. every configured transport-specific Template must provision successfully.
+3. every enabled transport-specific Template must provision successfully.
 
 Core persists the Connection status, validation timestamp, bounded health
 data, and `midjourney_catalog_*` workflow-refresh metadata. Disabling the

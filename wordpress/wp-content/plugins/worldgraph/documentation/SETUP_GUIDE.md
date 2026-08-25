@@ -109,9 +109,10 @@ the REST bridge, and Ace Data Cloud operates the independent MCP service. A
 Midjourney web subscription, the REST key, and the Ace Data Cloud token cannot
 replace one another.
 
-Testing validates each configured transport: REST performs a non-generating
-task-status lookup, while MCP completes `2025-03-26` initialization and
-verifies `midjourney_imagine` plus `midjourney_get_task`. The matching
+Testing validates each credentialed transport enabled by Model Access: REST
+performs a non-generating task-status lookup, while MCP completes `2025-03-26`
+initialization and verifies `midjourney_imagine` plus
+`midjourney_get_task`. The matching
 `api:imagine`, `mcp:midjourney_imagine`, or both text-to-image Templates are
 provisioned. Both paths poll asynchronously and import every final image. See
 the [MidJourney Connection guide](../../../../../about/plugins/MIDJOURNEY.md)
@@ -320,6 +321,10 @@ The canonical REST base is:
 Open **Connections**, test the saved record, and confirm its status. A successful
 test marks the Connection `verified`; a failed test marks it `error` and
 stores the validation time.
+
+Clear or disconnect both credential fields and save before changing an
+existing Connection's Provider Type. The save otherwise keeps the original
+provider so a masked credential or OAuth envelope cannot cross providers.
 
 Provider-specific behavior:
 

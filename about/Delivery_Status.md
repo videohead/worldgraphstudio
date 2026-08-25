@@ -40,10 +40,11 @@ See [Suno Integration](plugins/SUNO.md) for the transport boundary and the
 [Integration Catalog](Integration_Catalog.md) for the complete table view,
 including source-only and experimental integrations.
 
-The delivered MidJourney boundary provisions one text-to-image Imagine
-Template for midjourney-api.com REST and one for Ace Data Cloud MCP. One
-`midjourney` Connection keeps the two intermediary credentials and auth
-headers distinct. Only `midjourney_imagine` and `midjourney_get_task` are
+The delivered MidJourney boundary can provision one text-to-image Imagine
+Template for midjourney-api.com REST and one for Ace Data Cloud MCP, according
+to the configured credentials and optional Model Access allowlist. One
+`midjourney` Connection keeps the two intermediary credentials and auth headers
+distinct. Only `midjourney_imagine` and `midjourney_get_task` are
 allowlisted on MCP; other advertised image-editing, transformation, reference,
 description, seed, and video tools are not executable in this scope. Both
 asynchronous paths import every final image before completion. See

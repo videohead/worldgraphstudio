@@ -185,10 +185,17 @@ final class Builtin_Connection_Tests {
 		if ( '' === $api_credential && '' === $mcp_credential ) {
 			return self::outcome( false, 'Add a midjourney-api.com key, an AceData Cloud MCP token, or both before testing this Connection.' );
 		}
+		$api_enabled = '' !== $api_credential
+			&& \WorldGraph\Utils\Midjourney_API::operation_is_allowed( $record, \WorldGraph\Utils\Midjourney_API::TEMPLATE );
+		$mcp_enabled = '' !== $mcp_credential
+			&& \WorldGraph\Utils\Midjourney_MCP::operation_is_allowed( $record, \WorldGraph\Utils\Midjourney_MCP::TEMPLATE );
+		if ( ! $api_enabled && ! $mcp_enabled ) {
+			return self::outcome( false, 'MidJourney Model Access does not enable a transport that has a configured credential.' );
+		}
 
 		$health     = [];
 		$transports = [];
-		if ( '' !== $api_credential ) {
+		if ( $api_enabled ) {
 			$api = \WorldGraph\Utils\Midjourney_API::test_configuration(
 				(string) ( $record['endpoint_url'] ?? '' ),
 				$api_credential
@@ -201,7 +208,7 @@ final class Builtin_Connection_Tests {
 			$transports[]                = 'REST';
 		}
 
-		if ( '' !== $mcp_credential ) {
+		if ( $mcp_enabled ) {
 			$tools = \WorldGraph\Utils\Midjourney_MCP::available_tools( $connection_id );
 			if ( is_wp_error( $tools ) ) {
 				return self::outcome( false, 'MidJourney MCP check failed: ' . $tools->get_error_message(), $health );

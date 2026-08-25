@@ -436,6 +436,89 @@ class Test_Higgsfield extends TestCase {
 		$this->assertSame( 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM', Connection_OAuth::pkce_challenge( $verifier ) );
 	}
 
+	/** Reusable profile normalization rejects field collisions and confidential parameters. */
+	public function test_oauth_profile_contract_is_behaviorally_validated(): void {
+		$normalize = new ReflectionMethod( Connection_OAuth::class, 'normalize_config' );
+		$normalize->setAccessible( true );
+		$profile = [
+			'service_label'          => 'Acme MCP',
+			'credential_field'       => 'mcp_credential_reference',
+			'authorization_endpoint' => 'https://identity.example.test/oauth2/authorize',
+			'token_endpoint'         => 'https://identity.example.test/oauth2/token',
+			'registration_endpoint'  => 'https://identity.example.test/oauth2/register',
+			'scopes'                 => [ 'openid', 'offline_access' ],
+			'token_endpoint_auth_method' => 'none',
+		];
+		$manifest = [ 'label' => 'Acme', 'oauth' => [ 'profiles' => [ 'mcp' => $profile ] ] ];
+		$this->assertIsArray( $normalize->invoke( null, 'acme', $manifest, 'mcp' ) );
+
+		$filter_profile = $profile;
+		unset( $filter_profile['registration_endpoint'] );
+		$filter_profile['client_id_from_filter'] = true;
+		$this->assertIsArray( $normalize->invoke( null, 'acme', [ 'label' => 'Acme', 'oauth' => [ 'profiles' => [ 'mcp' => $filter_profile ] ] ], 'mcp' ) );
+
+		$duplicate = $manifest;
+		$duplicate['oauth']['profiles']['api'] = $profile;
+		$duplicate_error = $normalize->invoke( null, 'acme', $duplicate, 'mcp' );
+		$this->assertInstanceOf( WP_Error::class, $duplicate_error );
+		$this->assertSame( 'worldgraph_oauth_credential_field_conflict', $duplicate_error->get_error_code() );
+
+		$confidential = $manifest;
+		$confidential['oauth']['profiles']['mcp']['token_parameters'] = [ 'ClIeNt_SeCrEt' => 'must-not-be-sent' ];
+		$confidential_error = $normalize->invoke( null, 'acme', $confidential, 'mcp' );
+		$this->assertInstanceOf( WP_Error::class, $confidential_error );
+		$this->assertSame( 'worldgraph_oauth_confidential_parameter_forbidden', $confidential_error->get_error_code() );
+	}
+
+	/** Token envelopes require an explicit Bearer response and preserve refresh rotation. */
+	public function test_oauth_token_envelope_validation_and_expiry(): void {
+		$normalize = new ReflectionMethod( Connection_OAuth::class, 'normalize_config' );
+		$envelope  = new ReflectionMethod( Connection_OAuth::class, 'envelope_from_response' );
+		$fresh     = new ReflectionMethod( Connection_OAuth::class, 'envelope_is_fresh' );
+		$normalize->setAccessible( true );
+		$envelope->setAccessible( true );
+		$fresh->setAccessible( true );
+		$manifest = [
+			'label' => 'Acme',
+			'oauth' => [
+				'profiles' => [
+					'mcp' => [
+						'credential_field'       => 'mcp_credential_reference',
+						'authorization_endpoint' => 'https://identity.example.test/oauth2/authorize',
+						'token_endpoint'         => 'https://identity.example.test/oauth2/token',
+						'client_id'              => 'public-client',
+						'scopes'                 => [ 'openid', 'offline_access' ],
+					],
+				],
+			],
+		];
+		$config = $normalize->invoke( null, 'acme', $manifest, 'mcp' );
+
+		$expires_now = $envelope->invoke(
+			null,
+			[ 'access_token' => 'access-token', 'refresh_token' => '', 'token_type' => 'Bearer', 'expires_in' => 0 ],
+			'acme',
+			'mcp',
+			'public-client',
+			$config,
+			'preserved-refresh'
+		);
+		$this->assertIsArray( $expires_now );
+		$this->assertSame( 'preserved-refresh', $expires_now['refresh_token'] );
+		$this->assertFalse( $fresh->invoke( null, $expires_now ) );
+
+		foreach (
+			[
+				[ 'access_token' => 'access-token', 'expires_in' => 3600 ],
+				[ 'access_token' => 'access-token', 'token_type' => 'Bearer', 'expires_in' => 'invalid' ],
+				[ 'access_token' => 'access-token', 'token_type' => 'Bearer', 'expires_in' => -1 ],
+				[ 'access_token' => 'access-token', 'token_type' => 'Bearer', 'refresh_token' => [] ],
+			] as $tokens
+		) {
+			$this->assertInstanceOf( WP_Error::class, $envelope->invoke( null, $tokens, 'acme', 'mcp', 'public-client', $config ) );
+		}
+	}
+
 	/** OAuth lifecycle is global, manifest-driven, replay-safe, and refresh-serialized. */
 	public function test_reusable_oauth_source_contracts(): void {
 		$oauth     = $this->source( 'includes/connections/class-connection-oauth.php' );
@@ -448,10 +531,13 @@ class Test_Higgsfield extends TestCase {
 		$this->assertStringContainsString( 'Connections\\Connection_OAuth::init();', $bootstrap );
 		$this->assertStringContainsString( "is_array( \$oauth['profiles']", $oauth );
 
-		$delete_state = strpos( $oauth, 'delete_transient( $transient_key )' );
+		$state_lock    = strpos( $oauth, 'self::acquire_state_lock( $state )' );
+		$delete_state  = strpos( $oauth, 'delete_transient( $transient_key )' );
 		$decrypt_state = strpos( $oauth, 'Credential_Store::decrypt( $pending )' );
+		$this->assertNotFalse( $state_lock );
 		$this->assertNotFalse( $delete_state );
 		$this->assertNotFalse( $decrypt_state );
+		$this->assertLessThan( $delete_state, $state_lock );
 		$this->assertLessThan( $decrypt_state, $delete_state );
 		$this->assertStringContainsString( 'Credential_Store::encrypt( (string) wp_json_encode( $pending ) )', $oauth );
 		$this->assertStringContainsString( "'code_challenge_method' => 'S256'", $oauth );
@@ -463,14 +549,29 @@ class Test_Higgsfield extends TestCase {
 		$this->assertStringContainsString( "add_option( \$option_name, \$token, '', 'no' )", $oauth );
 		$this->assertStringContainsString( '$wpdb->update(', $oauth );
 		$this->assertStringContainsString( 'finally {', $oauth );
-		$this->assertStringContainsString( 'self::release_refresh_lock( $lock )', $oauth );
+		$this->assertStringContainsString( 'self::release_lock( $lock )', $oauth );
 		$this->assertStringContainsString( "str_starts_with( trim( \$reference ), 'env://' )", $oauth );
 		$this->assertStringContainsString( 'worldgraph_oauth_external_rotation_required', $oauth );
 		$this->assertStringContainsString( 'Credential_Store::store_connection_secret(', $oauth );
+		$this->assertStringContainsString( 'Credential_Store::store_connection_secret_if_revision(', $oauth );
 		$this->assertStringContainsString( 'Credential_Store::load_connection_secret(', $oauth );
+		$profile_controls = substr(
+			$oauth,
+			strpos( $oauth, 'private static function render_profile_controls' ),
+			strpos( $oauth, 'public static function render_queued_admin_forms' ) - strpos( $oauth, 'private static function render_profile_controls' )
+		);
+		$this->assertStringNotContainsString( '<form', $profile_controls );
+		$this->assertStringContainsString( 'form="<?php echo esc_attr( $form_id ); ?>"', $profile_controls );
+
+		$resolve_client = substr(
+			$oauth,
+			strpos( $oauth, 'private static function resolve_client_id' ),
+			strpos( $oauth, 'private static function register_client' ) - strpos( $oauth, 'private static function resolve_client_id' )
+		);
+		$this->assertLessThan( strpos( $resolve_client, 'get_post_meta( $connection_id, $meta_key' ), strpos( $resolve_client, "(string) \$config['client_id']" ) );
 
 		$external_guard = strpos( $oauth, 'if ( $external )' );
-		$refresh_lock   = strpos( $oauth, 'self::acquire_refresh_lock(', $external_guard );
+		$refresh_lock   = strpos( $oauth, 'self::acquire_credential_lock(', $external_guard );
 		$refresh_store  = strpos( $oauth, 'self::store_envelope(', $refresh_lock );
 		$this->assertNotFalse( $external_guard );
 		$this->assertNotFalse( $refresh_lock );
@@ -516,6 +617,24 @@ class Test_Higgsfield extends TestCase {
 			[ 'credential_reference', 'mcp_credential_reference' ],
 			$schema['$defs']['oauthProfile']['properties']['credential_field']['enum'] ?? []
 		);
+		$this->assertTrue( $schema['$defs']['oauthProfile']['properties']['client_id_from_filter']['const'] ?? false );
+		$this->assertSame(
+			'^[a-z][a-z0-9_-]{0,63}$',
+			$schema['$defs']['oauth']['properties']['profiles']['propertyNames']['pattern'] ?? null
+		);
+		$this->assertArrayHasKey( 'not', $schema['$defs']['oauthStaticParameters']['propertyNames']['allOf'][1] ?? [] );
+	}
+
+	/** A saved credential must be cleared before its Connection can change providers. */
+	public function test_provider_change_and_oauth_refresh_have_credential_integrity_guards(): void {
+		$connection = $this->source( 'includes/cpts/connection.php' );
+		$store      = $this->source( 'includes/utils/class-credential-store.php' );
+
+		$this->assertStringContainsString( 'provider_change_has_credentials', $connection );
+		$this->assertStringContainsString( 'Clear both saved credential fields before changing', $connection );
+		$this->assertStringContainsString( 'public static function connection_secret_revision', $store );
+		$this->assertStringContainsString( 'public static function store_connection_secret_if_revision', $store );
+		$this->assertStringContainsString( 'BINARY meta_value = BINARY %s', $store );
 	}
 
 	/** Media-capable adapters receive the exact claimed job ID for cron authorization. */

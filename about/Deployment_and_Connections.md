@@ -101,9 +101,15 @@ post-save/admin, Template-provisioning, and generation-client capabilities.
 Compatible providers can also declare named `oauth.profiles` and reuse core's
 administrator-only public-client authorization-code + S256 PKCE lifecycle,
 optional dynamic client registration, one-time state, encrypted token envelope,
-refresh lock, and disconnect controls. OAuth profiles select one protected
+shared credential-mutation lock, compare-and-swap refresh storage, and
+disconnect controls. OAuth profiles select one protected
 Connection credential field; they do not grant provider operations by
 themselves.
+
+To change an existing Connection to a different provider, clear or disconnect
+both credential fields and save first. World Graph Studio otherwise retains the
+original `provider_type`, preventing a masked key or OAuth token envelope from
+being sent through another provider adapter.
 
 The same manifest may declare guided setup choices with `setup_options`. The
 `files` shorthand resolves paths inside the main World Graph Studio plugin and
@@ -282,7 +288,8 @@ first-run Setup Wizard. Configure either transport or both: prefer
 `env://ACEDATACLOUD_API_TOKEN` reference for MCP. Saving or testing provisions
 the matching `api:imagine`, `mcp:midjourney_imagine`, or both text-to-image
 Templates. The REST Template accepts `fast` or `relaxed`; the MCP Template
-accepts `fast`, `relax`, or `turbo`.
+accepts `fast`, `relax`, or `turbo`. Optional Model Access JSON can narrow the
+enabled transport references and is enforced during provisioning and runtime.
 
 Both paths are asynchronous. REST polls `/midjourney/v1/job-status`; MCP polls
 with the allowlisted `midjourney_get_task` tool after completing the provider's

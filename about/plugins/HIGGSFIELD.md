@@ -129,10 +129,13 @@ are validated before use.
 
 Higgsfield's hosted MCP service uses account OAuth rather than the REST key
 pair. World Graph Studio requests its catalog with current MCP per-request
-metadata first and uses a bounded initialization-era fallback only when the
-structured response explicitly requires it. Discovery validates JSON-RPC IDs,
-SSE event framing, protocol/result metadata, pagination, schema sizes, and
-tool identifiers.
+metadata first. On a modern HTTP `400`, the client keeps the modern path for
+the recognized `-32020`, `-32021`, and `-32022` protocol errors; an empty,
+malformed, or otherwise unrecognized `400` triggers one bounded
+initialization-era fallback as required by MCP compatibility rules. Discovery
+validates JSON-RPC versions and IDs, response content types, SSE event framing,
+protocol/result and cache metadata, pagination, schema sizes, and tool
+identifiers.
 
 The provider's public documentation does not publish stable tool names, input
 schemas, or result schemas. Consequently:
