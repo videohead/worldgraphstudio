@@ -32,6 +32,7 @@ function fetch_continuity_validation( int $episode_id = 0, array $scene_ids = []
 		$posts = ! empty( $scene_ids ) ? array_map( 'get_post', array_map( 'absint', $scene_ids ) ) : get_posts( [ 'post_type' => 'worldgraph_scene', 'post_parent' => $episode_id ?: 0, 'post_status' => 'any', 'posts_per_page' => -1 ] );
 	}
 
+	$errors = 0;
 	foreach ( array_filter( $posts ) as $post ) {
 		if ( '' === trim( wp_strip_all_tags( $post->post_content ) ) ) {
 			$post_type_label = continuity_entity_type_label( $post->post_type );
@@ -45,16 +46,84 @@ function fetch_continuity_validation( int $episode_id = 0, array $scene_ids = []
 				'suggestion'  => sprintf( 'Open and add %s content before editorial review.', strtolower( $post_type_label ) ),
 			];
 		}
+
+		foreach ( continuity_structural_issues_for_post( $post ) as $issue ) {
+			$issues[] = $issue;
+			if ( 'error' === $issue['severity'] ) {
+				$errors++;
+			}
+		}
 	}
 
 	return [
 		'total_issues'     => count( $issues ),
-		'errors'           => 0,
-		'warnings'         => count( $issues ),
+		'errors'           => $errors,
+		'warnings'         => count( $issues ) - $errors,
 		'infos'            => 0,
 		'scenes_validated' => count( array_filter( $posts ) ),
 		'issues'           => $issues,
 	];
+}
+
+/**
+ * Check one Scene or Shot for broken Story Graph relationships.
+ *
+ * These gaps are the visible symptom when a linked Character, Location, or
+ * Scene is deleted elsewhere: the relationship edge is removed along with the
+ * deleted post, leaving the surviving entity with a missing link instead of a
+ * dangling reference.
+ *
+ * @param \WP_Post $post Scene or Shot post.
+ * @return array<int, array> Issues found for this post.
+ */
+function continuity_structural_issues_for_post( \WP_Post $post ): array {
+	$issues = [];
+
+	if ( 'worldgraph_scene' === $post->post_type ) {
+		$has_location  = false;
+		$character_ids = [];
+		foreach ( get_relationships( $post->ID, 'worldgraph_scene', 'outgoing' ) as $relationship ) {
+			$to_type = (string) ( $relationship['to_type'] ?? '' );
+			if ( 'worldgraph_location' === $to_type ) {
+				$has_location = true;
+			} elseif ( 'worldgraph_character' === $to_type ) {
+				$character_ids[] = absint( $relationship['to_id'] ?? 0 );
+			}
+		}
+
+		if ( ! $has_location ) {
+			$issues[] = [
+				'severity'    => 'warning',
+				'category'    => 'location',
+				'description' => 'Scene has no location assigned.',
+				'entities'    => [ build_issue_entity_context( $post ) ],
+				'suggestion'  => 'Assign a location, or confirm the previous location was not deleted.',
+			];
+		}
+
+		$dialogue = worldgraph_get_field_value( $post->ID, 'dialogue' );
+		if ( is_array( $dialogue ) && ! empty( $dialogue ) && empty( array_filter( $character_ids ) ) ) {
+			$issues[] = [
+				'severity'    => 'warning',
+				'category'    => 'character',
+				'description' => 'Scene has dialogue but no characters linked.',
+				'entities'    => [ build_issue_entity_context( $post ) ],
+				'suggestion'  => 'Link the speaking characters, or confirm a character was not deleted.',
+			];
+		}
+	}
+
+	if ( 'worldgraph_shot' === $post->post_type && 0 === worldgraph_get_shot_canonical_scene_id( $post->ID ) ) {
+		$issues[] = [
+			'severity'    => 'error',
+			'category'    => 'scene',
+			'description' => 'Shot is not linked to any scene.',
+			'entities'    => [ build_issue_entity_context( $post ) ],
+			'suggestion'  => 'Assign this shot to a scene, or confirm its scene was not deleted.',
+		];
+	}
+
+	return $issues;
 }
 
 /**

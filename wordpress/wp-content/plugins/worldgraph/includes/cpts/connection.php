@@ -299,7 +299,7 @@ class Connection {
 				'label'       => 'Provider Type',
 				'required'    => true,
 				'options'     => array_combine( $provider_types, $provider_types ),
-				'description' => 'Provider adapter used by the paired Templates, such as ComfyUI, fal, Higgsfield, ElevenLabs, or Suno.',
+				'description' => 'Provider adapter used by the paired Templates, such as ComfyUI, fal, Higgsfield, ElevenLabs, Suno, or MidJourney.',
 			],
 			'environment'          => [
 				'type'        => 'select',
@@ -338,25 +338,25 @@ class Connection {
 				'type'        => 'text',
 				'label'       => 'Endpoint URL',
 				'required'    => true,
-				'description' => 'Provider endpoint. For Higgsfield use https://platform.higgsfield.ai; for SunoAPI.org use https://api.sunoapi.org; for ElevenLabs use https://api.elevenlabs.io/v1; for local ComfyUI use its HTTP API base URL.',
+				'description' => 'Provider endpoint. For MidJourney REST use https://api.midjourney-api.com; for Higgsfield use https://platform.higgsfield.ai; for SunoAPI.org use https://api.sunoapi.org; for ElevenLabs use https://api.elevenlabs.io/v1; for local ComfyUI use its HTTP API base URL.',
 			],
 			'mcp_endpoint_url'     => [
 				'type'        => 'text',
 				'label'       => 'MCP Endpoint URL',
 				'required'    => false,
-				'description' => 'Streamable HTTP MCP endpoint. Required for fal; use https://mcp.higgsfield.ai/mcp for Higgsfield and https://suno.mcp.acedata.cloud/mcp for Suno; optional for local ComfyUI discovery and downloads.',
+				'description' => 'Streamable HTTP MCP endpoint. Required for fal; use https://midjourney.mcp.acedata.cloud/mcp for MidJourney, https://mcp.higgsfield.ai/mcp for Higgsfield, or https://suno.mcp.acedata.cloud/mcp for Suno; optional for local ComfyUI discovery and downloads.',
 			],
 			'credential_reference' => [
 				'type'        => 'text',
 				'label'       => 'API Key / OAuth (Reference)',
 				'required'    => false,
-				'description' => 'REST/API credential or environment reference, e.g. env://HIGGSFIELD_API_CREDENTIAL, env://SUNO_API_KEY, env://ELEVENLABS_API_KEY, or env://COMFYUI_API_KEY. Higgsfield expects KEY_ID:KEY_SECRET.',
+				'description' => 'REST/API credential or environment reference, e.g. env://MIDJOURNEY_API_KEY, env://HIGGSFIELD_API_CREDENTIAL, env://SUNO_API_KEY, env://ELEVENLABS_API_KEY, or env://COMFYUI_API_KEY. Higgsfield expects KEY_ID:KEY_SECRET.',
 			],
 			'mcp_credential_reference' => [
 				'type'        => 'text',
 				'label'       => 'MCP API Key / OAuth (Reference)',
 				'required'    => false,
-				'description' => 'Optional separate credential for the MCP endpoint. OAuth-enabled adapters manage this field through their Connect control; Suno MCP accepts an AceData Cloud token such as env://ACEDATACLOUD_API_TOKEN.',
+				'description' => 'Optional separate credential for the MCP endpoint. OAuth-enabled adapters manage this field through their Connect control; MidJourney and Suno MCP accept a service-scoped AceData Cloud token such as env://ACEDATACLOUD_API_TOKEN.',
 			],
 			'mcp_configuration'     => [
 				'type'        => 'textarea',
@@ -691,6 +691,7 @@ class Connection {
 			'elevenlabs_catalog' => __( 'Workflow setup', 'worldgraph' ),
 			'suno_catalog'       => __( 'Workflow setup', 'worldgraph' ),
 			'higgsfield_catalog' => __( 'Workflow setup', 'worldgraph' ),
+			'midjourney_catalog' => __( 'Workflow setup', 'worldgraph' ),
 			'videodraft_catalog' => __( 'Workflow setup', 'worldgraph' ),
 		];
 
@@ -774,6 +775,23 @@ class Connection {
 				<li><?php echo esc_html__( 'API Key authenticates api.sunoapi.org; MCP API Key authenticates suno.mcp.acedata.cloud. These services issue different bearer tokens.', 'worldgraph' ); ?></li>
 				<li><?php echo esc_html__( 'Model selects the preferred Suno version. World Graph Studio maps API model names such as V5_5 to MCP model names such as chirp-v5-5.', 'worldgraph' ); ?></li>
 				<li><?php echo esc_html__( 'Suno normally returns two tracks. Every final track URL is imported into WordPress before a generation job completes.', 'worldgraph' ); ?></li>
+			</ul>
+			<p><strong><?php echo esc_html__( 'Last workflow refresh:', 'worldgraph' ); ?></strong> <?php echo esc_html( $synced_at ?: '—' ); ?></p>
+			<?php if ( '' !== $error ) : ?><p class="notice notice-error inline"><?php echo esc_html( $error ); ?></p><?php endif; ?>
+			<?php
+			return;
+		}
+
+		if ( 'midjourney' === $provider_type ) {
+			\WorldGraph\Utils\Connection_Adapters::load( 'midjourney' );
+			$synced_at = (string) get_post_meta( $post->ID, 'midjourney_catalog_synced_at', true );
+			$error     = (string) get_post_meta( $post->ID, 'midjourney_catalog_error', true );
+			?>
+			<p><?php echo esc_html__( 'World Graph Studio maintains separate text-to-image Templates for midjourney-api.com REST and the AceData Cloud MidJourney MCP server. Saving or checking this Connection refreshes those Templates.', 'worldgraph' ); ?></p>
+			<ul>
+				<li><?php echo esc_html__( 'API Key authenticates api.midjourney-api.com; MCP API Key authenticates midjourney.mcp.acedata.cloud. These independent operators issue different credentials.', 'worldgraph' ); ?></li>
+				<li><?php echo esc_html__( 'The REST Template supports fast or relaxed mode. The MCP Template supports fast, relax, or turbo mode; the different relax spellings follow each provider contract.', 'worldgraph' ); ?></li>
+				<li><?php echo esc_html__( 'Generation is polled without a public callback, and every final image URL is imported into WordPress before the job completes.', 'worldgraph' ); ?></li>
 			</ul>
 			<p><strong><?php echo esc_html__( 'Last workflow refresh:', 'worldgraph' ); ?></strong> <?php echo esc_html( $synced_at ?: '—' ); ?></p>
 			<?php if ( '' !== $error ) : ?><p class="notice notice-error inline"><?php echo esc_html( $error ); ?></p><?php endif; ?>

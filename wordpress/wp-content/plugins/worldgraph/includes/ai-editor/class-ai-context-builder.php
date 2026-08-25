@@ -37,18 +37,18 @@ class AI_Context_Builder {
 			'excerpt'    => $post->post_excerpt,
 		];
 
-		// Add character data if post type is character.
-		if ( 'character' === $post->post_type ) {
+		// Add character data if post type is a World Graph Character.
+		if ( 'worldgraph_character' === $post->post_type ) {
 			$context = array_merge( $context, $this->build_character_context( $post_id ) );
 		}
 
-		// Add scene data if post type is scene.
-		if ( 'scene' === $post->post_type ) {
+		// Add scene data if post type is a World Graph Scene.
+		if ( 'worldgraph_scene' === $post->post_type ) {
 			$context = array_merge( $context, $this->build_scene_context( $post_id ) );
 		}
 
-		// Add project context.
-		$context = array_merge( $context, $this->build_project_context( $post_id ) );
+		// Add project context, scoped to the Project that owns this post.
+		$context = array_merge( $context, $this->build_project_context( $post_id, $post->post_type ) );
 
 		return $context;
 	}
@@ -59,40 +59,30 @@ class AI_Context_Builder {
 	 * @param int $post_id Character post ID.
 	 * @return array Character context.
 	 */
-	private function build_character_context( int $post_id ): array {
+	public function build_character_context( int $post_id ): array {
 		$context = [
 			'character_name' => \WorldGraph\Utils\worldgraph_get_field_value( $post_id, 'display_name' ) ?: get_the_title( $post_id ),
-			'character_arc'  => get_post_meta( $post_id, 'character_arc', true ) ?: '',
-			'personality'    => \WorldGraph\Utils\worldgraph_get_field_value( $post_id, 'personality' ) ?: '',
-			'motivation'     => \WorldGraph\Utils\worldgraph_get_field_value( $post_id, 'motivation' ) ?: '',
+			'personality'    => wp_strip_all_tags( (string) \WorldGraph\Utils\worldgraph_get_field_value( $post_id, 'personality' ) ),
+			'motivation'     => wp_strip_all_tags( (string) \WorldGraph\Utils\worldgraph_get_field_value( $post_id, 'motivation' ) ),
 		];
 
-		// Get relationships.
-		$relationships = get_post_meta( $post_id, 'relationships', true );
-		if ( $relationships ) {
-			$context['relationships'] = is_array( $relationships ) ? $relationships : [];
+		// Get scenes this character appears in via the Story Graph relationship edge.
+		$scenes = [];
+		foreach ( \WorldGraph\Utils\get_relationships( $post_id, 'worldgraph_character', 'incoming' ) as $relationship ) {
+			if ( 'worldgraph_scene' !== (string) ( $relationship['from_type'] ?? '' ) ) {
+				continue;
+			}
+			$scene_id = absint( $relationship['from_id'] ?? 0 );
+			if ( $scene_id ) {
+				$scenes[ $scene_id ] = [
+					'id'    => $scene_id,
+					'title' => get_the_title( $scene_id ),
+				];
+			}
 		}
 
-		// Get scenes this character appears in.
-		$scenes = get_posts( [
-			'post_type'   => 'scene',
-			'numberposts' => -1,
-			'meta_query'  => [
-				[
-					'key'     => 'characters',
-					'value'   => '"' . $post_id . '"',
-					'compare' => 'LIKE',
-				],
-			],
-		] );
-
 		if ( $scenes ) {
-			$context['appears_in_scenes'] = array_map( function( $scene ) {
-				return [
-					'id'   => $scene->ID,
-					'title' => $scene->post_title,
-				];
-			}, $scenes );
+			$context['appears_in_scenes'] = array_values( $scenes );
 		}
 
 		return $context;
@@ -104,102 +94,150 @@ class AI_Context_Builder {
 	 * @param int $post_id Scene post ID.
 	 * @return array Scene context.
 	 */
-	private function build_scene_context( int $post_id ): array {
-		$context = [
+	public function build_scene_context( int $post_id ): array {
+		$location_id = absint( \WorldGraph\Utils\worldgraph_get_field_value( $post_id, 'location' ) );
+		$context     = [
 			'scene_title'   => get_the_title( $post_id ),
-			'setting'       => get_post_meta( $post_id, 'setting', true ) ?: '',
+			'setting'       => $location_id ? get_the_title( $location_id ) : '',
 			'time_of_day'   => \WorldGraph\Utils\worldgraph_get_field_value( $post_id, 'time_of_day' ) ?: '',
 			'tone'          => \WorldGraph\Utils\worldgraph_get_field_value( $post_id, 'emotional_tone' ) ?: '',
-			'scene_content' => \WorldGraph\Utils\worldgraph_get_field_value( $post_id, 'script_content' ) ?: (string) get_post_field( 'post_content', $post_id ),
+			'scene_content' => wp_strip_all_tags( (string) ( \WorldGraph\Utils\worldgraph_get_field_value( $post_id, 'script_content' ) ?: get_post_field( 'post_content', $post_id ) ) ),
 		];
 
-		// Get characters in this scene.
-		$character_ids = get_post_meta( $post_id, 'characters', true );
-		if ( $character_ids && is_array( $character_ids ) ) {
-			$context['characters'] = array_map( function( $char_id ) {
-				return [
-					'id'    => $char_id,
-					'name'  => get_the_title( $char_id ),
+		// Get characters linked to this scene via the Story Graph relationship edge.
+		$characters = [];
+		foreach ( \WorldGraph\Utils\get_relationships( $post_id, 'worldgraph_scene', 'outgoing' ) as $relationship ) {
+			if ( 'worldgraph_character' !== (string) ( $relationship['to_type'] ?? '' ) ) {
+				continue;
+			}
+			$character_id = absint( $relationship['to_id'] ?? 0 );
+			if ( $character_id ) {
+				$characters[ $character_id ] = [
+					'id'   => $character_id,
+					'name' => get_the_title( $character_id ),
 				];
-			}, $character_ids );
+			}
 		}
-
-		// Get previous and next scenes.
-		$prev_scene = get_previous_post( $post_id, true, 'scene' );
-		$next_scene = get_next_post( $post_id, true, 'scene' );
-
-		if ( $prev_scene ) {
-			$context['previous_scene'] = [
-				'id'    => $prev_scene->ID,
-				'title' => $prev_scene->post_title,
-			];
-		}
-		if ( $next_scene ) {
-			$context['next_scene'] = [
-				'id'    => $next_scene->ID,
-				'title' => $next_scene->post_title,
-			];
+		if ( $characters ) {
+			$context['characters'] = array_values( $characters );
 		}
 
 		return $context;
 	}
 
 	/**
-	 * Build project-level context.
+	 * Resolve the Project that owns a Story Graph post, walking Scene and Episode edges.
 	 *
-	 * @param int $post_id Post ID.
-	 * @return array Project context.
+	 * @param int    $post_id   Post ID.
+	 * @param string $post_type Post type.
+	 * @return int Project post ID, or zero when unresolved.
 	 */
-	private function build_project_context( int $post_id ): array {
-		$context = [];
-
-		// Get all characters.
-		$characters = get_posts( [
-			'post_type'   => 'character',
-			'numberposts' => -1,
-		] );
-
-		if ( $characters ) {
-			$context['all_characters'] = array_map( function( $char ) {
-				return [
-					'id'   => $char->ID,
-					'name' => $char->post_title,
-				];
-			}, $characters );
+	private function resolve_project_id( int $post_id, string $post_type ): int {
+		if ( 'worldgraph_project' === $post_type ) {
+			return $post_id;
 		}
 
-		// Get all scenes.
-		$scenes = get_posts( [
-			'post_type'   => 'scene',
-			'numberposts' => -1,
-			'orderby'     => 'menu_order',
-			'order'       => 'ASC',
-		] );
+		if ( 'worldgraph_episode' === $post_type ) {
+			$project_id = absint( \WorldGraph\Utils\worldgraph_get_field_value( $post_id, 'project' ) );
+			if ( $project_id ) {
+				return $project_id;
+			}
+			foreach ( \WorldGraph\Utils\get_relationships( $post_id, $post_type, 'outgoing' ) as $relationship ) {
+				if ( 'worldgraph_project' === (string) ( $relationship['to_type'] ?? '' ) ) {
+					return absint( $relationship['to_id'] ?? 0 );
+				}
+			}
+			return 0;
+		}
 
-		if ( $scenes ) {
-			$context['all_scenes'] = array_map( function( $scene ) {
+		if ( 'worldgraph_scene' === $post_type ) {
+			$project_id = absint( \WorldGraph\Utils\worldgraph_get_field_value( $post_id, 'project' ) );
+			if ( $project_id ) {
+				return $project_id;
+			}
+			foreach ( \WorldGraph\Utils\get_relationships( $post_id, $post_type, 'outgoing' ) as $relationship ) {
+				if ( 'worldgraph_project' === (string) ( $relationship['to_type'] ?? '' ) ) {
+					return absint( $relationship['to_id'] ?? 0 );
+				}
+				if ( 'worldgraph_episode' === (string) ( $relationship['to_type'] ?? '' ) ) {
+					$episode_id = absint( $relationship['to_id'] ?? 0 );
+					if ( $episode_id ) {
+						return $this->resolve_project_id( $episode_id, 'worldgraph_episode' );
+					}
+				}
+			}
+			$episode_id = absint( \WorldGraph\Utils\worldgraph_get_field_value( $post_id, 'episode' ) );
+			if ( $episode_id ) {
+				return $this->resolve_project_id( $episode_id, 'worldgraph_episode' );
+			}
+		}
+
+		return 0;
+	}
+
+	/**
+	 * Build project-level context, scoped to the Project that owns this post.
+	 *
+	 * @param int    $post_id   Post ID.
+	 * @param string $post_type Post type.
+	 * @return array Project context.
+	 */
+	private function build_project_context( int $post_id, string $post_type ): array {
+		$project_id = $this->resolve_project_id( $post_id, $post_type );
+		if ( ! $project_id || 'worldgraph_project' !== get_post_type( $project_id ) ) {
+			return [];
+		}
+
+		$context = [
+			'project_title'   => get_the_title( $project_id ),
+			'project_logline' => wp_strip_all_tags( (string) \WorldGraph\Utils\worldgraph_get_field_value( $project_id, 'description' ) ),
+		];
+
+		$scene_ids = \WorldGraph\Utils\continuity_project_scene_ids( $project_id );
+		if ( $scene_ids ) {
+			$scenes = get_posts( [
+				'post_type'      => 'worldgraph_scene',
+				'post_status'    => 'any',
+				'posts_per_page' => -1,
+				'post__in'       => $scene_ids,
+				'orderby'        => 'post__in',
+			] );
+			$context['all_scenes'] = array_map( static function ( $scene ) {
 				return [
-					'id'    => $scene->ID,
-					'title' => $scene->post_title,
+					'id'     => $scene->ID,
+					'title'  => $scene->post_title,
 					'status' => $scene->post_status,
 				];
 			}, $scenes );
 		}
 
-		// Get project metadata.
-		$project_title = get_option( 'worldgraph_project_title', '' );
-		if ( $project_title ) {
-			$context['project_title'] = $project_title;
+		$character_ids = [];
+		$location_ids   = [];
+		foreach ( $scene_ids as $scene_id ) {
+			foreach ( \WorldGraph\Utils\get_relationships( $scene_id, 'worldgraph_scene', 'outgoing' ) as $relationship ) {
+				$to_type = (string) ( $relationship['to_type'] ?? '' );
+				$to_id   = absint( $relationship['to_id'] ?? 0 );
+				if ( ! $to_id ) {
+					continue;
+				}
+				if ( 'worldgraph_character' === $to_type ) {
+					$character_ids[ $to_id ] = true;
+				} elseif ( 'worldgraph_location' === $to_type ) {
+					$location_ids[ $to_id ] = true;
+				}
+			}
 		}
 
-		$project_logline = get_option( 'worldgraph_project_logline', '' );
-		if ( $project_logline ) {
-			$context['project_logline'] = $project_logline;
+		if ( $character_ids ) {
+			$context['all_characters'] = array_map( static function ( $id ) {
+				return [ 'id' => $id, 'name' => get_the_title( $id ) ];
+			}, array_keys( $character_ids ) );
 		}
 
-		$project_genre = get_option( 'worldgraph_project_genre', '' );
-		if ( $project_genre ) {
-			$context['project_genre'] = $project_genre;
+		if ( $location_ids ) {
+			$context['all_locations'] = array_map( static function ( $id ) {
+				return [ 'id' => $id, 'name' => get_the_title( $id ) ];
+			}, array_keys( $location_ids ) );
 		}
 
 		return $context;
