@@ -362,6 +362,22 @@ class Generation_Prompt_Policy {
 				continue;
 			}
 
+			// Do not discard an otherwise useful subject, character, or setting
+			// block merely because it crosses the soft target by a word or two.
+			// Fill the remaining target at a word boundary; the hard maximum still
+			// governs every rendered prompt.
+			$remaining_target   = max( 0, $target - $selected_words );
+			$remaining_capacity = max( 0, $optional_capacity - $optional_used );
+			$allocation         = min( $words, $remaining_target, $remaining_capacity );
+			if ( $allocation >= 3 ) {
+				$section['text'] = self::trim_words( $section['text'], $allocation );
+				$selected[]      = $section;
+				$selected_words += $allocation;
+				$optional_used  += $allocation;
+				$truncated       = $truncated || $allocation < $words;
+				continue;
+			}
+
 			$omitted[] = $section['id'];
 		}
 

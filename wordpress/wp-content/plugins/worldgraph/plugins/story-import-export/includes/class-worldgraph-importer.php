@@ -1957,8 +1957,13 @@ class WorldGraph_Importer {
 
 			foreach ( $this->document['props'] as $prop ) {
 				$prop_id = $this->id_map[ $prop['id'] ] ?? 0;
-				if ( $prop_id && ! $world_was_skipped ) {
-					\WorldGraph\Utils\add_relationship( $world_id, 'worldgraph_world', $prop_id, 'worldgraph_prop', 'contains' );
+				if ( $prop_id ) {
+					if ( ! $world_was_skipped ) {
+						\WorldGraph\Utils\add_relationship( $world_id, 'worldgraph_world', $prop_id, 'worldgraph_prop', 'contains' );
+					}
+					if ( ! $this->entity_was_skipped( (string) $prop['id'] ) ) {
+						\WorldGraph\Utils\worldgraph_update_field_value( $prop_id, 'story_world', $world_id );
+					}
 				}
 			}
 
