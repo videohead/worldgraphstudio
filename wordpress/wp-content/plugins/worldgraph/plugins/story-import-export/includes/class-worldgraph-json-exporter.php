@@ -670,6 +670,7 @@ class WorldGraph_JSON_Exporter {
 			'lens'              => $this->scalar_field( $scene->ID, 'lens' ),
 			'camera_movement'   => $this->scalar_field( $scene->ID, 'camera_movement' ),
 			'generation_prompt' => $this->scalar_field( $scene->ID, 'generation_prompt' ),
+			'audio_direction'   => $this->scalar_field( $scene->ID, 'audio_direction' ),
 			'characters'        => $this->relationship_external_ids(
 				$scene->ID,
 				'worldgraph_scene',

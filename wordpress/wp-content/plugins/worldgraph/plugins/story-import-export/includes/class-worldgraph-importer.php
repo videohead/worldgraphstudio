@@ -258,7 +258,7 @@ class WorldGraph_Importer {
 			'Prop'       => [ 'id', 'name', 'description', 'purpose', 'owner_character', 'notes' ],
 			'Organization' => [ 'id', 'name', 'organization_name', 'organization_type', 'description', 'leadership', 'goals', 'story_world' ],
 			'Episode'    => [ 'id', 'episode_number', 'title', 'synopsis', 'production_status', 'project' ],
-			'Scene'      => [ 'id', 'title', 'label', 'scene_number', 'summary', 'script_content', 'location', 'time_of_day', 'emotional_tone', 'lens', 'camera_movement', 'generation_prompt', 'production_notes', 'sequence', 'episode' ],
+			'Scene'      => [ 'id', 'title', 'label', 'scene_number', 'summary', 'script_content', 'location', 'time_of_day', 'emotional_tone', 'lens', 'camera_movement', 'generation_prompt', 'audio_direction', 'production_notes', 'sequence', 'episode' ],
 			'Shot'       => [ 'id', 'scene', 'title', 'label', 'shot_number', 'type', 'camera_angle', 'lens', 'camera_movement', 'motion_direction', 'duration', 'take_number', 'slate_id', 'description', 'generation_prompt', 'editorial_notes', 'sequence' ],
 			'Sound'      => [ 'id', 'title', 'type', 'production_status', 'description', 'spoken_text', 'lyrics', 'start_timecode', 'duration', 'diegetic', 'production_notes', 'scene', 'shot', 'character', 'asset' ],
 			'Storyboard' => [ 'id', 'title', 'frame_number', 'description', 'prompt_text', 'camera_notes', 'scene', 'shot', 'image_asset' ],
@@ -1444,6 +1444,7 @@ class WorldGraph_Importer {
 					'lens'              => 'lens',
 					'camera_movement'   => 'camera_movement',
 					'generation_prompt' => 'generation_prompt',
+					'audio_direction'   => 'audio_direction',
 					'production_notes'  => 'production_notes',
 				]
 			);

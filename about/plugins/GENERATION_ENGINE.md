@@ -92,9 +92,12 @@ do not expose audio controls.
 
 Generation direction is scoped rather than inherited as undifferentiated prose.
 Project `generation_prompt` is the production-wide Visual Direction. Scene
-`generation_prompt` is a short Look & Lighting override; Scene Location, time,
-and tone define the setting boundary, while Scene lens and camera movement are
-defaults. A nonblank Shot lens or camera movement replaces the matching Scene
+`generation_prompt` stores only Scene-specific Look & Lighting Changes from
+that Project baseline, and those changes take precedence inside the Scene.
+Scene Location, time, and tone define the setting boundary, while Scene lens
+and camera movement are defaults. Scene `audio_direction` is a concise
+Scene-wide ambience, music, and sonic palette inherited by linked Sound
+generation; it excludes dialogue, lyrics, and individual cue events. A nonblank Shot lens or camera movement replaces the matching Scene
 default, and explicit `locked_off` is therefore a meaningful override. Shot
 `motion_direction` contains one visible action in temporal order, while Shot
 `generation_prompt` is reserved for exceptional constraints.

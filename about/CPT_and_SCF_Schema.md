@@ -286,7 +286,8 @@ Top-level container for all story assets.
 - scene_number
 - title
 - summary
-- generation_prompt (textarea; **Scene Look & Lighting Override**, a concise refinement of Project Visual Direction)
+- generation_prompt (textarea; **Scene Look & Lighting Changes** only; Project Visual Direction is the baseline and Scene-specific differences take precedence inside the Scene)
+- audio_direction (textarea; **Sound & Music Direction**, concise Scene-wide ambience, music, and sonic palette inherited by linked Sound generation—not dialogue, lyrics, or individual cue events)
 - script_content
 - dialogue (structured importer-managed entries: speaker, line, description, sequence)
 - location
@@ -361,7 +362,11 @@ sequencer.
 
 Generation direction follows a specificity hierarchy. Project Visual Direction
 defines the house look. A Scene keeps one authoritative Location/time boundary,
-may refine look and lighting, and supplies lens and camera-movement defaults.
+may specify only look and lighting differences from that Project baseline, and
+supplies lens and camera-movement defaults. Those Scene-specific values take
+precedence inside the Scene. Optional Sound & Music Direction defines the
+Scene-wide ambience, music, and sonic palette inherited by linked Sound
+generation; dialogue, lyrics, and individual cue events remain on Sound records.
 A nonblank Shot lens or camera movement replaces its Scene default, while Shot
 motion is never inherited. Scene summary, script, dialogue, production notes,
 and linked Sound prose are not copied into Shot visual prompts. Scene-wide music,
@@ -517,8 +522,10 @@ catalog and readiness flows, not an Assets-run input.
 Project, Story World, Character, Prop, Location, Shot, Scene, and Episode expose
 an optional `generation_prompt` textarea, but its editorial label is specific to
 its scope. Project stores the production-wide Visual Direction; Scene stores a
-Look & Lighting refinement; and Shot stores only exceptional constraints. Scene
-`lens` and `camera_movement` provide structured camera defaults, while Shot
+Look & Lighting Changes field for differences from the Project baseline; those
+differences take precedence inside the Scene. Shot stores only exceptional constraints. Scene
+`audio_direction` stores concise Scene-wide sound and music guidance inherited
+by linked Sound generation. Scene `lens` and `camera_movement` provide structured camera defaults, while Shot
 `camera_movement` and `motion_direction` keep camera and visible action separate
 from story prose. These fields augment descriptive content; they do not replace
 synopsis, description, appearance, script, dialogue, or production notes. Their

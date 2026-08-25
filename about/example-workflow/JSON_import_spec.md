@@ -186,7 +186,7 @@ stable.
 Ordering is deterministic: Episodes use `episode_number`; Scenes use Sequence
 order and then `scene_number`; Shots and Sounds are grouped by Scene; remaining
 entity collections use external ID order. Project visual direction, Scene look
-and lighting overrides, Scene camera defaults, and Shot camera movement, motion
+and lighting changes, Scene camera and audio direction, and Shot camera movement, motion
 direction, and exceptional generation constraints are portable. Connections,
 Templates, generation jobs, WordPress users/status, the non-existent Storyboard
 CPT, and other fields outside the actual importer contract are excluded.
@@ -400,7 +400,8 @@ scenes[] -> worldgraph_scene
 | `emotional_tone` | string | `meta.emotional_tone` | Dramatic tone. |
 | `lens` | string | `meta.lens` | Optional scene-wide baseline lens or field-of-view note; a Shot lens may override it. |
 | `camera_movement` | string | `meta.camera_movement` | Optional scene-wide video-camera default using the same values as Shot `camera_movement`; a Shot value may override it. |
-| `generation_prompt` | string | `meta.generation_prompt` | Optional Scene Look & Lighting Override that modifies the Project visual direction without repeating story action. |
+| `generation_prompt` | string | `meta.generation_prompt` | Optional Scene Look & Lighting Changes. Project Visual Direction is the baseline; include only Scene-specific differences, which take precedence inside that Scene, without repeating story action. |
+| `audio_direction` | string | `meta.audio_direction` | Optional concise Scene-wide ambience, music, and sonic palette inherited by linked Sound generation; excludes dialogue, lyrics, and individual cue events. |
 | `production_notes` | string | `meta.production_notes` | Staging, continuity, or capture notes. |
 | `tags` | string[] | `worldgraph_scene_tag` terms | Existing taxonomy slugs. |
 | `sequence` | string | `worldgraph_sequence` term | Sequence external ID; must agree with `sequence.id` and `sequence.order`. |

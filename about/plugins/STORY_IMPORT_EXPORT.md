@@ -208,7 +208,11 @@ snapshot; other container relationships are additive.
 
 The portable Project `generation_prompt` is the concise, pervasive Project
 Visual Direction. Scenes may carry a `generation_prompt` as a Scene Look &
-Lighting Override plus optional `lens` and `camera_movement` defaults. Shots may
+Lighting Changes field containing only differences from the Project baseline;
+those differences take precedence inside the Scene. Scenes may also carry
+optional `lens` and `camera_movement` defaults plus concise `audio_direction`
+for Scene-wide ambience, music, and sonic palette inherited by linked Sound
+generation. It excludes dialogue, lyrics, and individual cue events. Shots may
 additionally carry `camera_movement`, `motion_direction`, and a
 `generation_prompt` reserved for exceptional generation constraints. Scene-wide
 sound and music direction remains represented by linked `sounds[]` records, not
@@ -237,8 +241,8 @@ deterministic:
 Connections, Templates, generation jobs, WordPress lifecycle status and users,
 the non-existent Storyboard CPT, and fields not in the importer version 1.2
 contract are intentionally excluded. Project visual direction and Shot camera,
-motion, and exceptional generation fields are included, as are Scene look,
-lighting, lens, and camera defaults. The WordPress download name is
+motion, and exceptional generation fields are included, as are Scene-specific
+look and lighting changes, audio direction, lens, and camera defaults. The WordPress download name is
 `<project>.worldgraph.json`.
 
 ## Markdown export

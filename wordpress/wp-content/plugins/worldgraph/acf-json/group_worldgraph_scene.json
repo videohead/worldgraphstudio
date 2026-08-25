@@ -340,11 +340,31 @@
         },
         {
             "key": "field_worldgraph_scene_generation_prompt",
-            "label": "Scene Look & Lighting Override",
+            "label": "Scene Look & Lighting Changes",
             "name": "generation_prompt",
             "aria-label": "",
             "type": "textarea",
-            "instructions": "Optional scene-wide refinement of the Project visual direction (about 20 words). Describe only lighting, palette, atmosphere, weather, or texture that should remain consistent across this Scene—not plot, characters, camera, or sound.",
+            "instructions": "Project Visual Direction is the baseline. Enter only Scene-specific differences (about 20 words): lighting, palette, atmosphere, weather, or texture. These Scene values take precedence inside this Scene. Do not repeat the Project style or add plot, characters, camera, or sound.",
+            "required": 0,
+            "conditional_logic": 0,
+            "wrapper": {
+                "width": "",
+                "class": "",
+                "id": ""
+            },
+            "default_value": "",
+            "maxlength": "",
+            "rows": "",
+            "placeholder": "",
+            "new_lines": ""
+        },
+        {
+            "key": "field_worldgraph_scene_audio_direction",
+            "label": "Sound & Music Direction",
+            "name": "audio_direction",
+            "aria-label": "",
+            "type": "textarea",
+            "instructions": "Optional Scene-wide ambience, music, and sonic palette (about 20 words) inherited by linked Sound generation. Describe tone, instrumentation, texture, rhythm, or acoustic space—not dialogue, lyrics, or individual cue events.",
             "required": 0,
             "conditional_logic": 0,
             "wrapper": {
@@ -443,5 +463,5 @@
     "display_title": "",
     "allow_ai_access": false,
     "ai_description": "",
-    "modified": 1787678616
+    "modified": 1787681000
 }

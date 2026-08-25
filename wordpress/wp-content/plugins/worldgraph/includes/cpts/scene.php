@@ -79,9 +79,15 @@ class Scene {
 		],
 		'generation_prompt' => [
 			'type'        => 'textarea',
-			'label'       => 'Scene Look & Lighting Override',
+			'label'       => 'Scene Look & Lighting Changes',
 			'required'    => false,
-			'description' => 'Optional scene-wide refinement of the Project visual direction (about 20 words). Describe only lighting, palette, atmosphere, weather, or texture that should remain consistent across this Scene—not plot, characters, camera, or sound.',
+			'description' => 'Project Visual Direction is the baseline. Enter only Scene-specific differences (about 20 words): lighting, palette, atmosphere, weather, or texture. These Scene values take precedence inside this Scene. Do not repeat the Project style or add plot, characters, camera, or sound.',
+		],
+		'audio_direction' => [
+			'type'        => 'textarea',
+			'label'       => 'Sound & Music Direction',
+			'required'    => false,
+			'description' => 'Optional Scene-wide ambience, music, and sonic palette (about 20 words) inherited by linked Sound generation. Describe tone, instrumentation, texture, rhythm, or acoustic space—not dialogue, lyrics, or individual cue events.',
 		],
 		'lens'            => [
 			'type'        => 'text',

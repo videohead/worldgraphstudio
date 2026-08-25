@@ -236,7 +236,8 @@ Represents a fictional universe.
 - Scene Number
 - Title
 - Summary
-- Generation Prompt Instructions
+- Scene Look & Lighting Changes (only differences from the Project Visual Direction baseline; Scene values take precedence inside the Scene)
+- Sound & Music Direction (Scene-wide ambience, music, and sonic palette inherited by linked Sound generation; not dialogue, lyrics, or individual cue events)
 - Script Content
 - Dialogue (structured speaker, line, description, and sequence entries)
 - Location
