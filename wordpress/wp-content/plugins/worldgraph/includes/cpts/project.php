@@ -59,9 +59,9 @@ class Project {
 		],
 		'generation_prompt'   => [
 			'type'        => 'textarea',
-			'label'       => 'Generation Prompt Instructions',
+			'label'       => 'Project Visual Direction',
 			'required'    => false,
-			'description' => 'Project-specific visual instructions appended to generated media prompts, for example "no watermark" or a house style.',
+			'description' => 'One concise, pervasive visual language (about 20 words) for every generated image and video. Describe medium or rendering style, lighting, palette, contrast, and texture—not plot, characters, camera movement, or resolution. Example: "hand-painted 2D storybook animation; high-key warm interiors; cool moonlit forest; soft cel shading; muted earth palette."',
 		],
 		'genre'               => [
 			'type'        => 'taxonomy',

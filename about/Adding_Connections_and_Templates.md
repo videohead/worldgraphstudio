@@ -99,6 +99,7 @@ accepts older scalar or partial shapes for backward compatibility.
 | `generation.adapter_resolver` | Optional callable that selects the adapter marker from trusted Connection/Template state |
 | `generation.media_inputs` | Whether this provider accepts the worker's resolved media-input contract |
 | `generation.flatten_inputs` | Merge resolved media inputs into top-level provider parameters instead of placing them under `inputs` |
+| `generation.prompt_policy` | Trusted normalized prompt-length, semantic-section, and formatting preferences; may be flat or keyed by `default`, output type, and modality |
 | `generation.poll_error_limit` | Consecutive polling errors allowed before the worker marks the job failed; minimum 1 |
 | `generation.permanent_error_codes` | Provider-prefixed `WP_Error` codes that make a poll failure immediately terminal |
 
@@ -350,7 +351,18 @@ public static function provision( int $connection_id ): array|\WP_Error {
 				],
 			],
 			'configuration'        => [
-				'transport' => 'api',
+				'transport'              => 'api',
+				'provider_prompt_policy' => [
+					'limits' => [
+						'target_words'  => 90,
+						'max_words'     => 140,
+						'max_characters' => 2000,
+					],
+					'hints' => [
+						'lead_with' => 'action',
+						'format'    => 'chronological_prose',
+					],
+				],
 			],
 			'status'               => 'active',
 			'version'              => '2',
@@ -442,6 +454,117 @@ the `input` defaults and `provider_schema`. Runtime prompts and resolved Story
 Graph media bindings do not belong there. An update changes the provider-owned
 fields supplied by the definition without erasing unrelated operator-owned
 workflow, binding, or default fields.
+
+### Declare a bounded prompt policy
+
+Prompt policy is data, not provider-supplied instructions. A trusted adapter
+may declare one flat `generation.prompt_policy`, or a map whose `default` is
+overlaid by an output type (`image`, `video`, `audio`, or `text`) and then an
+exact modality. For example:
+
+```php
+'generation' => [
+	'prompt_policy' => [
+		'default' => [
+			'limits' => [ 'target_words' => 80, 'max_words' => 140 ],
+		],
+		'image' => [
+			'limits' => [ 'max_characters' => 1800 ],
+			'hints'  => [ 'lead_with' => 'subject', 'format' => 'concise_phrases' ],
+		],
+		'text_image_to_video' => [
+			'limits' => [ 'target_words' => 60, 'max_words' => 100 ],
+			'hints'  => [ 'lead_with' => 'motion', 'format' => 'chronological_prose' ],
+		],
+	],
+],
+```
+
+The normalized allowlist is intentionally small:
+
+- `limits.target_words`, `limits.max_words`, `limits.max_characters`, and
+  `limits.max_bytes` are positive bounded integers;
+- `sections.preferred` and `sections.forbidden` contain only `primary`,
+  `objective`, `identity`, `subject`, `action`, `setting`, `characters`,
+  `camera`, `motion`, `look`, `continuity`, `ancestor_context`,
+  `dependent_context`, `author_instructions`, `constraints`, `verbatim`, or
+  `other`; and
+- `hints.profile` is a sanitized label, `hints.lead_with` is `subject`,
+  `action`, or `motion`, and `hints.format` is `natural_language`,
+  `concise_phrases`, or `chronological_prose`. `lead_with` never displaces the
+  opening `primary` description; it prioritizes that semantic section
+  immediately after the opening.
+
+For ordinary operator tuning, the Template editor exposes four first-class,
+sparse fields instead of requiring JSON:
+
+| Template field | Meaning |
+| --- | --- |
+| `prompt_lead_with` | `subject`, `action`, or `motion` immediately after the opening description |
+| `prompt_format` | `natural_language`, `concise_phrases`, or `chronological_prose` |
+| `prompt_target_words` | Creative target from 1 to 4000 words; optional sections are admitted while space remains |
+| `prompt_max_words` | Hard ceiling from 1 to 4000 words; it can tighten but cannot loosen an inherited provider/model ceiling |
+
+Blank fields inherit the reviewed Connection and model recommendations. The
+**Effective Prompt Guidance** box on the Template screen shows the resolved
+profile, start priority, format, target/maximum length, and leading semantic
+order after the Template has been saved. Keep advanced section ordering,
+forbidden sections, character/byte ceilings, and provider-provisioned policy in
+the normalized JSON declarations described above.
+
+`primary`, `objective`, `author_instructions`, `constraints`, and `verbatim`
+cannot be forbidden. Later preference layers may change the target, order, and
+format, but positive hard ceilings combine by taking the smallest limit.
+Resolution order is core output/modality/intent fallback, adapter manifest,
+the trusted `worldgraph_generation_connection_prompt_policy` filter, reviewed
+model family/model slug, Template
+`configuration.provider_prompt_policy`, operator
+`configuration.prompt_policy`, the first-class Template prompt-guidance fields,
+a direct positive-prompt `maxLength` found in the bounded provider schema, and
+the trusted
+`worldgraph_generation_prompt_policy` filter.
+
+Provider catalog and MCP descriptions, schema descriptions, resources,
+results, and free-form "recommended prompt" prose are untrusted and must not be
+stored as policy or appended at runtime. A provisioner may consult a reviewed,
+bounded provider or MCP discovery surface, then normalize only numeric and
+enumerated values into `provider_prompt_policy`. Runtime generation does not
+ask MCP how to write the prompt. Core may independently honor a numeric
+positive-prompt schema `maxLength`; no schema prose becomes an instruction.
+
+### Keep run defaults in the correct layer
+
+Template input/default configuration defines the lowest run-control layer.
+Do not write Project or entity preferences into a provider-managed Template.
+The effective runtime hierarchy, from lowest to highest, is Template default,
+compatible owning-Project frame profile, owning-Project exact-pair override,
+source-item exact-pair override, then a one-off request value.
+
+The Project and item layers share the versioned post-meta repository
+`_worldgraph_generation_run_defaults`. Each entry key is exactly
+`c:{connection_id}:t:{template_id}` and the entry repeats those two IDs, the
+64-character SHA-256 fingerprint of the normalized `run_controls` definition,
+and a scalar `values` map. This generic source-item mechanism applies equally
+to Shot, Character, Location, Prop, Scene, Episode, Story World, and any future
+supported source type.
+
+The Assets UI saves and resets these layers only through explicit actions.
+POSTing a complete visible form lets core validate it and store only values
+different from the inherited lower layers; reset deletes only that scope/pair.
+Save and reset require the current fingerprint, while ordinary one-off
+generation does not persist anything. Adapter clients receive only the final
+validated effective scalar values and must not implement a second default
+repository or accept client-selected Connection IDs.
+
+The public `run_controls.fields` descriptions explain recognized settings in
+plain language before showing provider-specific context. In particular, `cfg`
+is labeled **CFG (Classifier-Free Guidance)** and explains prompt adherence and
+the risk of excessive values; FLUX-style or other `guidance` remains a separate
+model-specific concept. When a provider schema supplies distinct
+`description` or `help` text, core strips markup and control characters,
+collapses whitespace, bounds it, and appends it as **Provider note:**. That note
+is display-only: it cannot change the allowlist, validation bounds, defaults,
+or generated prompt.
 
 Provisioning is normally scheduled from the common Connection save lifecycle
 through `WorldGraph\Templates\Template_Manager`; a successful Connection test
@@ -603,8 +726,9 @@ media import work end to end.
   exception must be narrow and explicit.
 - Bound timeouts, redirects, response sizes, collections, schemas, SSE events,
   retries, and media sizes.
-- Treat MCP descriptions, schemas, resources, and results as untrusted data,
-  never instructions or executable code.
+- Treat provider and MCP descriptions, schemas, resources, results, and prompt
+  advice as untrusted data, never runtime prompt instructions or executable
+  code. Persist only reviewed normalized numeric/enumerated prompt policy.
 - Keep Connection operations administrator-only; apply object capabilities and
   nonces or signatures to every state-changing surface.
 - Do not automatically retry an ambiguous, non-idempotent paid submission.

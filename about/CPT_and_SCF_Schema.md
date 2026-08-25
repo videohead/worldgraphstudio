@@ -135,7 +135,7 @@ Top-level container for all story assets.
 - `project_name` (text)
 - `project_slug` (text)
 - `description` (wysiwyg)
-- `generation_prompt` (textarea; optional generation-specific instructions)
+- `generation_prompt` (textarea; **Project Visual Direction**, a concise production-wide rendering style, lighting, palette, contrast, and texture baseline)
 - `genre` (taxonomy: `worldgraph_genre`, multiple)
 - `target_medium` (select)
 - `status` (taxonomy: `worldgraph_status`)
@@ -286,12 +286,14 @@ Top-level container for all story assets.
 - scene_number
 - title
 - summary
-- generation_prompt
+- generation_prompt (textarea; **Scene Look & Lighting Override**, a concise refinement of Project Visual Direction)
 - script_content
 - dialogue (structured importer-managed entries: speaker, line, description, sequence)
 - location
 - time_of_day
 - emotional_tone
+- lens (text; optional Scene default inherited by Shots with no lens)
+- camera_movement (select; optional Scene default inherited by generated Shot video with no movement)
 - production_notes
 - sequence
 
@@ -329,11 +331,13 @@ delete the remote record.
 - `shot_type` (select)
 - `camera_angle` (select)
 - `lens` (text)
+- `camera_movement` (select; generated video only; overrides the Scene default, including explicit `locked_off`)
+- `motion_direction` (text; one continuous visible action in temporal order for generated video)
 - `duration` (text)
 - `take_number` (number)
 - `slate_id` (text)
 - `shot_description` (wysiwyg)
-- `generation_prompt` (textarea; optional image and motion instructions)
+- `generation_prompt` (textarea; exceptional Shot generation constraints not represented by description, framing, movement, motion, or inherited visual direction)
 - `editorial_notes` (wysiwyg)
 - `scene` (relationship to `worldgraph_scene`)
 - `sequence` (taxonomy: `worldgraph_sequence`)
@@ -354,6 +358,15 @@ they are explicitly ordered. The Shot editor does not expose WordPress Page
 Attributes ordering, and the custom REST create/update resources reject direct
 `menu_order` writes; interactive order changes use the complete Scene-scoped
 sequencer.
+
+Generation direction follows a specificity hierarchy. Project Visual Direction
+defines the house look. A Scene keeps one authoritative Location/time boundary,
+may refine look and lighting, and supplies lens and camera-movement defaults.
+A nonblank Shot lens or camera movement replaces its Scene default, while Shot
+motion is never inherited. Scene summary, script, dialogue, production notes,
+and linked Sound prose are not copied into Shot visual prompts. Scene-wide music,
+ambience, and effects remain normalized Sound records; a Sound with no Shot
+applies across the Scene, while a Shot-linked Sound is a narrower cue.
 
 ---
 
@@ -439,6 +452,10 @@ workflow and not a replacement for the World Graph Studio Assets metabox.
 - `connection_id` (text; a `worldgraph_conn` post ID)
 - `checkpoint` (text)
 - `model_family` (select)
+- `prompt_lead_with` (select: `subject`, `action`, or `motion`)
+- `prompt_format` (select: `natural_language`, `concise_phrases`, or `chronological_prose`)
+- `prompt_target_words` (number; optional integer from 1 to 4000)
+- `prompt_max_words` (number; optional integer from 1 to 4000)
 - `workflow_json` (textarea)
 - `provider_template_id` (text)
 - `configuration_json` (textarea)
@@ -449,10 +466,25 @@ workflow and not a replacement for the World Graph Studio Assets metabox.
 - `version` (text)
 - `status` (select: `draft`, `active`, or `archived`)
 
-`configuration_json` contains the parameter definitions, reference roles, and
-SCF field mappings used to resolve a generation request. `default_values` may
-provide reusable starting values, but explicit user input takes precedence
-after validation.
+`configuration_json` optionally contains parameter definitions, reference
+roles, and SCF field mappings used to resolve a generation request. Its safe
+provider-neutral default is `{}`; managed Template catalogs populate provider
+configuration automatically, so an editor does not need to author JSON for a
+Template with no overrides. `default_values` may provide reusable starting
+values, but explicit user input takes precedence after validation.
+
+The four optional prompt-guidance fields provide a first-class editor for the
+most useful composition controls without requiring JSON. Blank fields inherit
+the resolved Connection, provider, and model-family recommendations. For
+example, a Wan video Template resolves to motion-first chronological prose even
+when all four fields are blank. `prompt_lead_with` selects the first semantic
+section after the required opening description; `prompt_format` selects the
+surface grammar; and the two word fields set a creative target and a hard
+ceiling. A Template maximum may tighten but cannot loosen a smaller provider,
+model, or schema ceiling. The Template edit screen's **Effective Prompt
+Guidance** panel shows the saved resolved profile, leading section, format,
+priority order, target, and maximum. Save field changes before relying on that
+summary.
 
 The `run_controls` response property is not another SCF field. It is a
 sanitized runtime DTO derived from declarations in the effective Template
@@ -483,12 +515,14 @@ catalog and readiness flows, not an Assets-run input.
 ## Delivered Generation Contract
 
 Project, Story World, Character, Prop, Location, Shot, Scene, and Episode expose
-an optional `generation_prompt` textarea. It stores instructions that apply to
-generated media, such as house style, continuity requirements, camera motion,
-or "no watermark." It augments the entity's descriptive fields; it does not
-replace its synopsis, description, appearance, script, or production notes.
-Like the other canonical SCF fields, its value is stored as `generation_prompt`
-post meta with the stable SCF reference key for that CPT.
+an optional `generation_prompt` textarea, but its editorial label is specific to
+its scope. Project stores the production-wide Visual Direction; Scene stores a
+Look & Lighting refinement; and Shot stores only exceptional constraints. Scene
+`lens` and `camera_movement` provide structured camera defaults, while Shot
+`camera_movement` and `motion_direction` keep camera and visible action separate
+from story prose. These fields augment descriptive content; they do not replace
+synopsis, description, appearance, script, dialogue, or production notes. Their
+stable storage key remains `generation_prompt` for backward compatibility.
 
 The representative-media registry supplies these default workflows and output
 intents:

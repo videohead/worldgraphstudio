@@ -24,6 +24,9 @@ class Template {
 		add_filter( 'acf/validate_value', [ __CLASS__, 'validate_scf_value' ], 20, 4 );
 		add_filter( 'acf/load_field/key=field_worldgraph_template_modality', [ __CLASS__, 'load_modality_choices' ] );
 		add_filter( 'acf/load_field/key=field_worldgraph_template_model_family', [ __CLASS__, 'load_model_family_choices' ] );
+		add_filter( 'acf/load_field/key=field_worldgraph_template_configuration_json', [ __CLASS__, 'load_configuration_json_field' ] );
+		add_filter( 'acf/prepare_field/key=field_worldgraph_template_configuration_json', [ __CLASS__, 'load_configuration_json_field' ] );
+		add_filter( 'acf/load_value/key=field_worldgraph_template_configuration_json', [ __CLASS__, 'load_configuration_json_default' ], 20, 3 );
 		add_action( 'wp_ajax_worldgraph_check_template_requirements', [ __CLASS__, 'ajax_check_requirements' ] );
 		add_action( 'wp_ajax_worldgraph_install_template_models', [ __CLASS__, 'ajax_install_models' ] );
 		add_action( 'wp_ajax_worldgraph_discover_comfy_templates', [ __CLASS__, 'ajax_discover_comfy_templates' ] );
@@ -120,6 +123,45 @@ class Template {
 	}
 
 	/**
+	 * Keep the editable SCF copy aligned with the safe configuration default.
+	 * Database-managed presentation settings otherwise take precedence over the
+	 * Local JSON archive until an administrator edits the field definition.
+	 *
+	 * @param array<string, mixed> $field SCF field.
+	 * @return array<string, mixed>
+	 */
+	public static function load_configuration_json_field( array $field ): array {
+		$field['required']      = 0;
+		$field['default_value'] = '{}';
+		if ( array_key_exists( 'value', $field ) && '' === trim( (string) $field['value'] ) ) {
+			$field['value'] = '{}';
+		}
+
+		return $field;
+	}
+
+	/**
+	 * Present a valid provider-neutral object when an older Template has no
+	 * stored configuration. Provider catalogs may replace or extend this object.
+	 *
+	 * @param mixed                $value   Loaded SCF value.
+	 * @param int|string           $post_id SCF object ID.
+	 * @param array<string, mixed> $field   SCF field.
+	 * @return mixed
+	 */
+	public static function load_configuration_json_default( $value, $post_id, array $field ) {
+		if (
+			is_numeric( $post_id )
+			&& 'worldgraph_template' === get_post_type( (int) $post_id )
+			&& '' === trim( (string) $value )
+		) {
+			return '{}';
+		}
+
+		return $value;
+	}
+
+	/**
 	 * Apply Template-specific normalization after SCF field-type handling.
 	 *
 	 * @param mixed                $value    Submitted value.
@@ -140,6 +182,17 @@ class Template {
 		if ( 'model_family' === $name ) {
 			return \WorldGraph\Utils\Model_Family::sanitize( (string) $value );
 		}
+		if ( 'prompt_lead_with' === $name ) {
+			$value = sanitize_key( (string) $value );
+			return in_array( $value, [ 'subject', 'action', 'motion' ], true ) ? $value : '';
+		}
+		if ( 'prompt_format' === $name ) {
+			$value = sanitize_key( (string) $value );
+			return in_array( $value, [ 'natural_language', 'concise_phrases', 'chronological_prose' ], true ) ? $value : '';
+		}
+		if ( in_array( $name, [ 'prompt_target_words', 'prompt_max_words' ], true ) ) {
+			return '' === trim( (string) $value ) ? '' : (string) min( 4000, max( 1, absint( $value ) ) );
+		}
 		if ( 'connection_id' === $name ) {
 			return '' === trim( (string) $value ) ? '' : (string) absint( $value );
 		}
@@ -148,6 +201,9 @@ class Template {
 			return in_array( $value, [ 'draft', 'active', 'archived' ], true ) ? $value : 'draft';
 		}
 		if ( in_array( $name, [ 'workflow_json', 'configuration_json', 'input_bindings', 'model_requirements', 'default_values' ], true ) ) {
+			if ( 'configuration_json' === $name && '' === trim( (string) $value ) ) {
+				$value = '{}';
+			}
 			$normalized = self::normalize_json( (string) $value );
 			return null === $normalized
 				? \WorldGraph\Utils\worldgraph_get_field_value( (int) $post_id, $name )
@@ -177,6 +233,12 @@ class Template {
 		}
 		if ( 'lora_strength' === $name && '' !== trim( (string) $value ) && ! is_numeric( $value ) ) {
 			return __( 'Enter a numeric LoRA strength, e.g. 0.8.', 'worldgraph' );
+		}
+		if ( in_array( $name, [ 'prompt_target_words', 'prompt_max_words' ], true ) && '' !== trim( (string) $value ) ) {
+			$value = trim( (string) $value );
+			if ( ! ctype_digit( $value ) || (int) $value < 1 || (int) $value > 4000 ) {
+				return __( 'Enter a whole number from 1 to 4000, or leave this field blank to inherit prompt guidance.', 'worldgraph' );
+			}
 		}
 		if ( in_array( $name, [ 'workflow_json', 'configuration_json', 'input_bindings', 'model_requirements', 'default_values' ], true ) && null === self::normalize_json( (string) $value ) ) {
 			return __( 'Enter valid JSON.', 'worldgraph' );
@@ -262,6 +324,46 @@ class Template {
 				'options'     => \WorldGraph\Utils\Model_Family::labels(),
 				'description' => 'The generative model this Template runs, e.g. LTX 2.5, MiniMax, SCAIL, or Wan 2.2. Used to group Templates and cross-check against the Connection\'s allowed models.',
 			],
+			'prompt_lead_with'    => [
+				'type'        => 'select',
+				'label'       => 'Prompt Starts With',
+				'required'    => false,
+				'options'     => [
+					'subject' => 'Subject',
+					'action'  => 'Action',
+					'motion'  => 'Motion',
+				],
+				'description' => 'Optional priority immediately after the opening description. Leave blank to inherit the Connection and model recommendation (for example, Wan uses motion first).',
+			],
+			'prompt_format'       => [
+				'type'        => 'select',
+				'label'       => 'Prompt Format',
+				'required'    => false,
+				'options'     => [
+					'natural_language'    => 'Natural language',
+					'concise_phrases'     => 'Concise phrases',
+					'chronological_prose' => 'Chronological prose',
+				],
+				'description' => 'Optional prompt grammar. Leave blank to inherit the Connection and model recommendation.',
+			],
+			'prompt_target_words' => [
+				'type'        => 'number',
+				'label'       => 'Target Prompt Length (words)',
+				'required'    => false,
+				'min'         => 1,
+				'max'         => 4000,
+				'step'        => 1,
+				'description' => 'Optional creative target from 1 to 4000 words. Leave blank to inherit the Connection and model recommendation.',
+			],
+			'prompt_max_words'    => [
+				'type'        => 'number',
+				'label'       => 'Maximum Prompt Length (words)',
+				'required'    => false,
+				'min'         => 1,
+				'max'         => 4000,
+				'step'        => 1,
+				'description' => 'Optional hard ceiling from 1 to 4000 words. It may tighten, but never loosen, a provider or model ceiling. Leave blank to inherit.',
+			],
 			'workflow_json'       => [
 				'type'        => 'textarea',
 				'format'      => 'json',
@@ -279,8 +381,9 @@ class Template {
 				'type'        => 'textarea',
 				'format'      => 'json',
 				'label'       => 'Configuration JSON',
-				'required'    => true,
-				'description' => 'Provider-neutral JSON for optional parameter overrides, references, and SCF field mappings. Provider inputs live under {"input": {...}}; World Graph Studio adds the prompt and resolved bindings at runtime.',
+				'required'    => false,
+				'default'     => '{}',
+				'description' => 'Optional provider-neutral JSON for parameter overrides, references, and SCF field mappings. The safe default is {}; managed Templates receive provider configuration automatically. Provider inputs live under {"input": {...}}; World Graph Studio adds the prompt and resolved bindings at runtime.',
 			],
 			'input_bindings'      => [
 				'type'        => 'textarea',
@@ -341,6 +444,14 @@ class Template {
 	private static function register_meta_boxes(): void {
 		add_action( 'add_meta_boxes', function (): void {
 			add_meta_box(
+				'worldgraph_template_prompt_guidance',
+				'Effective Prompt Guidance',
+				[ self::class, 'render_prompt_guidance_meta_box' ],
+				'worldgraph_template',
+				'side',
+				'high'
+			);
+			add_meta_box(
 				'worldgraph_template_requirements',
 				'ComfyUI Requirements',
 				[ self::class, 'render_requirements_meta_box' ],
@@ -349,6 +460,63 @@ class Template {
 				'default'
 			);
 		} );
+	}
+
+	/**
+	 * Summarize the effective prompt policy for the saved Template.
+	 *
+	 * @param \WP_Post $post Template post.
+	 */
+	public static function render_prompt_guidance_meta_box( \WP_Post $post ): void {
+		if ( ! class_exists( '\\WorldGraph\\Utils\\Generation_Prompt_Policy' ) ) {
+			echo '<p>' . esc_html__( 'Prompt guidance is unavailable until the generation policy service has loaded.', 'worldgraph' ) . '</p>';
+			return;
+		}
+
+		try {
+			$policy = \WorldGraph\Utils\Generation_Prompt_Policy::for_template( $post->ID );
+		} catch ( \Throwable ) {
+			echo '<p>' . esc_html__( 'The effective prompt guidance could not be resolved for this Template.', 'worldgraph' ) . '</p>';
+			return;
+		}
+
+		$hints     = is_array( $policy['hints'] ?? null ) ? $policy['hints'] : [];
+		$limits    = is_array( $policy['limits'] ?? null ) ? $policy['limits'] : [];
+		$sections  = is_array( $policy['sections'] ?? null ) ? $policy['sections'] : [];
+		$lead_with = sanitize_key( (string) ( $hints['lead_with'] ?? 'subject' ) );
+		$order     = array_values( array_filter( array_map( 'sanitize_key', (array) ( $sections['preferred'] ?? [] ) ) ) );
+		$order     = array_values( array_unique( array_merge( [ 'primary', $lead_with ], $order ) ) );
+		$order     = array_values( array_diff( $order, (array) ( $sections['forbidden'] ?? [] ) ) );
+		$top_order = array_slice( $order, 0, 8 );
+		$top_order = array_map( [ self::class, 'prompt_policy_label' ], $top_order );
+		$profile   = self::prompt_policy_label( (string) ( $hints['profile'] ?? 'fallback' ) );
+		$format    = self::prompt_policy_label( (string) ( $hints['format'] ?? 'natural_language' ) );
+		$lead      = self::prompt_policy_label( $lead_with );
+		?>
+		<p class="description"><?php echo esc_html__( 'Blank prompt-guidance fields inherit reviewed Connection and model recommendations. Save this Template to refresh the summary.', 'worldgraph' ); ?></p>
+		<p><strong><?php echo esc_html__( 'Profile', 'worldgraph' ); ?>:</strong> <?php echo esc_html( $profile ); ?></p>
+		<p><strong><?php echo esc_html__( 'Starts with', 'worldgraph' ); ?>:</strong> <?php echo esc_html( $lead ); ?> <?php echo esc_html__( '(after the opening description)', 'worldgraph' ); ?></p>
+		<p><strong><?php echo esc_html__( 'Format', 'worldgraph' ); ?>:</strong> <?php echo esc_html( $format ); ?></p>
+		<p>
+			<strong><?php echo esc_html__( 'Length', 'worldgraph' ); ?>:</strong>
+			<?php
+			printf(
+				/* translators: 1: target word count, 2: maximum word count. */
+				esc_html__( 'target %1$d words; maximum %2$d words', 'worldgraph' ),
+				(int) ( $limits['target_words'] ?? 0 ),
+				(int) ( $limits['max_words'] ?? 0 )
+			);
+			?>
+		</p>
+		<p><strong><?php echo esc_html__( 'Priority order', 'worldgraph' ); ?>:</strong><br /><?php echo esc_html( implode( ' → ', $top_order ) ); ?><?php echo count( $order ) > count( $top_order ) ? esc_html__( ' → remaining context as room allows', 'worldgraph' ) : ''; ?></p>
+		<?php
+	}
+
+	/** Convert a normalized policy identifier to a compact admin label. */
+	private static function prompt_policy_label( string $value ): string {
+		$label = ucwords( str_replace( [ '_', '-' ], ' ', sanitize_key( $value ) ) );
+
+		return str_replace( [ 'Wan', 'Ltx', 'Scail' ], [ 'WAN', 'LTX', 'SCAIL' ], $label );
 	}
 
 	/**

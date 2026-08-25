@@ -340,11 +340,11 @@
         },
         {
             "key": "field_worldgraph_scene_generation_prompt",
-            "label": "Generation Prompt Instructions",
+            "label": "Scene Look & Lighting Override",
             "name": "generation_prompt",
             "aria-label": "",
             "type": "textarea",
-            "instructions": "Scene-specific visual instructions appended to generated media prompts, for example \"no watermark\" or color-script guidance.",
+            "instructions": "Optional scene-wide refinement of the Project visual direction (about 20 words). Describe only lighting, palette, atmosphere, weather, or texture that should remain consistent across this Scene—not plot, characters, camera, or sound.",
             "required": 0,
             "conditional_logic": 0,
             "wrapper": {
@@ -357,6 +357,69 @@
             "rows": "",
             "placeholder": "",
             "new_lines": ""
+        },
+        {
+            "key": "field_worldgraph_scene_lens",
+            "label": "Default Lens / Lens Family",
+            "name": "lens",
+            "aria-label": "",
+            "type": "text",
+            "instructions": "Optional camera continuity for this Scene, for example \"40mm\" or \"restrained 35–50mm spherical lenses.\" A Shot lens overrides this value.",
+            "required": 0,
+            "conditional_logic": 0,
+            "wrapper": {
+                "width": "50",
+                "class": "",
+                "id": ""
+            },
+            "default_value": "",
+            "maxlength": "",
+            "placeholder": "",
+            "prepend": "",
+            "append": ""
+        },
+        {
+            "key": "field_worldgraph_scene_camera_movement",
+            "label": "Default Camera Movement",
+            "name": "camera_movement",
+            "aria-label": "",
+            "type": "select",
+            "instructions": "Optional camera behavior inherited by generated Shot video. A Shot movement overrides this value; choose Locked Off on a Shot to explicitly suppress Scene movement.",
+            "required": 0,
+            "conditional_logic": 0,
+            "wrapper": {
+                "width": "50",
+                "class": "",
+                "id": ""
+            },
+            "choices": {
+                "locked_off": "Locked Off (Static)",
+                "handheld": "Handheld Drift",
+                "pan_left": "Pan Left",
+                "pan_right": "Pan Right",
+                "tilt_up": "Tilt Up",
+                "tilt_down": "Tilt Down",
+                "push_in": "Dolly / Push In",
+                "pull_back": "Dolly / Pull Back",
+                "track_left": "Track Left",
+                "track_right": "Track Right",
+                "follow_subject": "Follow Subject",
+                "orbit_left": "Orbit Left",
+                "orbit_right": "Orbit Right",
+                "crane_up": "Crane Up",
+                "crane_down": "Crane Down",
+                "zoom_in": "Zoom In",
+                "zoom_out": "Zoom Out"
+            },
+            "allow_null": 1,
+            "multiple": 0,
+            "ui": 1,
+            "return_format": "value",
+            "default_value": false,
+            "ajax": 0,
+            "placeholder": "",
+            "create_options": 0,
+            "save_options": 0
         }
     ],
     "location": [
@@ -380,5 +443,5 @@
     "display_title": "",
     "allow_ai_access": false,
     "ai_description": "",
-    "modified": 1787242591
+    "modified": 1787678616
 }

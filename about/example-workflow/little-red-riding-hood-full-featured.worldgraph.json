@@ -5,6 +5,7 @@
     "title": "Little Red Riding Hood: The Woodland Path",
     "project_slug": "little-red-riding-hood-woodland-path",
     "description": "A full-featured animated fairy-tale episode demonstrating World Graph Studio story development, production planning, sound design, asset intent, storyboards, sequencing, and editorial metadata.",
+    "generation_prompt": "Hand-painted storybook animation, warm amber interiors and cool moss-green forests, soft directional light, restrained contrast, and tactile paper texture.",
     "genres": [
       "fantasy"
     ],
@@ -246,6 +247,9 @@
       ],
       "time_of_day": "morning",
       "emotional_tone": "Warm responsibility with a quiet edge of anticipation",
+      "lens": "35mm",
+      "camera_movement": "locked_off",
+      "generation_prompt": "Warm amber morning light, soft cottage bounce, gently saturated autumn reds, and open welcoming shadows.",
       "production_notes": "Begin with open village ambience and warm backlight. Establish the lantern's green panels and cloak repair clearly because both become continuity signals later.",
       "tags": [
         "exposition",
@@ -465,10 +469,13 @@
       "type": "establishing",
       "camera_angle": "eye_level",
       "lens": "24mm",
+      "camera_movement": "push_in",
+      "motion_direction": "The camera pushes slowly toward Red's cottage as villagers cross the foreground and the Woodsman checks the brass marker.",
       "duration": "PT5S",
       "take_number": 1,
       "slate_id": "1A",
       "description": "Morning village activity frames Red's cottage, the path entrance, and the Woodsman checking a brass marker.",
+      "generation_prompt": "Keep the marked path entrance readable behind the foreground activity.",
       "editorial_notes": "Open from black on birds and cart wheels; hold long enough to read the safe geography."
     },
     {

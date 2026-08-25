@@ -393,7 +393,19 @@
 		return undefined;
 	}
 
-	function effectiveRunControlDefault( panel, field ) {
+	function effectiveRunControlDefault( panel, field, template ) {
+		var repository = template && template.run_defaults;
+		if ( repository && 1 === parseInt( repository.version, 10 ) && repository.effective && Object.prototype.hasOwnProperty.call( repository.effective, field.key ) ) {
+			var repositoryValue = normalizedRunControlDefault( field, repository.effective[ field.key ] );
+			if ( 'undefined' !== typeof repositoryValue ) {
+				return {
+					hasValue: true,
+					value: repositoryValue,
+					source: String( ( repository.sources || {} )[ field.key ] || 'template' )
+				};
+			}
+		}
+
 		var semantic = runControlSemantic( field.key );
 		var profile = panel._worldgraphPromptBody && panel._worldgraphPromptBody.profile;
 		var profileKey = {
@@ -405,7 +417,7 @@
 		if ( profile && profileKey && Object.prototype.hasOwnProperty.call( profile, profileKey ) ) {
 			var projectValue = normalizedRunControlDefault( field, profile[ profileKey ] );
 			if ( 'undefined' !== typeof projectValue ) {
-				return { hasValue: true, value: projectValue, source: 'project' };
+				return { hasValue: true, value: projectValue, source: 'project_profile' };
 			}
 		}
 
@@ -497,7 +509,7 @@
 		var wrapper = document.createElement( 'div' );
 		var inputId = nextRunControlId( panel, template.id );
 		var hasSaved = savedValues && Object.prototype.hasOwnProperty.call( savedValues, field.key );
-		var effectiveDefault = effectiveRunControlDefault( panel, field );
+		var effectiveDefault = effectiveRunControlDefault( panel, field, template );
 		var value = hasSaved ? savedValues[ field.key ] : effectiveDefault.value;
 		var input;
 		var label = document.createElement( 'label' );
@@ -586,8 +598,126 @@
 			input.setAttribute( 'aria-describedby', description.id );
 			wrapper.appendChild( description );
 		}
+		if ( effectiveDefault.source ) {
+			var source = document.createElement( 'small' );
+			var sourceLabels = {
+				template: strings.templateDefaultSource || 'Template default',
+				project_profile: strings.projectProfileSource || 'Project media profile',
+				project: strings.projectDefaultSource || 'Project default',
+				item: strings.itemDefaultSource || 'Item default'
+			};
+			source.className = 'worldgraph-generate-asset__run-control-source';
+			source.textContent = sourceLabels[ effectiveDefault.source ] || effectiveDefault.source;
+			wrapper.appendChild( source );
+		}
 
 		return wrapper;
+	}
+
+	function completeRunControlValues( templatePanel ) {
+		var values = {};
+		Array.prototype.forEach.call( templatePanel.querySelectorAll( '[data-worldgraph-run-control]' ), function ( input ) {
+			var field = input._worldgraphRunField;
+			var value = field ? readRunControlValue( input, field ) : undefined;
+			if ( field && 'undefined' !== typeof value && ( input._worldgraphRunHasDefault || input._worldgraphRunDirty ) ) {
+				values[ safeRunControlKey( field.key ) ] = value;
+			}
+		} );
+		return values;
+	}
+
+	function clearRunControlState( panel, templateId ) {
+		var targetState = ( panel._worldgraphRunValues || {} )[ currentTarget( panel ) ];
+		if ( targetState ) {
+			delete targetState[ String( parseInt( templateId, 10 ) || 0 ) ];
+		}
+	}
+
+	function persistRunDefaults( panel, templatePanel, target, reset ) {
+		var template = templatePanel._worldgraphRunTemplate;
+		var defaults = template && template.run_defaults;
+		if ( ! template || ! defaults || ! defaults.fingerprint || panel._worldgraphBusy ) {
+			return;
+		}
+		if ( reset && ! window.confirm( strings.confirmResetDefaults || 'Reset this saved default layer and inherit from the layer above?' ) ) {
+			return;
+		}
+
+		rememberRunControls( panel );
+		var payload = {
+			post_id: parseInt( panel.dataset.postId, 10 ),
+			template_id: parseInt( template.id, 10 ),
+			scope: String( target.scope ),
+			fingerprint: String( defaults.fingerprint )
+		};
+		if ( ! reset ) {
+			payload.values = completeRunControlValues( templatePanel );
+		}
+		panel._worldgraphBusy = true;
+		updatePrimaryState( panel );
+		setStatus( panel, reset ? ( strings.resettingDefaults || 'Resetting saved defaults…' ) : ( strings.savingDefaults || 'Saving defaults…' ) );
+		request( settings.restUrl + '/defaults', { method: reset ? 'DELETE' : 'POST', body: JSON.stringify( payload ) } )
+			.then( function () {
+				clearRunControlState( panel, template.id );
+				return loadPrompt( panel, true );
+			} )
+			.then( function () {
+				setStatus( panel, reset ? ( strings.defaultsReset || 'Saved defaults reset.' ) : ( strings.defaultsSaved || 'Defaults saved.' ) );
+			} )
+			.catch( function ( error ) {
+				setStatus( panel, error.message, true );
+			} )
+			.then( function () {
+				panel._worldgraphBusy = false;
+				updatePrimaryState( panel );
+			} );
+	}
+
+	function renderRunDefaultActions( panel, templatePanel, template ) {
+		var defaults = template && template.run_defaults;
+		var targets = defaults && Array.isArray( defaults.targets ) ? defaults.targets.filter( function ( target ) {
+			return target && target.editable && [ 'project', 'item' ].indexOf( String( target.scope ) ) !== -1;
+		} ) : [];
+		if ( ! targets.length ) {
+			return;
+		}
+
+		var editor = document.createElement( 'div' );
+		var help = document.createElement( 'p' );
+		editor.className = 'worldgraph-generate-asset__run-default-editor';
+		help.className = 'description';
+		help.textContent = strings.defaultLayersHelp || 'Template → Project → item → this run. Save only when these values should become reusable defaults.';
+		editor.appendChild( help );
+		targets.forEach( function ( target ) {
+			var actions = document.createElement( 'div' );
+			var save = document.createElement( 'button' );
+			actions.className = 'worldgraph-generate-asset__run-default-actions';
+			save.type = 'button';
+			save.className = 'button button-small';
+			save.setAttribute( 'data-worldgraph-default-action', '' );
+			save.textContent = 'project' === target.scope
+				? ( strings.saveProjectDefaults || 'Save current as Project defaults' )
+				: ( strings.saveItemDefaults || 'Save current as item defaults' );
+			save.addEventListener( 'click', function () {
+				persistRunDefaults( panel, templatePanel, target, false );
+			} );
+			actions.appendChild( save );
+			if ( target.has_overrides ) {
+				var reset = document.createElement( 'button' );
+				reset.type = 'button';
+				reset.className = 'button-link';
+				reset.setAttribute( 'data-worldgraph-default-action', '' );
+				reset.textContent = 'project' === target.scope
+					? ( strings.resetProjectDefaults || 'Reset Project defaults' )
+					: ( strings.resetItemDefaults || 'Reset item defaults' );
+				reset.addEventListener( 'click', function () {
+					persistRunDefaults( panel, templatePanel, target, true );
+				} );
+				actions.appendChild( reset );
+			}
+			editor.appendChild( actions );
+		} );
+		templatePanel.appendChild( editor );
 	}
 
 	function runControlGroupLabel( group ) {
@@ -647,6 +777,7 @@
 			templatePanel.appendChild( fieldset );
 		} );
 
+		renderRunDefaultActions( panel, templatePanel, template );
 		parent.appendChild( templatePanel );
 	}
 
@@ -938,6 +1069,9 @@
 		Array.prototype.forEach.call( panel.querySelectorAll( '.worldgraph-generate-asset__run-controls [data-worldgraph-run-control]' ), function ( input ) {
 			input.disabled = controlsLocked;
 		} );
+		Array.prototype.forEach.call( panel.querySelectorAll( '[data-worldgraph-default-action]' ), function ( input ) {
+			input.disabled = controlsLocked;
+		} );
 		var directOptions = panel.querySelector( '.worldgraph-generate-asset__direct-options' );
 		panel.querySelector( '.worldgraph-generate-asset__create' ).disabled = controlsLocked || directOptions.hidden;
 		var action = 'single' === info.kind ? actionForIntent( panel, info.intent ) : null;
@@ -958,6 +1092,54 @@
 		if ( ! activeBatch( panel ) ) {
 			setStatus( panel, message, isError );
 		}
+	}
+
+	function refreshSinglePromptPreview( panel ) {
+		var info = targetInfo( currentTarget( panel ) );
+		var action = 'single' === info.kind ? actionForIntent( panel, info.intent ) : null;
+		var templateId = action ? parseInt( templateSelect( panel, action.type ).value, 10 ) || 0 : 0;
+		if ( ! action || ! templateId ) {
+			return;
+		}
+
+		var token = ( panel._worldgraphPreviewToken || 0 ) + 1;
+		var target = currentTarget( panel );
+		var preview = panel.querySelector( '.worldgraph-generate-asset__context-preview' );
+		panel._worldgraphPreviewToken = token;
+		preview.textContent = strings.previewingPrompt || 'Composing the selected Template prompt…';
+		request( settings.restUrl + '/prompt-preview', {
+			method: 'POST',
+			body: JSON.stringify( {
+				post_id: parseInt( panel.dataset.postId, 10 ),
+				type: action.type,
+				intent: action.intent,
+				template_id: templateId,
+				prompt: panel.querySelector( '.worldgraph-generate-asset__prompt' ).value.trim()
+			} )
+		} ).then( function ( body ) {
+			if ( token !== panel._worldgraphPreviewToken || target !== currentTarget( panel ) || templateId !== ( parseInt( templateSelect( panel, action.type ).value, 10 ) || 0 ) ) {
+				return;
+			}
+			preview.textContent = body.prompt || '';
+			if ( body.prompt_policy ) {
+				preview.dataset.promptWords = String( body.prompt_policy.word_count || 0 );
+				preview.dataset.promptProfile = String( body.prompt_policy.profile || '' );
+			}
+		} ).catch( function ( error ) {
+			if ( token === panel._worldgraphPreviewToken && target === currentTarget( panel ) ) {
+				preview.textContent = ( strings.promptPreviewError || 'The selected Template prompt could not be previewed.' ) + ' ' + error.message;
+			}
+		} );
+	}
+
+	function scheduleSinglePromptPreview( panel ) {
+		if ( panel._worldgraphPreviewTimer ) {
+			window.clearTimeout( panel._worldgraphPreviewTimer );
+		}
+		panel._worldgraphPreviewTimer = window.setTimeout( function () {
+			panel._worldgraphPreviewTimer = null;
+			refreshSinglePromptPreview( panel );
+		}, 300 );
 	}
 
 	function renderSingle( panel, action, target ) {
@@ -988,6 +1170,7 @@
 		renderSingleSummary( panel, action );
 		selectionStatus( panel, action.configured ? '' : ( 'video' === type ? strings.unconfiguredVideo : ( 'audio' === type ? strings.unconfiguredAudio : strings.unconfiguredImage ) ), ! action.configured );
 		updatePrimaryState( panel );
+		scheduleSinglePromptPreview( panel );
 	}
 
 	function renderPlanLoading( panel, scope ) {
@@ -1096,6 +1279,7 @@
 	function renderTarget( panel ) {
 		rememberRunControls( panel );
 		rememberDirectOptions( panel );
+		panel._worldgraphPreviewToken = ( panel._worldgraphPreviewToken || 0 ) + 1;
 		var target = currentTarget( panel );
 		var info = targetInfo( target );
 		var token = ( panel._worldgraphSelectionToken || 0 ) + 1;
@@ -1526,19 +1710,27 @@
 				rememberRunControls( panel );
 				rememberTemplateSelection( panel, 'image' );
 				renderRunControlsForSelection( panel );
+				scheduleSinglePromptPreview( panel );
 				updatePrimaryState( panel );
 			} );
 			panel.querySelector( '.worldgraph-generate-asset__video-template' ).addEventListener( 'change', function () {
 				rememberRunControls( panel );
 				rememberTemplateSelection( panel, 'video' );
 				renderRunControlsForSelection( panel );
+				scheduleSinglePromptPreview( panel );
 				updatePrimaryState( panel );
 			} );
 			panel.querySelector( '.worldgraph-generate-asset__audio-template' ).addEventListener( 'change', function () {
 				rememberRunControls( panel );
 				rememberTemplateSelection( panel, 'audio' );
 				renderRunControlsForSelection( panel );
+				scheduleSinglePromptPreview( panel );
 				updatePrimaryState( panel );
+			} );
+			panel.querySelector( '.worldgraph-generate-asset__prompt' ).addEventListener( 'input', function () {
+				if ( 'single' === targetInfo( currentTarget( panel ) ).kind ) {
+					scheduleSinglePromptPreview( panel );
+				}
 			} );
 			panel.querySelector( '.worldgraph-generate-asset__run-control-panels' ).addEventListener( 'input', function () {
 				rememberRunControls( panel );

@@ -1779,6 +1779,7 @@ class Rough_Cut_Assembler {
 			return $frozen;
 		}
 
+		$boundaries   = self::sound_boundaries( $segments );
 		$scene_starts = [];
 		$shot_starts  = [];
 		$scene_ids    = [];
@@ -1798,8 +1799,8 @@ class Rough_Cut_Assembler {
 			'posts_per_page' => 1000,
 			'orderby'        => [ 'menu_order' => 'ASC', 'ID' => 'ASC' ],
 		] );
-		$cues = [];
-		$cut_duration = empty( $segments ) ? 0.0 : (float) $segments[ count( $segments ) - 1 ]['end'];
+		$cues         = [];
+		$cut_duration = (float) $boundaries['cut'];
 		foreach ( $sounds as $sound ) {
 			if ( ! $sound instanceof \WP_Post ) {
 				continue;
@@ -1829,11 +1830,24 @@ class Rough_Cut_Assembler {
 				$warnings[] = sprintf( __( 'Sound cue “%s” starts after the assembled picture and was omitted.', 'worldgraph' ), (string) $sound->post_title );
 				continue;
 			}
+			$owner_end = $shot_id
+				? (float) ( $boundaries['shot'][ $shot_id ] ?? $cut_duration )
+				: (float) ( $boundaries['scene'][ $scene_id ] ?? $cut_duration );
+			$duration  = self::sound_cue_duration(
+				worldgraph_get_field_value( (int) $sound->ID, 'duration' ),
+				$offset,
+				$owner_end,
+				$cut_duration
+			);
+			if ( $duration <= 0.0 ) {
+				$warnings[] = sprintf( __( 'Sound cue “%s” starts at or after its linked Scene or Shot boundary and was omitted.', 'worldgraph' ), (string) $sound->post_title );
+				continue;
+			}
 			$cues[] = [
 				'sound_id' => (int) $sound->ID,
 				'file'     => (string) $attachment['file'],
 				'offset'   => $offset,
-				'duration' => min( max( 0.0, $cut_duration - $offset ), self::optional_duration( worldgraph_get_field_value( (int) $sound->ID, 'duration' ) ) ?: $cut_duration ),
+				'duration' => $duration,
 				'role'     => $role,
 				'volume'   => self::role_volume( $role ),
 			];
@@ -1870,8 +1884,9 @@ class Rough_Cut_Assembler {
 			}
 		}
 
+		$boundaries   = self::sound_boundaries( $segments );
 		$key_context  = [];
-		$cut_duration = empty( $segments ) ? 0.0 : (float) $segments[ count( $segments ) - 1 ]['end'];
+		$cut_duration = (float) $boundaries['cut'];
 		foreach ( $segments as $segment ) {
 			foreach ( array_values( array_unique( array_filter( array_map( 'strval', (array) ( $segment['audio_task_keys'] ?? [] ) ) ) ) ) as $key ) {
 				$key_context[ $key ][] = [
@@ -1918,12 +1933,21 @@ class Rough_Cut_Assembler {
 				$warnings[] = sprintf( __( 'Sound cue “%s” starts after the assembled picture and was omitted.', 'worldgraph' ), $title );
 				continue;
 			}
+			$owner_scene_id = $task_scene_id ?: absint( $context['scene_id'] ?? 0 );
+			$owner_end      = $task_shot_id
+				? (float) ( $boundaries['shot'][ $task_shot_id ] ?? $cut_duration )
+				: (float) ( $boundaries['scene'][ $owner_scene_id ] ?? $cut_duration );
+			$duration       = self::sound_cue_duration( $task['duration'] ?? '', $offset, $owner_end, $cut_duration );
+			if ( $duration <= 0.0 ) {
+				$warnings[] = sprintf( __( 'Sound cue “%s” starts at or after its linked Scene or Shot boundary and was omitted.', 'worldgraph' ), $title );
+				continue;
+			}
 			$cues[] = [
 				'sound_id' => $sound_id,
 				'task_key' => $key,
 				'file'     => (string) $attachment['file'],
 				'offset'   => $offset,
-				'duration' => min( max( 0.0, $cut_duration - $offset ), self::optional_duration( $task['duration'] ?? '' ) ?: $cut_duration ),
+				'duration' => $duration,
 				'role'     => $role,
 				'volume'   => self::role_volume( $role ),
 			];
@@ -2492,6 +2516,49 @@ class Rough_Cut_Assembler {
 		}
 
 		return min( 600.0, max( 0.25, $seconds ) );
+	}
+
+	/** Return the assembled end time for each Scene, Shot, and the complete cut. */
+	private static function sound_boundaries( array $segments ): array {
+		$boundaries = [
+			'scene' => [],
+			'shot'  => [],
+			'cut'   => 0.0,
+		];
+		foreach ( $segments as $segment ) {
+			$start = max( 0.0, (float) ( $segment['start'] ?? 0.0 ) );
+			$end   = isset( $segment['end'] )
+				? max( $start, (float) $segment['end'] )
+				: $start + self::bounded_duration( $segment['duration'] ?? self::DEFAULT_SHOT_DURATION );
+			$scene_id = absint( $segment['scene_id'] ?? 0 );
+			$shot_id  = absint( $segment['shot_id'] ?? 0 );
+
+			$boundaries['cut'] = max( (float) $boundaries['cut'], $end );
+			if ( $scene_id ) {
+				$boundaries['scene'][ $scene_id ] = max( (float) ( $boundaries['scene'][ $scene_id ] ?? 0.0 ), $end );
+			}
+			if ( $shot_id ) {
+				$boundaries['shot'][ $shot_id ] = max( (float) ( $boundaries['shot'][ $shot_id ] ?? 0.0 ), $end );
+			}
+		}
+
+		return $boundaries;
+	}
+
+	/**
+	 * Resolve one cue length without allowing an implicit cue to cross its owner.
+	 *
+	 * An author-supplied duration may intentionally bridge Scene or Shot edits,
+	 * but every cue remains capped by the complete assembled picture.
+	 */
+	private static function sound_cue_duration( $value, float $offset, float $owner_end, float $cut_duration ): float {
+		$available = max( 0.0, $cut_duration - $offset );
+		$explicit  = self::optional_duration( $value );
+		if ( $explicit > 0.0 ) {
+			return min( $available, $explicit );
+		}
+
+		return min( $available, max( 0.0, $owner_end - $offset ) );
 	}
 
 	/** Normalize an optional Sound duration without inventing one. */

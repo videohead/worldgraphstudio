@@ -233,6 +233,11 @@ class Adapter_Registry {
 					],
 					'adapter'               => 'higgsfield_api',
 					'media_inputs'          => true,
+					'prompt_policy'         => [
+						'image'               => [ 'limits' => [ 'target_words' => 70, 'max_words' => 120 ] ],
+						'text_image_to_video' => [ 'limits' => [ 'target_words' => 50, 'max_words' => 90 ], 'hints' => [ 'lead_with' => 'action', 'format' => 'chronological_prose' ] ],
+						'video_to_video'      => [ 'limits' => [ 'target_words' => 45, 'max_words' => 90 ], 'hints' => [ 'lead_with' => 'action', 'format' => 'chronological_prose' ] ],
+					],
 				],
 			],
 			'midjourney' => [
@@ -286,6 +291,13 @@ class Adapter_Registry {
 					],
 					'adapter_resolver'     => [ Builtin_Adapter_Runtime::class, 'midjourney_adapter' ],
 					'media_inputs'         => false,
+					'prompt_policy'        => [
+						'image' => [
+							'limits'   => [ 'target_words' => 50, 'max_words' => 90 ],
+							'sections' => [ 'forbidden' => [ 'ancestor_context' ] ],
+							'hints'    => [ 'profile' => 'midjourney-concise', 'lead_with' => 'subject', 'format' => 'concise_phrases' ],
+						],
+					],
 				],
 			],
 			'videodraft' => [
@@ -326,6 +338,11 @@ class Adapter_Registry {
 					],
 					'adapter'               => 'videodraft',
 					'media_inputs'          => true,
+					'prompt_policy'         => [
+						'image'               => [ 'limits' => [ 'target_words' => 80, 'max_words' => 120 ] ],
+						'video'               => [ 'limits' => [ 'target_words' => 120, 'max_words' => 180 ] ],
+						'text_image_to_video' => [ 'limits' => [ 'target_words' => 60, 'max_words' => 100 ], 'hints' => [ 'lead_with' => 'action' ] ],
+					],
 				],
 			],
 			'descript' => [
@@ -370,6 +387,9 @@ class Adapter_Registry {
 					'poll_error_limit'   => 10,
 					'adapter'            => 'openrouter',
 					'media_inputs'       => false,
+					'prompt_policy'      => [
+						'video' => [ 'limits' => [ 'target_words' => 120, 'max_words' => 180 ], 'hints' => [ 'lead_with' => 'action', 'format' => 'chronological_prose' ] ],
+					],
 				],
 			],
 			'openai_compatible' => [

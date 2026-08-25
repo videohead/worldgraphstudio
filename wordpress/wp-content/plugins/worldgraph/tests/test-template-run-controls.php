@@ -244,7 +244,9 @@ class Test_Template_Run_Controls extends TestCase {
 
 		$this->assertSame( 'textarea', $negative['type'] );
 		$this->assertSame( 'Avoid', $negative['label'] );
-		$this->assertSame( 'unsafe() Be specific.', $negative['description'] );
+		$this->assertStringContainsString( 'model should avoid', $negative['description'] );
+		$this->assertStringContainsString( 'Provider note: unsafe() Be specific.', $negative['description'] );
+		$this->assertStringNotContainsString( '<script>', $negative['description'] );
 		$this->assertSame( 'grain, blur', $negative['default'] );
 		$this->assertArrayNotHasKey( 'path', $negative );
 		$this->assertArrayNotHasKey( 'node_id', $steps );
@@ -252,6 +254,53 @@ class Test_Template_Run_Controls extends TestCase {
 		$this->assertSame( 60, $steps['max'] );
 		$this->assertNotContains( 'prompt', $this->keys( $description ) );
 		$this->assertNotContains( 'credential', $this->keys( $description ) );
+	}
+
+	/**
+	 * Known controls explain their model-facing effect in plain language.
+	 */
+	public function test_known_controls_include_human_labels_and_help(): void {
+		$description = Template_Run_Controls::describe_configuration(
+			[
+				'input'           => [
+					'cfg_scale'      => 7.5,
+					'guidance_scale' => 3.5,
+					'seed'           => 123,
+					'steps'          => 28,
+					'fps'            => 24,
+				],
+				'provider_schema' => [
+					'properties' => [
+						'cfg_scale'      => [ 'type' => 'number', 'title' => 'CFG Scale' ],
+						'guidance_scale' => [ 'type' => 'number' ],
+						'seed'           => [ 'type' => 'integer' ],
+						'steps'          => [ 'type' => 'integer', 'description' => 'Recommended: 20 to 30.' ],
+						'fps'            => [ 'type' => 'number' ],
+					],
+				],
+			]
+		);
+
+		$cfg = $this->field( $description, 'cfg_scale' );
+		$this->assertSame( 'CFG (Classifier-Free Guidance)', $cfg['label'] );
+		$this->assertStringContainsString( 'sets how strongly the model follows the text prompt', $cfg['description'] );
+		$this->assertStringContainsString( 'too high', $cfg['description'] );
+
+		$guidance = $this->field( $description, 'guidance_scale' );
+		$this->assertSame( 'Guidance Scale', $guidance['label'] );
+		$this->assertStringContainsString( 'not always classic CFG', $guidance['description'] );
+
+		$seed = $this->field( $description, 'seed' );
+		$this->assertStringContainsString( 'starting random noise', $seed['description'] );
+		$this->assertArrayNotHasKey( 'default', $seed );
+
+		$steps = $this->field( $description, 'steps' );
+		$this->assertStringContainsString( 'refinement passes', $steps['description'] );
+		$this->assertStringContainsString( 'Provider note: Recommended: 20 to 30.', $steps['description'] );
+
+		$fps = $this->field( $description, 'fps' );
+		$this->assertSame( 'FPS (Frames Per Second)', $fps['label'] );
+		$this->assertStringContainsString( 'playback rate', $fps['description'] );
 	}
 
 	/**

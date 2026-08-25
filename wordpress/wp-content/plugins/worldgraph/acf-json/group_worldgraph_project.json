@@ -242,11 +242,11 @@
         },
         {
             "key": "field_worldgraph_project_generation_prompt",
-            "label": "Generation Prompt Instructions",
+            "label": "Project Visual Direction",
             "name": "generation_prompt",
             "aria-label": "",
             "type": "textarea",
-            "instructions": "Project-specific visual instructions appended to generated media prompts, for example \"no watermark\" or a house style.",
+            "instructions": "One concise, pervasive visual language (about 20 words) for every generated image and video. Describe medium or rendering style, lighting, palette, contrast, and texture—not plot, characters, camera movement, or resolution. Example: \"hand-painted 2D storybook animation; high-key warm interiors; cool moonlit forest; soft cel shading; muted earth palette.\"",
             "required": 0,
             "conditional_logic": 0,
             "wrapper": { "width": "", "class": "", "id": "" },
@@ -274,5 +274,5 @@
     "display_title": "",
     "allow_ai_access": false,
     "ai_description": "",
-    "modified": 1787243211
+    "modified": 1787678616
 }

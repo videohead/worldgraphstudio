@@ -40,6 +40,9 @@ class Template_Run_Controls {
 	/** Maximum generic text override length. */
 	const MAX_TEXT_LENGTH = 1000;
 
+	/** Maximum plain-language help copied into a public field description. */
+	const MAX_FIELD_DESCRIPTION_LENGTH = 480;
+
 	/** Maximum prompt-conditioning override length. */
 	const MAX_PROMPT_LENGTH = 4000;
 
@@ -671,12 +674,21 @@ class Template_Run_Controls {
 
 		$field = [
 			'key'   => $key,
-			'label' => self::field_label( $key, $schema ),
+			'label' => self::field_label( $key, $schema, $semantic ),
 			'type'  => $public_type,
 			'group' => self::field_group( $semantic ),
 		];
 
-		$description = self::bounded_plain_text( (string) ( $schema['description'] ?? $schema['help'] ?? '' ), 240 );
+		$description  = null !== $semantic ? self::semantic_help( $semantic ) : '';
+		$provider_note = self::bounded_plain_text( (string) ( $schema['description'] ?? $schema['help'] ?? '' ), 240 );
+		if ( '' !== $provider_note && $provider_note !== $description ) {
+			$description .= ( '' !== $description ? ' ' : '' ) . sprintf(
+				/* translators: %s: provider-authored help for one generation setting. */
+				__( 'Provider note: %s', 'worldgraph' ),
+				$provider_note
+			);
+		}
+		$description = self::bounded_plain_text( $description, self::MAX_FIELD_DESCRIPTION_LENGTH );
 		if ( '' !== $description ) {
 			$field['description'] = $description;
 		}
@@ -1650,11 +1662,70 @@ class Template_Run_Controls {
 		return trim( $value, '_' );
 	}
 
+
+	/**
+	 * Return concise, provider-neutral help for a known generation control.
+	 *
+	 * Provider prose is supplemental because API schemas frequently omit a
+	 * description or assume model-specific knowledge.
+	 */
+	private static function semantic_help( string $semantic ): string {
+		$help = [
+			'negative_prompt' => __( 'Describes visual elements or qualities the model should avoid. Keep it concise; long or conflicting exclusions can weaken the main prompt.', 'worldgraph' ),
+			'prompt_enhance'  => __( 'Lets the provider rewrite or expand the prompt before generation. Turn it off when exact wording and repeatability matter.', 'worldgraph' ),
+			'seed'            => __( 'Sets the starting random noise. Reusing the same seed with the same model and settings usually produces a related result; leave it blank for a random seed.', 'worldgraph' ),
+			'steps'           => __( 'Sets how many refinement passes the model performs. More steps take longer and may add detail, but gains usually diminish.', 'worldgraph' ),
+			'cfg'             => __( 'CFG (Classifier-Free Guidance) sets how strongly the model follows the text prompt instead of its unguided prediction. Higher values can increase prompt adherence; values that are too high can look rigid, oversaturated, or artifacted. The useful range is model-specific.', 'worldgraph' ),
+			'guidance'        => __( 'Sets the model\'s prompt-guidance strength. Higher values generally follow the prompt more literally; values that are too high can reduce natural variation or create artifacts. This is model-specific and is not always classic CFG.', 'worldgraph' ),
+			'sampler'         => __( 'Selects the algorithm that turns noise into an image or video. It can change speed, detail, and stability; keep the Template preset unless you are deliberately testing.', 'worldgraph' ),
+			'scheduler'       => __( 'Controls how noise is removed across the sampling steps. It affects texture and detail and is normally chosen together with the model and sampler.', 'worldgraph' ),
+			'denoise'         => __( 'Controls how far generation may move from the source image or latent. Lower values preserve more of the source; higher values reimagine more of it.', 'worldgraph' ),
+			'width'           => __( 'Sets output width in pixels. Larger values require more memory and time and must stay within the model\'s supported resolutions.', 'worldgraph' ),
+			'height'          => __( 'Sets output height in pixels. Larger values require more memory and time and must stay within the model\'s supported resolutions.', 'worldgraph' ),
+			'aspect_ratio'    => __( 'Sets the frame\'s width-to-height proportion. The provider may use it to choose or adjust the exact pixel dimensions.', 'worldgraph' ),
+			'length'          => __( 'Sets the number of generated video frames. At a fixed FPS, more frames make a longer clip and require more processing.', 'worldgraph' ),
+			'duration'        => __( 'Sets the requested clip length in seconds. The provider may round it to a supported frame count or duration.', 'worldgraph' ),
+			'fps'             => __( 'FPS (Frames Per Second) sets playback rate. With a fixed frame count, higher FPS makes the clip shorter; with a fixed duration, it requires more frames for smoother motion.', 'worldgraph' ),
+			'text_g'          => __( 'Advanced prompt sent to the model\'s G text encoder. Leave it blank to reuse the composed prompt unless the Template specifically calls for separate encoder text.', 'worldgraph' ),
+			'text_l'          => __( 'Advanced prompt sent to the model\'s L text encoder. Leave it blank to reuse the composed prompt unless the Template specifically calls for separate encoder text.', 'worldgraph' ),
+			'clip_l'          => __( 'Advanced prompt sent to the model\'s CLIP-L text encoder. Leave it blank to reuse the composed prompt unless the Template specifically calls for separate encoder text.', 'worldgraph' ),
+			't5xxl'           => __( 'Advanced prompt sent to the model\'s T5-XXL text encoder. Leave it blank to reuse the composed prompt unless the Template specifically calls for separate encoder text.', 'worldgraph' ),
+		];
+
+		return $help[ $semantic ] ?? '';
+	}
+
 	/** Generate or accept a bounded field label. */
-	private static function field_label( string $key, array $schema ): string {
+	private static function field_label( string $key, array $schema, $semantic = null ): string {
+		if ( 'cfg' === $semantic ) {
+			return __( 'CFG (Classifier-Free Guidance)', 'worldgraph' );
+		}
+
 		$label = (string) ( $schema['label'] ?? $schema['title'] ?? '' );
 		if ( '' === trim( $label ) ) {
-			$label = ucwords( str_replace( [ '_', '-' ], ' ', self::snake_key( $key ) ) );
+			$semantic_labels = [
+				'negative_prompt' => __( 'Negative Prompt', 'worldgraph' ),
+				'prompt_enhance'  => __( 'Prompt Enhancement', 'worldgraph' ),
+				'seed'            => __( 'Seed', 'worldgraph' ),
+				'steps'           => __( 'Steps', 'worldgraph' ),
+				'guidance'        => __( 'Guidance Scale', 'worldgraph' ),
+				'sampler'         => __( 'Sampler', 'worldgraph' ),
+				'scheduler'       => __( 'Scheduler', 'worldgraph' ),
+				'denoise'         => __( 'Denoise Strength', 'worldgraph' ),
+				'width'           => __( 'Width', 'worldgraph' ),
+				'height'          => __( 'Height', 'worldgraph' ),
+				'aspect_ratio'    => __( 'Aspect Ratio', 'worldgraph' ),
+				'length'          => __( 'Frame Count', 'worldgraph' ),
+				'duration'        => __( 'Duration', 'worldgraph' ),
+				'fps'             => __( 'FPS (Frames Per Second)', 'worldgraph' ),
+				'text_g'          => __( 'G Encoder Prompt', 'worldgraph' ),
+				'text_l'          => __( 'L Encoder Prompt', 'worldgraph' ),
+				'clip_l'          => __( 'CLIP-L Prompt', 'worldgraph' ),
+				't5xxl'           => __( 'T5-XXL Prompt', 'worldgraph' ),
+			];
+			$label = null !== $semantic && isset( $semantic_labels[ $semantic ] )
+				? $semantic_labels[ $semantic ]
+				: ucwords( str_replace( [ '_', '-' ], ' ', self::snake_key( $key ) ) );
 		}
 		return self::bounded_plain_text( $label, 80 );
 	}

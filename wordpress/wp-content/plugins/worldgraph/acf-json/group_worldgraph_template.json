@@ -212,6 +212,108 @@
             "save_options": 0
         },
         {
+            "key": "field_worldgraph_template_prompt_lead_with",
+            "label": "Prompt Starts With",
+            "name": "prompt_lead_with",
+            "aria-label": "",
+            "type": "select",
+            "instructions": "Optional priority immediately after the opening description. Leave blank to inherit the Connection and model recommendation (for example, Wan uses motion first).",
+            "required": 0,
+            "conditional_logic": 0,
+            "wrapper": {
+                "width": "",
+                "class": "",
+                "id": ""
+            },
+            "choices": {
+                "subject": "Subject",
+                "action": "Action",
+                "motion": "Motion"
+            },
+            "allow_null": 1,
+            "multiple": 0,
+            "ui": 1,
+            "return_format": "value",
+            "default_value": false,
+            "ajax": 0,
+            "placeholder": "Inherit Connection/model guidance",
+            "create_options": 0,
+            "save_options": 0
+        },
+        {
+            "key": "field_worldgraph_template_prompt_format",
+            "label": "Prompt Format",
+            "name": "prompt_format",
+            "aria-label": "",
+            "type": "select",
+            "instructions": "Optional prompt grammar. Leave blank to inherit the Connection and model recommendation.",
+            "required": 0,
+            "conditional_logic": 0,
+            "wrapper": {
+                "width": "",
+                "class": "",
+                "id": ""
+            },
+            "choices": {
+                "natural_language": "Natural language",
+                "concise_phrases": "Concise phrases",
+                "chronological_prose": "Chronological prose"
+            },
+            "allow_null": 1,
+            "multiple": 0,
+            "ui": 1,
+            "return_format": "value",
+            "default_value": false,
+            "ajax": 0,
+            "placeholder": "Inherit Connection/model guidance",
+            "create_options": 0,
+            "save_options": 0
+        },
+        {
+            "key": "field_worldgraph_template_prompt_target_words",
+            "label": "Target Prompt Length (words)",
+            "name": "prompt_target_words",
+            "aria-label": "",
+            "type": "number",
+            "instructions": "Optional creative target from 1 to 4000 words. Leave blank to inherit the Connection and model recommendation.",
+            "required": 0,
+            "conditional_logic": 0,
+            "wrapper": {
+                "width": "",
+                "class": "",
+                "id": ""
+            },
+            "default_value": "",
+            "min": 1,
+            "max": 4000,
+            "step": 1,
+            "placeholder": "Inherit",
+            "prepend": "",
+            "append": "words"
+        },
+        {
+            "key": "field_worldgraph_template_prompt_max_words",
+            "label": "Maximum Prompt Length (words)",
+            "name": "prompt_max_words",
+            "aria-label": "",
+            "type": "number",
+            "instructions": "Optional hard ceiling from 1 to 4000 words. It may tighten, but never loosen, a provider or model ceiling. Leave blank to inherit.",
+            "required": 0,
+            "conditional_logic": 0,
+            "wrapper": {
+                "width": "",
+                "class": "",
+                "id": ""
+            },
+            "default_value": "",
+            "min": 1,
+            "max": 4000,
+            "step": 1,
+            "placeholder": "Inherit",
+            "prepend": "",
+            "append": "words"
+        },
+        {
             "key": "field_worldgraph_template_workflow_json",
             "label": "ComfyUI API Workflow (optional)",
             "name": "workflow_json",
@@ -257,15 +359,15 @@
             "name": "configuration_json",
             "aria-label": "",
             "type": "textarea",
-            "instructions": "Provider-neutral JSON for optional parameter overrides, references, and SCF field mappings. Provider inputs live under {\"input\": {...}}; World Graph Studio adds the prompt and resolved bindings at runtime.",
-            "required": 1,
+            "instructions": "Optional provider-neutral JSON for parameter overrides, references, and SCF field mappings. The safe default is {}; managed Templates receive provider configuration automatically. Provider inputs live under {\"input\": {...}}; World Graph Studio adds the prompt and resolved bindings at runtime.",
+            "required": 0,
             "conditional_logic": 0,
             "wrapper": {
                 "width": "",
                 "class": "",
                 "id": ""
             },
-            "default_value": "",
+            "default_value": "{}",
             "new_lines": "",
             "maxlength": "",
             "placeholder": "",
@@ -422,5 +524,5 @@
     "display_title": "",
     "allow_ai_access": false,
     "ai_description": "",
-    "modified": 1787552218
+    "modified": 1787678079
 }

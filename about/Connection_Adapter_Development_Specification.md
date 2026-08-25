@@ -147,6 +147,9 @@ listed because several are not yet callback-driven.
 | Provider Template scheduling and persistence | `includes/templates/class-template-manager.php` and `includes/templates/class-template-repository.php` |
 | Provider-neutral modalities | `includes/utils/generation-modality.php` |
 | Template input resolution | `includes/utils/template_bindings.php` |
+| Template run-control allowlist/defaults | `includes/utils/template-run-controls.php` |
+| Template-aware prompt composition and policy | `includes/utils/class-generation-workflows.php` and `includes/utils/class-generation-prompt-policy.php` |
+| Contextual Project/item run defaults | `includes/utils/class-generation-run-defaults.php` |
 | Generic generation REST submission | `includes/rest-api/generation-controller.php` |
 | Story-record quick asset generation | `includes/utils/class-asset-generator.php` |
 | Submission/poll worker and client dispatch | `includes/utils/generation-batch.php` |
@@ -299,6 +302,7 @@ add_filter(
 | `generation.adapter` | Optional fixed, sanitized job adapter marker string |
 | `generation.adapter_resolver` | Optional callable selecting the job adapter marker from trusted saved state |
 | `generation.media_inputs` / `flatten_inputs` | Media-input support and provider parameter shape |
+| `generation.prompt_policy` | Trusted normalized prompt policy; flat or keyed by `default`, output type, and exact modality |
 | `generation.poll_error_limit` | Bounded consecutive polling-error ceiling |
 | `generation.permanent_error_codes` | Provider error codes that fail a poll immediately |
 
@@ -918,6 +922,14 @@ runtime, or AI advisor. Sanitize identifiers and labels; bound collection and
 schema sizes; allowlist executable tools and parameters; and never evaluate
 returned code.
 
+This boundary also applies to media prompts. Do not append MCP descriptions,
+schema descriptions, resources, results, or free-form "prompt best practices"
+to a generation prompt, and do not consult MCP for prompt prose during a run.
+A bounded discovery/provisioning pass may normalize only reviewed numeric and
+enumerated preferences into a Template's `provider_prompt_policy`. Core may
+independently read a positive-prompt schema `maxLength` as a hard size ceiling;
+the surrounding remote prose never becomes an instruction.
+
 ## 12. Hybrid REST and MCP Connections
 
 Use one Connection only when the two transports represent one coherent
@@ -978,7 +990,10 @@ provider-managed Template.
 | `provider_template_id` | Stable remote model, operation, or tool identifier |
 | `modality` | Registered provider-neutral modality |
 | `generation_structure` | `Generation_Modality::output_type( modality )` |
-| `configuration_json` | JSON defaults plus optional provider schema |
+| `configuration_json` | Valid JSON object; `{}` is the safe editor default, with optional defaults, provider schema, and reviewed normalized provider/operator prompt policies |
+| `prompt_lead_with` | Optional first-class operator preference: `subject`, `action`, or `motion` after the opening description |
+| `prompt_format` | Optional first-class operator preference: `natural_language`, `concise_phrases`, or `chronological_prose` |
+| `prompt_target_words` / `prompt_max_words` | Optional first-class integer prompt target/ceiling from 1 to 4000; blank inherits reviewed guidance |
 | `input_bindings` | Optional Story Graph-to-runtime input map |
 | `status` | `active` only after the Template is executable |
 | `version` | Optional remote schema/model version |
@@ -986,7 +1001,19 @@ provider-managed Template.
 Keep the runtime prompt and resolved media bindings out of
 `configuration_json`. Store safe provider defaults under `input` and the
 discovered reference schema under a clearly named data key such as
-`provider_schema`.
+`provider_schema`. Store only normalized discovery values under
+`provider_prompt_policy`; reserve `prompt_policy` for an operator-owned
+Template override. Neither key may contain remote instructional prose.
+Editors do not need to author this JSON when no overrides are required: the
+Template screen supplies and persists `{}`, while managed catalogs populate
+their own validated configuration during provisioning.
+Common operator prompt tuning also does not require JSON. The four
+`prompt_*` fields above are sparse overrides; blank values inherit the
+Connection/model recommendation. `prompt_max_words` can only tighten an
+inherited hard ceiling. The Template screen's **Effective Prompt Guidance**
+box resolves these fields with the lower policy layers and displays the active
+profile, semantic start priority, format, target/maximum length, and leading
+section order after save.
 
 `status` is optional in the shared upsert definition, but a new Template
 defaults to `active`; pass `draft` explicitly until a discovered operation is
@@ -999,7 +1026,74 @@ as one contract. The definition must use a supported output type and does not
 grant execution by itself. Do not copy untrusted remote schemas into this
 filter or coerce an unrelated output to `text_to_image` just to pass validation.
 
-### 13.3 Save and test lifecycle
+### 13.3 Prompt policy and contextual run defaults
+
+`Generation_Prompt_Policy` resolves a non-executable policy only after the
+exact Template is known. Policy declarations allow:
+
+- positive integer `target_words`, `max_words`, `max_characters`, and
+  `max_bytes` limits;
+- preferred/forbidden IDs from the fixed semantic-section vocabulary; and
+- sanitized `profile`, enumerated `lead_with` (`subject`, `action`, or
+  `motion`), and enumerated `format` (`natural_language`, `concise_phrases`, or
+  `chronological_prose`) hints.
+
+The `primary` description always remains first. `lead_with` selects which of
+the subject, action, or motion sections is prioritized immediately after it;
+it is not permission to reorder or suppress the opening instruction.
+
+The protected `primary`, `objective`, `author_instructions`, `constraints`,
+and `verbatim` sections cannot be suppressed. Preference precedence is core
+output/modality/intent fallback, trusted adapter
+`generation.prompt_policy`, trusted Connection filter, reviewed model-family
+or model-slug profile, Template `provider_prompt_policy`, operator Template
+`prompt_policy`, the first-class Template `prompt_*` fields, bounded
+positive-prompt schema `maxLength`, and the final trusted prompt-policy filter.
+A later target/order/format preference wins, but hard ceilings merge by taking
+the smallest positive bound.
+
+An adapter manifest policy may be flat or use `default`, output-type, and
+exact-modality maps; output overlays default and modality overlays output.
+See [Adding Connections and Templates](Adding_Connections_and_Templates.md)
+for the exact allowlisted section IDs and an example.
+
+Keep run-control defaults separate from prompt policy. Runtime control
+precedence, lowest to highest, is:
+
+1. Template default;
+2. compatible owning-Project profile;
+3. owning-Project override for the exact Connection + Template pair;
+4. source-item override for the exact pair; and
+5. one-off request value.
+
+Project/item overrides live in version-1 post meta
+`_worldgraph_generation_run_defaults`. Its `entries` map is keyed exactly
+`c:{connection_id}:t:{template_id}`. Each value repeats `connection_id` and
+`template_id`, records the 64-character SHA-256 fingerprint of the current
+normalized `run_controls` definition, and contains only validated scalar
+`values`. The item repository is generic: Shot, Character, Location, Prop,
+Scene, Episode, Story World, and future supported sources use the same shape.
+
+Generation must not persist defaults. The dedicated defaults REST operation
+performs explicit save/reset with object-capability checks. Save receives a
+complete form and stores sparse differences from inherited lower layers;
+reset removes only one scope/pair. Both require the current fingerprint so a
+stale browser cannot overwrite a changed Template contract. Reads revalidate a
+stale stored entry and warn or ignore it; deriving Connection from Template
+prevents pair spoofing and prevents a reparented Template from using its old
+Connection entry.
+
+Every public run-control field should also be understandable without provider
+jargon. Core supplies bounded plain-language descriptions for recognized
+semantics and expands `cfg` to **CFG (Classifier-Free Guidance)**, while
+keeping non-CFG `guidance` distinct. A provider schema's different
+`description` or `help` text is untrusted supplemental display data: strip its
+markup and control characters, collapse whitespace, cap the note at 240
+characters and the combined description at 480, and append it as **Provider
+note:** after core help. Provider notes must never change the control allowlist,
+bounds, defaults, bindings, or prompt.
+
+### 13.4 Save and test lifecycle
 
 Catalog classes expose an idempotent `provision( $connection_id )` method and
 declare it as `templates.provision`. `Template_Manager` schedules the stable
@@ -1127,7 +1221,9 @@ The batch worker selects the client through the manifest, calls
 `permanent_error_codes`. Review all of the following for a new provider:
 
 - fixed versus trusted resolver client selection;
-- Template default-parameter merging;
+- Template default, Project profile, exact-pair Project/item, and one-off
+  parameter merging, with saved/requested/effective snapshots frozen after
+  per-task Template selection;
 - provider-specific input/upload resolution;
 - idempotency keys and ambiguous-submit recovery;
 - `run_template()` arguments;
@@ -1286,7 +1382,8 @@ Every new adapter must satisfy this checklist:
 - [ ] MCP protocol version, per-era lifecycle, request metadata, headers,
       response IDs, pagination, and SSE framing are covered by fixtures.
 - [ ] Remote schemas, labels, errors, and MCP content are treated as untrusted
-      data.
+      data; their prose never becomes a runtime media-prompt instruction, and
+      only reviewed normalized numeric/enumerated policy is retained.
 - [ ] Request, response, collection, schema, and media sizes are bounded.
 - [ ] Timeouts and retry rules distinguish safe reads/polls from ambiguous
       submits.
@@ -1314,6 +1411,8 @@ mock all external traffic. At minimum cover the applicable rows:
 | MCP transport | Current per-request metadata or complete legacy initialize/initialized lifecycle and, when a session ID is issued, session lifecycle; version/header validation; result types/MRTR policy; response-ID correlation; bounded JSON/SSE decoding; pagination; missing tools; tool `isError`; malformed result |
 | Tester | Success/error status, timestamp, bounded health report, and provisioning outcome |
 | Catalog | Discovery filtering, schema defaults, idempotent Template update, connection/provider identity, and manager-maintained sync timestamp/scheduling/provisioning errors |
+| Prompt policy | Manifest/default/output/modality selection, layer precedence, hard-limit intersection, protected sections, schema `maxLength`, and rejection of remote/MCP prose |
+| Run defaults | Exact Connection+Template pair isolation, Template → Project profile → Project → item → one-off precedence, sparse save/reset, capability checks, stale-fingerprint conflict/revalidation, and frozen batch snapshots |
 | Generation | Template/Connection agreement, modality/type agreement, fixed adapter marker or trusted adapter resolver, submit shape, synchronous or async result, polling states |
 | Media | Every output imported, MIME/size rejection, authenticated download if needed, and no raw bytes in post meta |
 | Permissions | Administrator Connection access, object capability checks, nonce/signature/callback rejection |

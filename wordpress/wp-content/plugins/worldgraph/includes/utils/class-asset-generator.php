@@ -111,15 +111,16 @@ class Asset_Generator {
 	 * @param int    $post_id      Post ID.
 	 * @param string $intent       Optional representative-media intent.
 	 * @param string $base_prompt  Optional author-edited base prompt.
+	 * @param int    $template_id  Optional selected Template for final policy.
 	 * @return string
 	 */
-	public static function build_prompt( int $post_id, string $intent = '', string $base_prompt = '' ): string {
+	public static function build_prompt( int $post_id, string $intent = '', string $base_prompt = '', int $template_id = 0 ): string {
 		$post = get_post( $post_id );
 		if ( ! $post instanceof \WP_Post ) {
 			return '';
 		}
 
-		$prompt = Generation_Workflows::compose_prompt( $post_id, $intent, $base_prompt );
+		$prompt = Generation_Workflows::compose_prompt( $post_id, $intent, $base_prompt, $template_id );
 
 		/**
 		 * Filter the generated media prompt for a story element.
@@ -127,8 +128,23 @@ class Asset_Generator {
 		 * @param string   $prompt Generated prompt.
 		 * @param \WP_Post $post   Source post.
 		 * @param string   $intent Representative-media intent, when supplied.
+		 * @param int      $template_id Selected Template whose policy composed the prompt, or zero.
 		 */
-		return (string) apply_filters( 'worldgraph_generate_asset_prompt', $prompt, $post, $intent );
+		$prompt = (string) apply_filters( 'worldgraph_generate_asset_prompt', $prompt, $post, $intent, $template_id );
+		if ( $template_id > 0 ) {
+			return Generation_Prompt_Profiles::apply( $prompt, $post_id, $intent, $template_id );
+		}
+
+		$output = Generation_Workflows::intent( (string) $post->post_type, $intent );
+		$policy = Generation_Prompt_Policy::for_template(
+			0,
+			[
+				'output_type' => (string) ( $output['type'] ?? 'image' ),
+				'post_type'   => (string) $post->post_type,
+				'intent'      => $intent,
+			]
+		);
+		return Generation_Prompt_Policy::finalize_text( $prompt, $policy );
 	}
 
 	/**
@@ -154,9 +170,12 @@ class Asset_Generator {
 			'template_id'        => 0,
 			'inputs'             => [],
 			'run_values'         => [],
+			'default_values'     => [],
+			'requested_run_values' => [],
 			'profile_values'     => [],
 			'profile_values_frozen' => false,
 			'run_values_validated' => false,
+			'run_defaults_frozen' => false,
 			'intent'             => '',
 			'batch_id'           => 0,
 			'batch_step'         => -1,
@@ -164,7 +183,8 @@ class Asset_Generator {
 			'initial_status'     => 'queued',
 			'schedule'           => true,
 		] );
-		$type = sanitize_key( (string) $args['type'] );
+		$type        = sanitize_key( (string) $args['type'] );
+		$template_id = absint( $args['template_id'] );
 		if ( ! in_array( $type, [ 'image', 'video', 'audio' ], true ) ) {
 			return new WP_Error( 'worldgraph_asset_invalid_type', __( 'Generated story media must be an image, video, or audio file.', 'worldgraph' ), [ 'status' => 400 ] );
 		}
@@ -184,15 +204,19 @@ class Asset_Generator {
 			}
 		}
 		$provided_prompt = trim( wp_strip_all_tags( (string) $args['prompt'] ) );
-		$prompt          = rest_sanitize_boolean( $args['prompt_is_composed'] )
+		$prompt_is_composed = rest_sanitize_boolean( $args['prompt_is_composed'] );
+		$prompt_profiled    = rest_sanitize_boolean( $args['prompt_profiled'] );
+		$prompt          = $prompt_is_composed
 			? $provided_prompt
-			: self::build_prompt( $post_id, $intent, $provided_prompt );
+			: self::build_prompt( $post_id, $intent, $provided_prompt, $template_id );
+		if ( ! $prompt_is_composed ) {
+			$prompt_profiled = true;
+		}
 		if ( '' === $prompt ) {
 			return new WP_Error( 'worldgraph_asset_prompt_missing', __( 'A generation prompt could not be built from this item.', 'worldgraph' ), [ 'status' => 400 ] );
 		}
 		$profile = self::project_media_profile( $post_id );
 
-		$template_id = absint( $args['template_id'] );
 		if ( ! $template_id || ! self::is_active_template( $template_id ) ) {
 			return new WP_Error( 'worldgraph_asset_invalid_template', __( 'That Template is not available to generate from.', 'worldgraph' ), [ 'status' => 400 ] );
 		}
@@ -278,15 +302,40 @@ class Asset_Generator {
 				return $requirements;
 			}
 		}
-		if ( ! rest_sanitize_boolean( $args['prompt_profiled'] ) ) {
+		if ( ! $prompt_profiled ) {
 			$prompt = Generation_Prompt_Profiles::apply( $prompt, $post_id, $intent, $template_id );
+		} else {
+			$prompt = Generation_Prompt_Policy::finalize_text(
+				$prompt,
+				Generation_Prompt_Policy::for_template(
+					$template_id,
+					[
+						'output_type' => $type,
+						'post_type'   => (string) $post->post_type,
+						'intent'      => $intent,
+					]
+				)
+			);
 		}
 
 		$trusted_batch_values = $batch_id && rest_sanitize_boolean( $args['run_values_validated'] );
 		$description          = Template_Run_Controls::describe( $template_id );
-		$run_values           = is_array( $args['run_values'] ) ? $args['run_values'] : [];
-		if ( ! $trusted_batch_values ) {
-			$run_values = Template_Run_Controls::validate_description( $description, $run_values );
+		$submitted_run_values = is_array( $args['run_values'] ) ? $args['run_values'] : [];
+		$default_values       = [];
+		$requested_run_values = [];
+		if ( $trusted_batch_values ) {
+			$run_values = $submitted_run_values;
+			if ( rest_sanitize_boolean( $args['run_defaults_frozen'] ) ) {
+				$default_values       = is_array( $args['default_values'] ) ? $args['default_values'] : [];
+				$requested_run_values = is_array( $args['requested_run_values'] ) ? $args['requested_run_values'] : [];
+			}
+		} else {
+			$requested_run_values = Template_Run_Controls::validate_description( $description, $submitted_run_values );
+			if ( is_wp_error( $requested_run_values ) ) {
+				return $requested_run_values;
+			}
+			$default_values = Generation_Run_Defaults::runtime_overrides( $post_id, $template_id, $description );
+			$run_values     = Template_Run_Controls::validate_description( $description, array_merge( $default_values, $requested_run_values ) );
 			if ( is_wp_error( $run_values ) ) {
 				return $run_values;
 			}
@@ -353,6 +402,8 @@ class Asset_Generator {
 			'_worldgraph_gen_prompt_hash'      => hash( 'sha256', $prompt ),
 			'_worldgraph_gen_params'           => $params,
 			'_worldgraph_gen_run_values'       => $run_values,
+			'_worldgraph_gen_default_values'   => $default_values,
+			'_worldgraph_gen_requested_run_values' => $requested_run_values,
 			'_worldgraph_gen_profile_values'   => $profile_values,
 			'_worldgraph_gen_template_input'   => $template_input,
 			'_worldgraph_gen_workflow'         => $template,

@@ -307,6 +307,87 @@ class Test_Story_Import_Export extends TestCase {
 		}
 	}
 
+	/** Portable Scene and Shot camera movement accept the canonical editor choices. */
+	public function test_portable_camera_movement_uses_scene_and_shot_choice_contract(): void {
+		$document = [
+			'worldgraph_version' => '1.2',
+			'project'            => [
+				'id'                => 'direction-project',
+				'title'             => 'Direction Project',
+				'generation_prompt' => 'Painterly animation, soft daylight, muted earth palette, and tactile paper texture.',
+			],
+			'world'              => [
+				'id'      => 'direction-world',
+				'name'    => 'Direction World',
+				'project' => 'direction-project',
+			],
+			'characters'         => [],
+			'locations'          => [],
+			'props'              => [],
+			'scenes'             => [
+				[
+					'id'                => 'direction-scene',
+					'scene_number'      => 1,
+					'title'             => 'Direction Scene',
+					'characters'        => [],
+					'props'             => [],
+					'sequence'          => 'direction-sequence',
+					'lens'              => '35mm',
+					'generation_prompt' => 'Use cool window light and low-contrast shadows.',
+				],
+			],
+			'shots'              => [
+				[
+					'id'                => 'direction-shot',
+					'shot_number'       => 1,
+					'title'             => 'Direction Shot',
+					'scene'             => 'direction-scene',
+					'sequence'          => 'direction-sequence',
+					'motion_direction'  => 'The subject turns slowly, takes one step, and holds still.',
+					'generation_prompt' => 'Keep the doorway unobstructed.',
+				],
+			],
+			'sequence'           => [
+				'id'             => 'direction-sequence',
+				'title'          => 'Direction Sequence',
+				'sequence_order' => 1,
+				'order'          => [ 'direction-scene' ],
+			],
+		];
+
+		$allowed = [ 'locked_off', 'handheld', 'pan_left', 'pan_right', 'tilt_up', 'tilt_down', 'push_in', 'pull_back', 'track_left', 'track_right', 'follow_subject', 'orbit_left', 'orbit_right', 'crane_up', 'crane_down', 'zoom_in', 'zoom_out' ];
+		foreach ( [ 'scene', 'shot' ] as $entity ) {
+			$group = json_decode( (string) file_get_contents( dirname( __DIR__ ) . "/acf-json/group_worldgraph_{$entity}.json" ), true );
+			$field = current( array_filter( $group['fields'], static fn( array $candidate ): bool => 'camera_movement' === ( $candidate['name'] ?? '' ) ) );
+
+			$this->assertIsArray( $field );
+			$this->assertSame( $allowed, array_keys( $field['choices'] ) );
+		}
+		foreach ( $allowed as $movement ) {
+			$document['scenes'][0]['camera_movement'] = $movement;
+			$document['shots'][0]['camera_movement']  = $movement;
+			$result = ( new \WorldGraph\Importer\WorldGraph_Importer() )->import( wp_json_encode( $document ), [ 'dry_run' => true ] );
+
+			$this->assertIsArray( $result, "{$movement} should be a valid Scene and Shot camera movement." );
+			$this->assertTrue( $result['verified'] );
+		}
+
+		$document['shots'][0]['camera_movement'] = 'whip_pan';
+		$invalid = ( new \WorldGraph\Importer\WorldGraph_Importer() )->import( wp_json_encode( $document ), [ 'dry_run' => true ] );
+
+		$this->assertInstanceOf( WP_Error::class, $invalid );
+		$this->assertSame( 'worldgraph_invalid_field', $invalid->get_error_code() );
+		$this->assertStringContainsString( 'Shot direction-shot camera_movement has an invalid value.', $invalid->get_error_message() );
+
+		$document['shots'][0]['camera_movement']   = 'locked_off';
+		$document['scenes'][0]['camera_movement'] = 'whip_pan';
+		$invalid = ( new \WorldGraph\Importer\WorldGraph_Importer() )->import( wp_json_encode( $document ), [ 'dry_run' => true ] );
+
+		$this->assertInstanceOf( WP_Error::class, $invalid );
+		$this->assertSame( 'worldgraph_invalid_field', $invalid->get_error_code() );
+		$this->assertStringContainsString( 'Scene direction-scene camera_movement has an invalid value.', $invalid->get_error_message() );
+	}
+
 	/** Canonical JSON keeps the upload-size boundary instead of the manuscript text cap. */
 	public function test_large_canonical_json_does_not_enter_manuscript_limit(): void {
 		$document = [

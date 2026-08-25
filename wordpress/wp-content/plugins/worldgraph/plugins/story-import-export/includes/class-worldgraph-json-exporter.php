@@ -483,6 +483,7 @@ class WorldGraph_JSON_Exporter {
 			'title'             => (string) $project->post_title,
 			'project_slug'      => $this->project_slug( $project ),
 			'description'       => $this->content_field( $project, 'description' ),
+			'generation_prompt' => $this->scalar_field( $project->ID, 'generation_prompt' ),
 			'target_medium'     => $this->scalar_field( $project->ID, 'target_medium' ),
 			'production_status' => $this->taxonomy_slug( $project->ID, 'worldgraph_status' ),
 			'start_date'        => $this->date_field( $project->ID, 'start_date' ),
@@ -653,38 +654,41 @@ class WorldGraph_JSON_Exporter {
 		}
 
 		$record = [
-			'id'               => $this->external_ids[ $scene->ID ],
-			'title'            => (string) $scene->post_title,
-			'summary'          => $this->content_field( $scene, 'summary' ),
-			'script_content'   => $this->scalar_field( $scene->ID, 'script_content' ),
-			'location'         => $this->relationship_external_id(
+			'id'                => $this->external_ids[ $scene->ID ],
+			'title'             => (string) $scene->post_title,
+			'summary'           => $this->content_field( $scene, 'summary' ),
+			'script_content'    => $this->scalar_field( $scene->ID, 'script_content' ),
+			'location'          => $this->relationship_external_id(
 				$scene->ID,
 				'worldgraph_scene',
 				'location',
 				'worldgraph_location',
 				'located_in'
 			),
-			'time_of_day'      => $this->scalar_field( $scene->ID, 'time_of_day' ),
-			'emotional_tone'   => $this->scalar_field( $scene->ID, 'emotional_tone' ),
-			'characters'       => $this->relationship_external_ids(
+			'time_of_day'       => $this->scalar_field( $scene->ID, 'time_of_day' ),
+			'emotional_tone'    => $this->scalar_field( $scene->ID, 'emotional_tone' ),
+			'lens'              => $this->scalar_field( $scene->ID, 'lens' ),
+			'camera_movement'   => $this->scalar_field( $scene->ID, 'camera_movement' ),
+			'generation_prompt' => $this->scalar_field( $scene->ID, 'generation_prompt' ),
+			'characters'        => $this->relationship_external_ids(
 				$scene->ID,
 				'worldgraph_scene',
 				'characters',
 				'worldgraph_character',
 				'appears_in'
 			),
-			'props'            => $this->relationship_external_ids(
+			'props'             => $this->relationship_external_ids(
 				$scene->ID,
 				'worldgraph_scene',
 				'props',
 				'worldgraph_prop',
 				'used_in'
 			),
-			'dialogue'         => $dialogue,
-			'tags'             => $this->taxonomy_slugs( $scene->ID, 'worldgraph_scene_tag' ),
-			'production_notes' => $this->scalar_field( $scene->ID, 'production_notes' ),
-			'sequence'         => $sequence_external_id,
-			'episode'          => $episode_id && isset( $this->external_ids[ $episode_id ] )
+			'dialogue'          => $dialogue,
+			'tags'              => $this->taxonomy_slugs( $scene->ID, 'worldgraph_scene_tag' ),
+			'production_notes'  => $this->scalar_field( $scene->ID, 'production_notes' ),
+			'sequence'          => $sequence_external_id,
+			'episode'           => $episode_id && isset( $this->external_ids[ $episode_id ] )
 				? $this->external_ids[ $episode_id ]
 				: '',
 		];
@@ -706,23 +710,26 @@ class WorldGraph_JSON_Exporter {
 		}
 
 		$record = [
-			'id'              => $this->external_ids[ $shot->ID ],
-			'scene'           => $this->relationship_external_id(
+			'id'                => $this->external_ids[ $shot->ID ],
+			'scene'             => $this->relationship_external_id(
 				$shot->ID,
 				'worldgraph_shot',
 				'scene',
 				'worldgraph_scene',
 				'belongs_to'
 			),
-			'title'           => (string) $shot->post_title,
-			'type'            => $shot_type,
-			'camera_angle'    => $this->scalar_field( $shot->ID, 'camera_angle' ),
-			'lens'            => $this->scalar_field( $shot->ID, 'lens' ),
-			'duration'        => $this->scalar_field( $shot->ID, 'duration' ),
-			'slate_id'        => $this->scalar_field( $shot->ID, 'slate_id' ),
-			'description'     => $this->content_field( $shot, 'shot_description' ),
-			'editorial_notes' => $this->scalar_field( $shot->ID, 'editorial_notes' ),
-			'sequence'        => $sequence_external_id,
+			'title'             => (string) $shot->post_title,
+			'type'              => $shot_type,
+			'camera_angle'      => $this->scalar_field( $shot->ID, 'camera_angle' ),
+			'lens'              => $this->scalar_field( $shot->ID, 'lens' ),
+			'camera_movement'   => $this->scalar_field( $shot->ID, 'camera_movement' ),
+			'motion_direction'  => $this->scalar_field( $shot->ID, 'motion_direction' ),
+			'duration'          => $this->scalar_field( $shot->ID, 'duration' ),
+			'slate_id'          => $this->scalar_field( $shot->ID, 'slate_id' ),
+			'description'       => $this->content_field( $shot, 'shot_description' ),
+			'generation_prompt' => $this->scalar_field( $shot->ID, 'generation_prompt' ),
+			'editorial_notes'   => $this->scalar_field( $shot->ID, 'editorial_notes' ),
+			'sequence'          => $sequence_external_id,
 		];
 
 		$shot_number = $this->field_value( $shot->ID, 'shot_number' );

@@ -343,12 +343,12 @@ function worldgraph_expected_fields_for_cpt( string $cpt ): array {
 		'worldgraph_prop'               => [ 'prop_name', 'description', 'purpose', 'owner_character', 'notes', 'generation_prompt' ],
 		'worldgraph_org'       => [ 'organization_name', 'organization_type', 'description', 'leadership', 'goals', 'story_world' ],
 		'worldgraph_episode'            => [ 'episode_number', 'title', 'synopsis', 'status', 'project', 'generation_prompt' ],
-		'worldgraph_scene'              => [ 'scene_number', 'title', 'summary', 'script_content', 'dialogue', 'location', 'time_of_day', 'emotional_tone', 'production_notes', 'sequence', 'episode', 'generation_prompt' ],
-		'worldgraph_shot'               => [ 'shot_name', 'shot_number', 'shot_type', 'camera_angle', 'lens', 'duration', 'take_number', 'slate_id', 'shot_description', 'editorial_notes', 'scene', 'sequence', 'generation_prompt' ],
+		'worldgraph_scene'              => [ 'scene_number', 'title', 'summary', 'script_content', 'dialogue', 'location', 'time_of_day', 'emotional_tone', 'production_notes', 'sequence', 'episode', 'generation_prompt', 'lens', 'camera_movement' ],
+		'worldgraph_shot'               => [ 'shot_name', 'shot_number', 'shot_type', 'camera_angle', 'lens', 'camera_movement', 'motion_direction', 'duration', 'take_number', 'slate_id', 'shot_description', 'editorial_notes', 'scene', 'sequence', 'generation_prompt' ],
 		'worldgraph_sound'              => [ 'sound_type', 'production_status', 'spoken_text', 'lyrics', 'start_timecode', 'duration', 'diegetic', 'production_notes', 'scene', 'shot', 'character', 'asset' ],
 		'worldgraph_asset'              => [ 'asset_title', 'asset_type', 'workflow_name', 'prompt', 'model_name', 'seed', 'generation_parameters', 'version', 'status', 'storage_uri', 'character', 'location', 'scene' ],
 		'worldgraph_editorial'          => [ 'artifact_type', 'export_format', 'generated_date', 'source_scene', 'source_shot', 'notes', 'project' ],
-		'worldgraph_template'           => [ 'template_name', 'description', 'generation_structure', 'modality', 'connection_id', 'checkpoint', 'model_family', 'workflow_json', 'provider_template_id', 'configuration_json', 'input_bindings', 'model_requirements', 'default_values', 'provider_type', 'version', 'status' ],
+		'worldgraph_template'           => [ 'template_name', 'description', 'generation_structure', 'modality', 'connection_id', 'checkpoint', 'model_family', 'prompt_lead_with', 'prompt_format', 'prompt_target_words', 'prompt_max_words', 'workflow_json', 'provider_template_id', 'configuration_json', 'input_bindings', 'model_requirements', 'default_values', 'provider_type', 'version', 'status' ],
 		'worldgraph_conn'         => [ 'connection_name', 'provider_type', 'environment', 'status', 'is_default', 'endpoint_url', 'mcp_endpoint_url', 'credential_reference', 'mcp_credential_reference', 'capabilities', 'mcp_configuration', 'model', 'max_tokens', 'temperature', 'model_access', 'enabled_structures', 'enabled_templates', 'rate_limits', 'cost_controls' ],
 	];
 

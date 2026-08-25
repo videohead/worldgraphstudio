@@ -8,19 +8,55 @@
 namespace WorldGraph\Utils {
 	defined( 'ABSPATH' ) || exit;
 
-	function get_post_meta( $post_id, $key = '', $single = false ) {
-		$value = $GLOBALS['worldgraph_import_journal_state']['meta'][ (int) $post_id ][ (string) $key ] ?? null;
-		return $single ? ( null === $value ? '' : $value ) : ( null === $value ? [] : [ $value ] );
+	if ( ! function_exists( __NAMESPACE__ . '\\get_post_meta' ) ) {
+		function get_post_meta( $post_id, $key = '', $single = false ) {
+			$value = $GLOBALS['worldgraph_import_journal_state']['meta'][ (int) $post_id ][ (string) $key ] ?? null;
+			return $single ? ( null === $value ? '' : $value ) : ( null === $value ? [] : [ $value ] );
+		}
 	}
 
-	function update_post_meta( $post_id, $key, $value ) {
-		$GLOBALS['worldgraph_import_journal_state']['meta'][ (int) $post_id ][ (string) $key ] = $value;
-		return 1;
+	if ( ! function_exists( __NAMESPACE__ . '\\update_post_meta' ) ) {
+		function update_post_meta( $post_id, $key, $value, $prev_value = '' ) {
+			$exists = isset( $GLOBALS['worldgraph_import_journal_state']['meta'][ (int) $post_id ] )
+				&& array_key_exists( (string) $key, $GLOBALS['worldgraph_import_journal_state']['meta'][ (int) $post_id ] );
+			$current = $exists ? $GLOBALS['worldgraph_import_journal_state']['meta'][ (int) $post_id ][ (string) $key ] : null;
+			if ( ! empty( $prev_value ) && ( ! $exists || $current !== $prev_value ) ) {
+				return false;
+			}
+			if ( $exists && $current === $value ) {
+				return false;
+			}
+			$GLOBALS['worldgraph_import_journal_state']['meta'][ (int) $post_id ][ (string) $key ] = $value;
+			return 1;
+		}
 	}
 
-	function delete_post_meta( $post_id, $key ): bool {
-		unset( $GLOBALS['worldgraph_import_journal_state']['meta'][ (int) $post_id ][ (string) $key ] );
-		return true;
+	if ( ! function_exists( __NAMESPACE__ . '\\add_post_meta' ) ) {
+		function add_post_meta( $post_id, $key, $value, $unique = false ) {
+			$exists = isset( $GLOBALS['worldgraph_import_journal_state']['meta'][ (int) $post_id ] )
+				&& array_key_exists( (string) $key, $GLOBALS['worldgraph_import_journal_state']['meta'][ (int) $post_id ] );
+			if ( $unique && $exists ) {
+				return false;
+			}
+			$GLOBALS['worldgraph_import_journal_state']['meta'][ (int) $post_id ][ (string) $key ] = $value;
+			return 1;
+		}
+	}
+
+	if ( ! function_exists( __NAMESPACE__ . '\\delete_post_meta' ) ) {
+		function delete_post_meta( $post_id, $key, $value = '' ): bool {
+			$exists = isset( $GLOBALS['worldgraph_import_journal_state']['meta'][ (int) $post_id ] )
+				&& array_key_exists( (string) $key, $GLOBALS['worldgraph_import_journal_state']['meta'][ (int) $post_id ] );
+			if ( ! $exists ) {
+				return false;
+			}
+			$current = $GLOBALS['worldgraph_import_journal_state']['meta'][ (int) $post_id ][ (string) $key ];
+			if ( '' !== $value && null !== $value && false !== $value && $current !== $value ) {
+				return false;
+			}
+			unset( $GLOBALS['worldgraph_import_journal_state']['meta'][ (int) $post_id ][ (string) $key ] );
+			return true;
+		}
 	}
 
 	function get_post_thumbnail_id( $post_id ): int {

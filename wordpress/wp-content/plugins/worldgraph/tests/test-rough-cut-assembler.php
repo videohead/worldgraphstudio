@@ -49,6 +49,15 @@ require_once dirname( __DIR__ ) . '/includes/utils/class-rough-cut-assembler.php
 /** Rough-cut helper and orchestration tests. */
 class Test_Rough_Cut_Assembler extends TestCase {
 
+	/** Read one production method without coupling assertions to unrelated code. */
+	private function method_source( string $method ): string {
+		$reflection = new ReflectionMethod( Rough_Cut_Assembler::class, $method );
+		$lines      = file( $reflection->getFileName() );
+
+		$this->assertIsArray( $lines );
+		return implode( '', array_slice( $lines, $reflection->getStartLine() - 1, $reflection->getEndLine() - $reflection->getStartLine() + 1 ) );
+	}
+
 	/** Availability always returns the documented diagnostic shape. */
 	public function test_availability_contract_is_stable(): void {
 		$availability = Rough_Cut_Assembler::availability();
@@ -76,6 +85,45 @@ class Test_Rough_Cut_Assembler extends TestCase {
 		$this->assertSame( 3723.5, Rough_Cut_Assembler::parse_timecode( 'PT1H2M3.5S' ) );
 		$this->assertSame( 62.5, Rough_Cut_Assembler::parse_timecode( '00:01:02:12', 24 ) );
 		$this->assertSame( 0.0, Rough_Cut_Assembler::parse_timecode( 'not-a-timecode' ) );
+	}
+
+	/** Blank cues stop at their owner while explicit durations may cross edits. */
+	public function test_sound_cue_duration_respects_implicit_owner_boundary(): void {
+		$duration = new ReflectionMethod( Rough_Cut_Assembler::class, 'sound_cue_duration' );
+		$duration->setAccessible( true );
+
+		$this->assertSame( 7.0, $duration->invoke( null, '', 2.0, 9.0, 20.0 ) );
+		$this->assertSame( 4.0, $duration->invoke( null, '', 5.0, 9.0, 20.0 ) );
+		$this->assertSame( 0.0, $duration->invoke( null, '', 10.0, 9.0, 20.0 ) );
+		$this->assertSame( 8.0, $duration->invoke( null, 'PT8S', 7.0, 9.0, 20.0 ) );
+		$this->assertSame( 13.0, $duration->invoke( null, 'PT30S', 7.0, 9.0, 20.0 ) );
+	}
+
+	/** Scene and Shot owner ends come from the assembled segment timeline. */
+	public function test_sound_boundaries_track_scene_and_shot_ends(): void {
+		$method = new ReflectionMethod( Rough_Cut_Assembler::class, 'sound_boundaries' );
+		$method->setAccessible( true );
+		$boundaries = $method->invoke(
+			null,
+			[
+				[ 'scene_id' => 1, 'shot_id' => 10, 'start' => 0.0, 'end' => 4.0 ],
+				[ 'scene_id' => 1, 'shot_id' => 11, 'start' => 4.0, 'end' => 9.0 ],
+				[ 'scene_id' => 2, 'shot_id' => 12, 'start' => 9.0, 'end' => 15.0 ],
+			]
+		);
+
+		$this->assertSame( [ 1 => 9.0, 2 => 15.0 ], $boundaries['scene'] );
+		$this->assertSame( [ 10 => 4.0, 11 => 9.0, 12 => 15.0 ], $boundaries['shot'] );
+		$this->assertSame( 15.0, $boundaries['cut'] );
+
+		$live   = $this->method_source( 'sound_cues' );
+		$frozen = $this->method_source( 'frozen_sound_cues' );
+		$this->assertStringContainsString( 'self::sound_boundaries( $segments )', $live );
+		$this->assertStringContainsString( "\$boundaries['shot'][ \$shot_id ]", $live );
+		$this->assertStringContainsString( 'self::sound_cue_duration(', $live );
+		$this->assertStringContainsString( 'self::sound_boundaries( $segments )', $frozen );
+		$this->assertStringContainsString( "\$boundaries['shot'][ \$task_shot_id ]", $frozen );
+		$this->assertStringContainsString( 'self::sound_cue_duration(', $frozen );
 	}
 
 	/** Dialogue remains ordered, bounded, and valid SubRip text. */

@@ -58,9 +58,10 @@ Prompt assistance is delivered in two complementary forms:
 2. The AI Workflow metabox exposes creative advisors such as the
    Previsualization Artist and Art Director, using the current post as context.
 
-The current prompt builder is one text-to-image recipe. It is filterable through
-`worldgraph_generate_asset_prompt`, so a site or extension can customize the
-result without replacing the REST route.
+The prompt builder is filterable through `worldgraph_generate_asset_prompt`, so
+a site or extension can customize the result without replacing the REST route.
+The filter receives the prompt, source post, intent, and selected Template ID;
+older callbacks accepting the original three arguments remain compatible.
 
 There is no `prompt_designer.agent.md` in the current release, and no
 intent-specific prompt registry. Those ideas are optional extension seams, not

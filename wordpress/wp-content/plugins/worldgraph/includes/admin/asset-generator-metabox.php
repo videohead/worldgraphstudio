@@ -131,8 +131,24 @@ class Asset_Generator_MetaBox {
 				'outputGroup'       => __( 'Output', 'worldgraph' ),
 				'advancedGroup'     => __( 'Advanced', 'worldgraph' ),
 				'useTemplateDefault' => __( 'Use Template default', 'worldgraph' ),
+				'templateDefaultSource' => __( 'Inherited from Template', 'worldgraph' ),
+				'projectProfileSource' => __( 'Inherited from Project media profile', 'worldgraph' ),
+				'projectDefaultSource' => __( 'Inherited from Project defaults', 'worldgraph' ),
+				'itemDefaultSource' => __( 'Inherited from this item', 'worldgraph' ),
+				'defaultLayersHelp' => __( 'Template → Project → item → this run. Save only when these values should become reusable defaults for this exact Connection and Template.', 'worldgraph' ),
+				'saveProjectDefaults' => __( 'Save current values as Project defaults', 'worldgraph' ),
+				'saveItemDefaults' => __( 'Save current values as item defaults', 'worldgraph' ),
+				'resetProjectDefaults' => __( 'Reset Project defaults', 'worldgraph' ),
+				'resetItemDefaults' => __( 'Reset item defaults', 'worldgraph' ),
+				'confirmResetDefaults' => __( 'Reset this saved default layer and inherit from the layer above?', 'worldgraph' ),
+				'savingDefaults' => __( 'Saving reusable generation defaults…', 'worldgraph' ),
+				'resettingDefaults' => __( 'Resetting saved generation defaults…', 'worldgraph' ),
+				'defaultsSaved' => __( 'Reusable generation defaults saved.', 'worldgraph' ),
+				'defaultsReset' => __( 'Saved generation defaults reset.', 'worldgraph' ),
 				'enabled'           => __( 'Enabled', 'worldgraph' ),
 				'disabled'          => __( 'Disabled', 'worldgraph' ),
+				'previewingPrompt'  => __( 'Composing the selected Template prompt…', 'worldgraph' ),
+				'promptPreviewError' => __( 'The selected Template prompt could not be previewed.', 'worldgraph' ),
 				'singlePromptHelp'  => __( 'These one-off instructions will be added to this output’s generated prompt.', 'worldgraph' ),
 				'batchPromptHelp'   => __( 'These one-off instructions will be added to every generated prompt in this workflow.', 'worldgraph' ),
 				'workflowPrompts'   => __( 'This workflow composes a separate detailed prompt for every output:', 'worldgraph' ),
@@ -237,7 +253,7 @@ class Asset_Generator_MetaBox {
 		?>
 		<div class="worldgraph-generate-asset" data-post-id="<?php echo esc_attr( $post->ID ); ?>" data-is-project="<?php echo esc_attr( 'worldgraph_project' === $post->post_type ? '1' : '0' ); ?>">
 			<h4><?php esc_html_e( 'Generate representative media', 'worldgraph' ); ?></h4>
-			<p class="description"><?php esc_html_e( 'Every request automatically uses the saved title, body, relevant SCF fields, inherited Project/World context, and Generation Prompt Instructions. Save or update this post before queueing so the latest details are included.', 'worldgraph' ); ?></p>
+			<p class="description"><?php esc_html_e( 'Every request starts with the saved description and adds only the visual details relevant to the selected output and Template. Save or update this post before queueing so the latest details are included.', 'worldgraph' ); ?></p>
 			<fieldset class="worldgraph-generate-asset__modes">
 				<legend><strong><?php esc_html_e( 'Choose a generation type', 'worldgraph' ); ?></strong></legend>
 				<div class="worldgraph-generate-asset__mode-list">
@@ -290,7 +306,7 @@ class Asset_Generator_MetaBox {
 			</div>
 			<details class="worldgraph-generate-asset__run-controls" hidden>
 				<summary><strong><?php esc_html_e( 'Run controls (optional)', 'worldgraph' ); ?></strong></summary>
-				<p class="description"><?php esc_html_e( 'Output framing defaults come from the Project. Sampling and negative-prompt defaults come from the selected Template. Changes here apply only to this run.', 'worldgraph' ); ?></p>
+				<p class="description"><?php esc_html_e( 'Controls inherit from the Template, then the Project, then this item. Changes apply only to this run unless you explicitly save them below. Project batches still resolve each output’s item defaults before applying a batch override.', 'worldgraph' ); ?></p>
 				<div class="worldgraph-generate-asset__run-control-panels"></div>
 			</details>
 			<fieldset class="worldgraph-generate-asset__direct-options" hidden>
@@ -299,7 +315,7 @@ class Asset_Generator_MetaBox {
 				<label><input type="checkbox" class="worldgraph-generate-asset__create" checked /> <?php esc_html_e( 'Create a linked Asset record', 'worldgraph' ); ?></label>
 			</fieldset>
 			<label for="worldgraph-generate-asset-prompt-<?php echo esc_attr( $post->ID ); ?>"><?php esc_html_e( 'Additional instructions for this run (optional)', 'worldgraph' ); ?></label>
-			<textarea class="widefat worldgraph-generate-asset__prompt" id="worldgraph-generate-asset-prompt-<?php echo esc_attr( $post->ID ); ?>" rows="4" placeholder="<?php esc_attr_e( 'For example: no watermark; slow camera push-in; preserve the established wardrobe.', 'worldgraph' ); ?>"></textarea>
+			<textarea class="widefat worldgraph-generate-asset__prompt" id="worldgraph-generate-asset-prompt-<?php echo esc_attr( $post->ID ); ?>" rows="4" placeholder="<?php esc_attr_e( 'For example: slow camera push-in; preserve the established wardrobe; clean unbranded frame.', 'worldgraph' ); ?>"></textarea>
 			<p class="description worldgraph-generate-asset__prompt-help"><?php esc_html_e( 'Enter only one-off directions here. They are appended to the saved Story Graph context; they never replace it. Put reusable directions in the Generation Prompt Instructions SCF field.', 'worldgraph' ); ?></p>
 			<details class="worldgraph-generate-asset__context">
 				<summary><?php esc_html_e( 'Review the generated prompt or workflow plan', 'worldgraph' ); ?></summary>

@@ -250,7 +250,8 @@ class Test_Connection_Template_Extension_Contract extends TestCase {
 		$this->assertFileExists( $guide_path );
 		$schema = json_decode( (string) file_get_contents( $schema_path ), true );
 		$this->assertSame( JSON_ERROR_NONE, json_last_error() );
-		$this->assertSame( '1.1.0', $schema['x-worldgraph-schema-version'] ?? null );
+		$this->assertSame( '1.2.0', $schema['x-worldgraph-schema-version'] ?? null );
+		$this->assertSame( 'https://worldgraph.studio/schemas/worldgraph-connection-adapter/1.2.0', $schema['$id'] ?? null );
 
 		$adapter_properties = $schema['$defs']['adapter']['properties'] ?? [];
 		$this->assertArrayHasKey( 'callbacks', $adapter_properties );
@@ -261,6 +262,8 @@ class Test_Connection_Template_Extension_Contract extends TestCase {
 		$this->assertArrayHasKey( 'poll_error_limit', $schema['$defs']['generation']['properties'] ?? [] );
 		$this->assertArrayHasKey( 'permanent_error_codes', $schema['$defs']['generation']['properties'] ?? [] );
 		$this->assertArrayHasKey( 'adapter_resolver', $schema['$defs']['generation']['properties'] ?? [] );
+		$this->assertSame( '#/$defs/promptPolicy', $schema['$defs']['generation']['properties']['prompt_policy']['$ref'] ?? null );
+		$this->assertSame( [ 'subject', 'action', 'motion' ], $schema['$defs']['promptPolicyLeaf']['properties']['hints']['properties']['lead_with']['enum'] ?? [] );
 
 		$template_schema = json_decode( (string) file_get_contents( $template_schema_path ), true );
 		$this->assertSame( JSON_ERROR_NONE, json_last_error() );

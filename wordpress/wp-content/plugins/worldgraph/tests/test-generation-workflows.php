@@ -40,6 +40,18 @@ if ( ! function_exists( 'absint' ) ) {
 	}
 }
 
+if ( ! function_exists( 'wp_strip_all_tags' ) ) {
+	function wp_strip_all_tags( $text ): string {
+		return strip_tags( (string) $text );
+	}
+}
+
+if ( ! function_exists( 'get_bloginfo' ) ) {
+	function get_bloginfo( $show = '' ): string { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed
+		return 'UTF-8';
+	}
+}
+
 require_once dirname( __DIR__ ) . '/includes/utils/generation-modality.php';
 require_once dirname( __DIR__ ) . '/includes/utils/class-generation-workflows.php';
 
@@ -80,12 +92,150 @@ class Test_Generation_Workflows extends TestCase {
 	/** Inherited Scene context must not flood Shot prompts with a transcript. */
 	public function test_inherited_context_uses_short_visual_fields(): void {
 		$this->assertSame(
-			[ 'summary', 'location', 'time_of_day', 'emotional_tone' ],
+			[ 'location', 'time_of_day', 'emotional_tone' ],
 			Generation_Workflows::INHERITED_PROMPT_FIELDS['worldgraph_scene']
 		);
+		$this->assertNotContains( 'summary', Generation_Workflows::INHERITED_PROMPT_FIELDS['worldgraph_scene'] );
 		$this->assertNotContains( 'script_content', Generation_Workflows::INHERITED_PROMPT_FIELDS['worldgraph_scene'] );
 		$this->assertNotContains( 'dialogue', Generation_Workflows::INHERITED_PROMPT_FIELDS['worldgraph_scene'] );
 		$this->assertNotContains( 'frame_rate', Generation_Workflows::PROMPT_FIELDS['worldgraph_project'] );
+	}
+
+	/** Sound prompts use compact Scene context without truncating supplied copy. */
+	public function test_sound_prompt_context_is_bounded_and_audio_copy_is_verbatim(): void {
+		$prompt  = $this->method_source( 'demonstration_sound_prompt' );
+		$context = $this->method_source( 'sound_scene_context' );
+
+		$this->assertStringContainsString( 'self::sound_scene_context( $sound )', $prompt );
+		$this->assertStringContainsString( "self::audio_verbatim_text( (string) worldgraph_get_field_value( (int) \$sound->ID, 'spoken_text' ) )", $prompt );
+		$this->assertStringContainsString( "self::audio_verbatim_text( (string) worldgraph_get_field_value( (int) \$sound->ID, 'lyrics' ) )", $prompt );
+		$this->assertStringContainsString( 'self::clean_text( (string) ( $sound->post_excerpt ?: $sound->post_content ), 48 )', $prompt );
+		$this->assertStringContainsString( "worldgraph_get_field_value( (int) \$sound->ID, 'production_notes' ), 40", $prompt );
+		$this->assertStringNotContainsString( 'self::clean_text( implode(', $prompt );
+
+		$this->assertStringContainsString( "'worldgraph_sound', 'scene', 'worldgraph_scene'", $context );
+		$this->assertStringContainsString( 'self::demonstration_scene_location( $scene )', $context );
+		$this->assertStringContainsString( "worldgraph_get_field_value( \$scene_id, 'time_of_day' )", $context );
+		$this->assertStringContainsString( "worldgraph_get_field_value( \$scene_id, 'emotional_tone' )", $context );
+		$this->assertStringNotContainsString( 'generation_prompt', $context );
+		$this->assertStringNotContainsString( 'summary', $context );
+
+		$verbatim = ( new ReflectionClass( Generation_Workflows::class ) )->getMethod( 'audio_verbatim_text' );
+		$verbatim->setAccessible( true );
+		$this->assertSame(
+			"First  line exactly.\nSecond line & unchanged.",
+			$verbatim->invoke( null, "  First  line exactly.\r\nSecond line & unchanged.\n  " )
+		);
+	}
+
+	/** Completed setup beats stay outside every Shot-generation prompt. */
+	public function test_completed_leading_beat_is_removed_from_visual_shot_prompts(): void {
+		$compose    = $this->method_source( 'compose_prompt' );
+		$primary    = $this->method_source( 'primary_prompt_text' );
+		$characters = $this->method_source( 'character_mention_position' );
+		$strip      = ( new ReflectionClass( Generation_Workflows::class ) )->getMethod( 'strip_completed_leading_beat' );
+		$strip->setAccessible( true );
+
+		$this->assertStringContainsString( "\$strip_completed_beat = 'worldgraph_shot' === \$post_type;", $compose );
+		$this->assertStringContainsString( 'primary_prompt_text( $post, $post_type, $fields, $strip_completed_beat )', $compose );
+		$this->assertStringContainsString( 'related_character_context( $post_id, $post_type, $strip_completed_beat )', $compose );
+		$this->assertStringContainsString( "'worldgraph_shot' === \$post_type && \$strip_completed_beat", $primary );
+		$this->assertStringContainsString( 'if ( $strip_completed_beat )', $characters );
+		$this->assertSame(
+			'Red closes the shutters.',
+			$strip->invoke( null, 'After saying goodnight to the Woodsman, Red closes the shutters.' )
+		);
+		$this->assertSame(
+			'While the Woodsman watches, Red closes the shutters.',
+			$strip->invoke( null, 'While the Woodsman watches, Red closes the shutters.' )
+		);
+	}
+
+	/** Current one-off instructions must consume a tight prompt budget before saved defaults. */
+	public function test_current_run_prompt_precedes_saved_visual_instructions(): void {
+		$compose = $this->method_source( 'compose_prompt' );
+		$one_off = strpos( $compose, '$base_prompt = self::clean_text( $base_prompt, 20 );' );
+		$saved   = strpos( $compose, "worldgraph_get_field_value( \$post_id, 'generation_prompt' )" );
+
+		$this->assertNotFalse( $one_off );
+		$this->assertNotFalse( $saved );
+		$this->assertLessThan( $saved, $one_off );
+		$this->assertStringContainsString( "prompt_section( 'author_instructions', __( 'Additional instructions'", $compose );
+		$this->assertStringContainsString( "prompt_section( 'author_instructions', __( 'Saved visual instructions'", $compose );
+	}
+
+	/** Project style and Shot movement use distinct, compact authoring controls. */
+	public function test_visual_direction_motion_and_camera_are_separate_prompt_sections(): void {
+		$project_group = json_decode( (string) file_get_contents( dirname( __DIR__ ) . '/acf-json/group_worldgraph_project.json' ), true );
+		$scene_group   = json_decode( (string) file_get_contents( dirname( __DIR__ ) . '/acf-json/group_worldgraph_scene.json' ), true );
+		$shot_group    = json_decode( (string) file_get_contents( dirname( __DIR__ ) . '/acf-json/group_worldgraph_shot.json' ), true );
+		$this->assertIsArray( $project_group );
+		$this->assertIsArray( $scene_group );
+		$this->assertIsArray( $shot_group );
+		$project_fields = array_column( (array) ( $project_group['fields'] ?? [] ), null, 'name' );
+		$scene_fields   = array_column( (array) ( $scene_group['fields'] ?? [] ), null, 'name' );
+		$shot_fields    = array_column( (array) ( $shot_group['fields'] ?? [] ), null, 'name' );
+
+		$this->assertSame( 'Project Visual Direction', $project_fields['generation_prompt']['label'] );
+		$this->assertStringContainsString( 'about 20 words', $project_fields['generation_prompt']['instructions'] );
+		$this->assertStringContainsString( 'medium or rendering style, lighting, palette, contrast, and texture', $project_fields['generation_prompt']['instructions'] );
+		$this->assertSame( 'Scene Look & Lighting Override', $scene_fields['generation_prompt']['label'] );
+		$this->assertSame( 'text', $scene_fields['lens']['type'] );
+		$this->assertSame( 'select', $scene_fields['camera_movement']['type'] );
+		$this->assertSame( $shot_fields['camera_movement']['choices'], $scene_fields['camera_movement']['choices'] );
+		$this->assertSame( 'select', $shot_fields['camera_movement']['type'] );
+		$this->assertSame( 'text', $shot_fields['motion_direction']['type'] );
+		$this->assertSame( 'Locked Off (Static)', $shot_fields['camera_movement']['choices']['locked_off'] );
+		$this->assertSame( 'Follow Subject', $shot_fields['camera_movement']['choices']['follow_subject'] );
+		$this->assertSame( 'Additional Generation Constraints', $shot_fields['generation_prompt']['label'] );
+		$this->assertContains( 'camera_movement', \WorldGraph\Utils\worldgraph_expected_fields_for_cpt( 'worldgraph_shot' ) );
+		$this->assertContains( 'motion_direction', \WorldGraph\Utils\worldgraph_expected_fields_for_cpt( 'worldgraph_shot' ) );
+		$this->assertContains( 'lens', \WorldGraph\Utils\worldgraph_expected_fields_for_cpt( 'worldgraph_scene' ) );
+		$this->assertContains( 'camera_movement', \WorldGraph\Utils\worldgraph_expected_fields_for_cpt( 'worldgraph_scene' ) );
+
+		$compose   = $this->method_source( 'compose_prompt' );
+		$style     = $this->method_source( 'project_visual_direction' );
+		$scene_style = $this->method_source( 'scene_visual_direction' );
+		$direction = $this->method_source( 'visual_direction_context' );
+		$shot      = $this->method_source( 'shot_prompt_field_sections' );
+		$inherited = $this->method_source( 'inherited_instructions' );
+		$this->assertStringContainsString( "prompt_section( 'look', \$visual_direction, true )", $compose );
+		$this->assertStringContainsString( "[ 'worldgraph_project', 'worldgraph_scene' ]", $compose );
+		$this->assertStringContainsString( "worldgraph_get_field_value( (int) \$project->ID, 'generation_prompt' )", $style );
+		$this->assertStringContainsString( "__( 'Project visual direction', 'worldgraph' )", $style );
+		$this->assertStringContainsString( "worldgraph_get_field_value( (int) \$scene->ID, 'generation_prompt' )", $scene_style );
+		$this->assertStringContainsString( "__( 'Scene look and lighting override', 'worldgraph' )", $scene_style );
+		$this->assertStringContainsString( "reference frame's established Project and Scene look", $direction );
+		$this->assertStringContainsString( "field_prompt_value( \$post_id, 'camera_movement'", $shot );
+		$this->assertStringContainsString( "field_prompt_value( \$post_id, 'motion_direction'", $shot );
+		$this->assertStringContainsString( "scene_default_prompt_value( \$post_id, 'lens'", $shot );
+		$this->assertStringContainsString( "scene_default_prompt_value( \$post_id, 'camera_movement'", $shot );
+		$this->assertStringContainsString( "prompt_section( 'camera', \$camera, true )", $shot );
+		$this->assertStringContainsString( "prompt_section( 'motion', __( 'Motion', 'worldgraph' ) . ': ' . \$motion, true )", $shot );
+		$this->assertStringContainsString( "__( 'Perform only the described Shot action as one continuous take', 'worldgraph' )", $shot );
+		$this->assertStringContainsString( "prompt_section( 'motion', __( 'Motion', 'worldgraph' ) . ': ' . \$fallback, true )", $shot );
+		$this->assertStringContainsString( "[ 'worldgraph_project', 'worldgraph_scene' ]", $inherited );
+	}
+
+	/** Filmstrip commands must not look like removable labels to concise renderers. */
+	public function test_filmstrip_primary_commands_do_not_end_in_colons(): void {
+		$dependent = $this->method_source( 'dependent_context' );
+
+		$this->assertStringContainsString( "__( 'One horizontal filmstrip showing these panels', 'worldgraph' ) . \"\\n- \"", $dependent );
+		$this->assertStringContainsString( "__( 'One two-panel horizontal filmstrip showing', 'worldgraph' ) . \"\\n\"", $dependent );
+		$this->assertStringNotContainsString( "__( 'One horizontal filmstrip', 'worldgraph' ) . \"\\n", $dependent );
+		$this->assertStringNotContainsString( "__( 'One two-panel horizontal filmstrip', 'worldgraph' ) . \":\\n\"", $dependent );
+	}
+
+	/** The prompt filter gains Template context while retaining its original hook contract. */
+	public function test_generated_prompt_filter_passes_template_as_fourth_argument(): void {
+		$generator = (string) file_get_contents( dirname( __DIR__ ) . '/includes/utils/class-asset-generator.php' );
+
+		$this->assertStringContainsString(
+			"apply_filters( 'worldgraph_generate_asset_prompt', \$prompt, \$post, \$intent, \$template_id )",
+			$generator
+		);
+		$this->assertStringContainsString( '@param int      $template_id', $generator );
 	}
 
 	/** Demonstration planning is an explicit Project scope and durable batch kind. */
@@ -315,6 +465,29 @@ class Test_Generation_Workflows extends TestCase {
 		$this->assertStringContainsString( "array_key_exists( 'resolved_inputs', \$task ) && \$inputs !== (array) \$task['resolved_inputs']", $generator );
 	}
 
+	/** Saved defaults resolve per task after Template choice and remain frozen. */
+	public function test_run_defaults_are_resolved_per_source_and_frozen_with_the_batch(): void {
+		$queue     = $this->method_source( 'queue_batch' );
+		$generator = (string) file_get_contents( dirname( __DIR__ ) . '/includes/utils/class-asset-generator.php' );
+		$workflow  = (string) file_get_contents( dirname( __DIR__ ) . '/includes/utils/class-generation-workflows.php' );
+
+		$template_position = strpos( $queue, "\$task['template_id'] = \$template_id" );
+		$defaults_position = strpos( $queue, 'Generation_Run_Defaults::runtime_overrides(' );
+		$this->assertNotFalse( $template_position );
+		$this->assertNotFalse( $defaults_position );
+		$this->assertLessThan( $defaults_position, $template_position );
+		$this->assertStringContainsString( "(int) \$task['source_id']", $queue );
+		$this->assertStringContainsString( "array_merge( \$task['default_values'], \$task['requested_run_values'] )", $queue );
+		$this->assertStringContainsString( "'run_controls_fingerprint'", $queue );
+
+		$this->assertStringContainsString( "'run_defaults_frozen' => true", $workflow );
+		$this->assertStringContainsString( "'default_values'", $workflow );
+		$this->assertStringContainsString( "'requested_run_values'", $workflow );
+		$this->assertStringContainsString( "'_worldgraph_gen_default_values'", $generator );
+		$this->assertStringContainsString( "'_worldgraph_gen_requested_run_values'", $generator );
+		$this->assertStringContainsString( 'array_merge( $default_values, $requested_run_values )', $generator );
+	}
+
 	/** Batch summaries expose demonstration progress, skipped work, and assembly. */
 	public function test_demonstration_batch_status_and_latest_lookup_contract(): void {
 		$status = $this->method_source( 'batch_status' );
@@ -356,7 +529,7 @@ class Test_Generation_Workflows extends TestCase {
 		$this->assertStringContainsString( "'enum' => [ 'image', 'video', 'audio' ]", $controller );
 		$this->assertStringContainsString( "'type'         => \$type", $controller );
 		$this->assertStringContainsString( "'prompt_is_composed' => false", $generator );
-		$this->assertStringContainsString( 'self::build_prompt( $post_id, $intent, $provided_prompt )', $generator );
+		$this->assertStringContainsString( 'self::build_prompt( $post_id, $intent, $provided_prompt, $template_id )', $generator );
 	}
 
 	/** The guided UI must receive every same-type intent, not only the first image. */

@@ -211,6 +211,30 @@
 	margin: 4px 0 0;
 }
 
+.worldgraph-generate-asset__run-control-source {
+	display: block;
+	margin-top: 4px;
+	color: #646970;
+}
+
+.worldgraph-generate-asset__run-default-editor {
+	margin-top: 14px;
+	padding-top: 12px;
+	border-top: 1px solid #dcdcde;
+}
+
+.worldgraph-generate-asset__run-default-editor > .description {
+	margin: 0 0 8px;
+}
+
+.worldgraph-generate-asset__run-default-actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	margin-top: 6px;
+}
+
 .worldgraph-generate-asset__direct-options {
 	display: flex;
 	flex-wrap: wrap;

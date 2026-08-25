@@ -43,7 +43,7 @@ class Test_Admin_Metabox_Assets extends TestCase {
 		$this->assertStringContainsString( 'worldgraph-generate-asset__run-controls', $metabox );
 		$this->assertStringContainsString( '<details class="worldgraph-generate-asset__run-controls"', $metabox );
 		$this->assertStringContainsString( 'Run controls (optional)', $metabox );
-		$this->assertStringContainsString( 'Output framing defaults come from the Project', $metabox );
+		$this->assertStringContainsString( 'Controls inherit from the Template, then the Project, then this item', $metabox );
 		$this->assertStringContainsString( 'Additional instructions for this run', $metabox );
 		$this->assertStringContainsString( 'Review the generated prompt or workflow plan', $metabox );
 		$this->assertStringContainsString( "self::asset_version( 'assets/js/asset-generator.js' )", $metabox );
@@ -73,8 +73,8 @@ class Test_Admin_Metabox_Assets extends TestCase {
 		$this->assertStringContainsString( 'option.textContent =', $script );
 		$this->assertStringContainsString( 'description.textContent = String( field.description )', $script );
 		$this->assertStringContainsString( 'panel._worldgraphRunValues = {}', $script );
-		$this->assertStringContainsString( 'function effectiveRunControlDefault( panel, field )', $script );
-		$this->assertStringContainsString( "source: 'project'", $script );
+		$this->assertStringContainsString( 'function effectiveRunControlDefault( panel, field, template )', $script );
+		$this->assertStringContainsString( "source: 'project_profile'", $script );
 		$this->assertStringContainsString( "'aspect_ratio' === runControlSemantic( field.key )", $script );
 		$this->assertStringContainsString( 'input._worldgraphRunHasDefault', $script );
 		$this->assertStringContainsString( 'input._worldgraphRunDirty', $script );
@@ -129,5 +129,42 @@ class Test_Admin_Metabox_Assets extends TestCase {
 		$this->assertStringContainsString( "rememberTemplateSelection( panel, 'audio' );", $script );
 		$this->assertSame( 4, substr_count( $script, 'rememberTemplateSelection(' ) );
 		$this->assertStringNotContainsString( 'rememberTemplateSelections', $script );
+	}
+
+	/** Reusable defaults are explicit, inherited, and editable without credential access. */
+	public function test_run_default_editor_uses_explicit_save_reset_and_object_capabilities(): void {
+		$metabox    = (string) file_get_contents( dirname( __DIR__ ) . '/includes/admin/asset-generator-metabox.php' );
+		$script     = (string) file_get_contents( dirname( __DIR__ ) . '/assets/js/asset-generator.js' );
+		$controller = (string) file_get_contents( dirname( __DIR__ ) . '/includes/rest-api/asset-generation-controller.php' );
+
+		$this->assertStringContainsString( 'Template → Project → item → this run', $metabox );
+		$this->assertStringContainsString( 'Save current values as Project defaults', $metabox );
+		$this->assertStringContainsString( 'Save current values as item defaults', $metabox );
+		$this->assertStringContainsString( 'Reset Project defaults', $metabox );
+		$this->assertStringContainsString( 'Reset item defaults', $metabox );
+
+		$this->assertStringContainsString( 'function persistRunDefaults( panel, templatePanel, target, reset )', $script );
+		$this->assertStringContainsString( "request( settings.restUrl + '/defaults', { method: reset ? 'DELETE' : 'POST'", $script );
+		$this->assertStringContainsString( 'fingerprint: String( defaults.fingerprint )', $script );
+		$this->assertStringContainsString( 'payload.values = completeRunControlValues( templatePanel )', $script );
+		$this->assertStringContainsString( 'target && target.editable', $script );
+
+		$generate_start = strpos( $script, 'function generateSingle( panel, action )' );
+		$generate_end   = strpos( $script, 'function startBatch( panel, scope )', $generate_start );
+		$this->assertNotFalse( $generate_start );
+		$this->assertNotFalse( $generate_end );
+		$this->assertStringNotContainsString( 'persistRunDefaults', substr( $script, $generate_start, $generate_end - $generate_start ) );
+
+		$this->assertStringContainsString( "'/assets/generate/defaults'", $controller );
+		$this->assertStringContainsString( "'methods'             => 'GET'", $controller );
+		$this->assertStringContainsString( "'methods'             => 'POST'", $controller );
+		$this->assertStringContainsString( "'methods'             => 'DELETE'", $controller );
+		$this->assertStringContainsString( "current_user_can( 'edit_post', \$target_id )", $controller );
+		$permission_start = strpos( $controller, 'public static function check_defaults_permission' );
+		$permission_end   = strpos( $controller, 'public static function check_batch_permission', $permission_start );
+		$this->assertNotFalse( $permission_start );
+		$this->assertNotFalse( $permission_end );
+		$this->assertStringNotContainsString( 'manage_options', substr( $controller, $permission_start, $permission_end - $permission_start ) );
+		$this->assertStringContainsString( 'worldgraph_generation_default_fingerprint_stale', (string) file_get_contents( dirname( __DIR__ ) . '/includes/utils/class-generation-run-defaults.php' ) );
 	}
 }

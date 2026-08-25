@@ -251,15 +251,15 @@ class WorldGraph_Importer {
 		}
 
 		$scalar_fields = [
-			'Project'    => [ 'id', 'title', 'project_slug', 'description', 'target_medium', 'production_status', 'start_date', 'end_date', 'production_stage', 'frame_width', 'frame_height', 'aspect_ratio', 'frame_rate' ],
+			'Project'    => [ 'id', 'title', 'project_slug', 'description', 'generation_prompt', 'target_medium', 'production_status', 'start_date', 'end_date', 'production_stage', 'frame_width', 'frame_height', 'aspect_ratio', 'frame_rate' ],
 			'World'      => [ 'id', 'name', 'description', 'timeline', 'rules', 'themes', 'geography', 'references', 'project' ],
 			'Character'  => [ 'id', 'name', 'description', 'archetype', 'age', 'appearance', 'personality', 'motivation', 'backstory', 'voice_profile', 'avatar_asset', 'story_world' ],
 			'Location'   => [ 'id', 'name', 'description', 'environment_type', 'geography', 'mood', 'visual_reference', 'story_world' ],
 			'Prop'       => [ 'id', 'name', 'description', 'purpose', 'owner_character', 'notes' ],
 			'Organization' => [ 'id', 'name', 'organization_name', 'organization_type', 'description', 'leadership', 'goals', 'story_world' ],
 			'Episode'    => [ 'id', 'episode_number', 'title', 'synopsis', 'production_status', 'project' ],
-			'Scene'      => [ 'id', 'title', 'label', 'scene_number', 'summary', 'script_content', 'location', 'time_of_day', 'emotional_tone', 'production_notes', 'sequence', 'episode' ],
-			'Shot'       => [ 'id', 'scene', 'title', 'label', 'shot_number', 'type', 'camera_angle', 'lens', 'duration', 'take_number', 'slate_id', 'description', 'editorial_notes', 'sequence' ],
+			'Scene'      => [ 'id', 'title', 'label', 'scene_number', 'summary', 'script_content', 'location', 'time_of_day', 'emotional_tone', 'lens', 'camera_movement', 'generation_prompt', 'production_notes', 'sequence', 'episode' ],
+			'Shot'       => [ 'id', 'scene', 'title', 'label', 'shot_number', 'type', 'camera_angle', 'lens', 'camera_movement', 'motion_direction', 'duration', 'take_number', 'slate_id', 'description', 'generation_prompt', 'editorial_notes', 'sequence' ],
 			'Sound'      => [ 'id', 'title', 'type', 'production_status', 'description', 'spoken_text', 'lyrics', 'start_timecode', 'duration', 'diegetic', 'production_notes', 'scene', 'shot', 'character', 'asset' ],
 			'Storyboard' => [ 'id', 'title', 'frame_number', 'description', 'prompt_text', 'camera_notes', 'scene', 'shot', 'image_asset' ],
 			'Asset'      => [ 'id', 'title', 'asset_title', 'type', 'asset_type', 'workflow_name', 'prompt', 'model_name', 'seed', 'version', 'status', 'storage_uri', 'project', 'character', 'location', 'scene', 'storyboard' ],
@@ -447,9 +447,11 @@ class WorldGraph_Importer {
 		}
 		foreach ( $data['scenes'] as $scene ) {
 			$choice_values[] = [ $scene, 'time_of_day', [ 'dawn', 'morning', 'midday', 'afternoon', 'dusk', 'evening', 'night' ], 'Scene ' . ( $scene['id'] ?? '(unknown)' ) ];
+			$choice_values[] = [ $scene, 'camera_movement', [ 'locked_off', 'handheld', 'pan_left', 'pan_right', 'tilt_up', 'tilt_down', 'push_in', 'pull_back', 'track_left', 'track_right', 'follow_subject', 'orbit_left', 'orbit_right', 'crane_up', 'crane_down', 'zoom_in', 'zoom_out' ], 'Scene ' . ( $scene['id'] ?? '(unknown)' ) ];
 		}
 		foreach ( $data['shots'] as $shot ) {
 			$choice_values[] = [ $shot, 'camera_angle', [ 'eye_level', 'low_angle', 'high_angle', 'birdseye', 'wormseye', 'dutch' ], 'Shot ' . ( $shot['id'] ?? '(unknown)' ) ];
+			$choice_values[] = [ $shot, 'camera_movement', [ 'locked_off', 'handheld', 'pan_left', 'pan_right', 'tilt_up', 'tilt_down', 'push_in', 'pull_back', 'track_left', 'track_right', 'follow_subject', 'orbit_left', 'orbit_right', 'crane_up', 'crane_down', 'zoom_in', 'zoom_out' ], 'Shot ' . ( $shot['id'] ?? '(unknown)' ) ];
 			if ( isset( $shot['type'] ) && is_scalar( $shot['type'] ) && '' !== trim( (string) $shot['type'] ) ) {
 				$shot_type = \WorldGraph\Utils\worldgraph_normalize_shot_type( (string) $shot['type'] );
 				if ( ! isset( \WorldGraph\Utils\worldgraph_shot_types()[ $shot_type ] ) ) {
@@ -1009,15 +1011,16 @@ class WorldGraph_Importer {
 			'worldgraph_project',
 			$project,
 			[
-				'description'      => 'description',
-				'target_medium'    => 'target_medium',
-				'start_date'       => 'start_date',
-				'end_date'         => 'end_date',
-				'production_stage' => 'production_stage',
-				'frame_width'      => 'frame_width',
-				'frame_height'     => 'frame_height',
-				'aspect_ratio'     => 'aspect_ratio',
-				'frame_rate'       => 'frame_rate',
+				'description'       => 'description',
+				'generation_prompt' => 'generation_prompt',
+				'target_medium'     => 'target_medium',
+				'start_date'        => 'start_date',
+				'end_date'          => 'end_date',
+				'production_stage'  => 'production_stage',
+				'frame_width'       => 'frame_width',
+				'frame_height'      => 'frame_height',
+				'aspect_ratio'      => 'aspect_ratio',
+				'frame_rate'        => 'frame_rate',
 			]
 		);
 
@@ -1434,11 +1437,14 @@ class WorldGraph_Importer {
 				'worldgraph_scene',
 				$scene,
 				[
-					'summary'          => 'summary',
-					'script_content'   => 'script_content',
-					'time_of_day'     => 'time_of_day',
-					'emotional_tone'  => 'emotional_tone',
-					'production_notes'=> 'production_notes',
+					'summary'           => 'summary',
+					'script_content'    => 'script_content',
+					'time_of_day'       => 'time_of_day',
+					'emotional_tone'    => 'emotional_tone',
+					'lens'              => 'lens',
+					'camera_movement'   => 'camera_movement',
+					'generation_prompt' => 'generation_prompt',
+					'production_notes'  => 'production_notes',
 				]
 			);
 
@@ -1542,13 +1548,16 @@ class WorldGraph_Importer {
 				'worldgraph_shot',
 				$shot,
 				[
-					'description'     => 'shot_description',
-					'camera_angle'    => 'camera_angle',
-					'lens'            => 'lens',
-					'duration'        => 'duration',
-					'take_number'     => 'take_number',
-					'slate_id'        => 'slate_id',
-					'editorial_notes' => 'editorial_notes',
+					'description'       => 'shot_description',
+					'camera_angle'      => 'camera_angle',
+					'lens'              => 'lens',
+					'camera_movement'   => 'camera_movement',
+					'motion_direction'  => 'motion_direction',
+					'duration'          => 'duration',
+					'take_number'       => 'take_number',
+					'slate_id'          => 'slate_id',
+					'generation_prompt' => 'generation_prompt',
+					'editorial_notes'   => 'editorial_notes',
 				]
 			);
 

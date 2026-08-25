@@ -1250,6 +1250,7 @@ PROMPT;
 			$entity['props']        = $this->map_many( $entity['props'] ?? [], $aliases, 'props' );
 			$entity['tags']         = $this->normalize_slugs( $entity['tags'] ?? [] );
 			$this->keep_choice( $entity, 'time_of_day', [ 'dawn', 'morning', 'midday', 'afternoon', 'dusk', 'evening', 'night' ] );
+			$this->keep_choice( $entity, 'camera_movement', [ 'locked_off', 'handheld', 'pan_left', 'pan_right', 'tilt_up', 'tilt_down', 'push_in', 'pull_back', 'track_left', 'track_right', 'follow_subject', 'orbit_left', 'orbit_right', 'crane_up', 'crane_down', 'zoom_in', 'zoom_out' ] );
 			$this->map_optional( $entity, 'location', $aliases, 'locations' );
 			$this->map_optional( $entity, 'episode', $aliases, 'episodes' );
 			if ( isset( $episode_scenes[ $entity['id'] ] ) ) {
@@ -1285,6 +1286,7 @@ PROMPT;
 				}
 			}
 			$this->keep_choice( $entity, 'camera_angle', [ 'eye_level', 'low_angle', 'high_angle', 'birdseye', 'wormseye', 'dutch' ] );
+			$this->keep_choice( $entity, 'camera_movement', [ 'locked_off', 'handheld', 'pan_left', 'pan_right', 'tilt_up', 'tilt_down', 'push_in', 'pull_back', 'track_left', 'track_right', 'follow_subject', 'orbit_left', 'orbit_right', 'crane_up', 'crane_down', 'zoom_in', 'zoom_out' ] );
 		}
 		unset( $entity );
 		$document['shots'] = array_values( array_filter( $document['shots'], static fn( array $shot ): bool => '' !== (string) ( $shot['scene'] ?? '' ) ) );

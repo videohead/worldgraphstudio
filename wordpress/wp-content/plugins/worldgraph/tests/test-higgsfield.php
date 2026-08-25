@@ -650,7 +650,7 @@ class Test_Higgsfield extends TestCase {
 		$schema = json_decode( (string) file_get_contents( $path ), true );
 
 		$this->assertSame( JSON_ERROR_NONE, json_last_error(), "Invalid adapter schema JSON: {$path}" );
-		$this->assertSame( '1.1.0', $schema['x-worldgraph-schema-version'] ?? null );
+		$this->assertSame( '1.2.0', $schema['x-worldgraph-schema-version'] ?? null );
 		$this->assertSame( '#/$defs/oauth', $schema['$defs']['adapter']['properties']['oauth']['$ref'] ?? null );
 		$this->assertSame( '#/$defs/oauthProfile', $schema['$defs']['oauth']['properties']['profiles']['additionalProperties']['$ref'] ?? null );
 		$this->assertSame(

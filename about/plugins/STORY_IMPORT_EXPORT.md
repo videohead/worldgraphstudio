@@ -206,6 +206,15 @@ With overwrite enabled, optional fields use patch semantics: omission preserves
 the stored value and an explicit empty value clears it. Sequence order is a
 snapshot; other container relationships are additive.
 
+The portable Project `generation_prompt` is the concise, pervasive Project
+Visual Direction. Scenes may carry a `generation_prompt` as a Scene Look &
+Lighting Override plus optional `lens` and `camera_movement` defaults. Shots may
+additionally carry `camera_movement`, `motion_direction`, and a
+`generation_prompt` reserved for exceptional generation constraints. Scene-wide
+sound and music direction remains represented by linked `sounds[]` records, not
+a second Scene prose field. These optional fields remain valid in version 1.2,
+so older 1.0–1.2 documents and integrations that omit them continue to import.
+
 See the [JSON Import Specification](../example-workflow/JSON_import_spec.md) for
 the complete field and relationship contract.
 
@@ -226,9 +235,11 @@ deterministic:
 - other collections by external ID.
 
 Connections, Templates, generation jobs, WordPress lifecycle status and users,
-the non-existent Storyboard CPT, and `generation_prompt` or other fields not in
-the importer version 1.2 contract are intentionally excluded. The WordPress
-download name is `<project>.worldgraph.json`.
+the non-existent Storyboard CPT, and fields not in the importer version 1.2
+contract are intentionally excluded. Project visual direction and Shot camera,
+motion, and exceptional generation fields are included, as are Scene look,
+lighting, lens, and camera defaults. The WordPress download name is
+`<project>.worldgraph.json`.
 
 ## Markdown export
 

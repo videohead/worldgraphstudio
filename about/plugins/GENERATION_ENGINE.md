@@ -90,39 +90,61 @@ do not expose audio controls.
 
 ## Story-aware prompts and representative workflows
 
-Project, Story World, Character, Prop, Location, Shot, Scene, and Episode have
-an optional `generation_prompt` SCF textarea for media-specific instructions.
-When no author-edited base prompt is supplied, the prompt composer combines:
+Generation direction is scoped rather than inherited as undifferentiated prose.
+Project `generation_prompt` is the production-wide Visual Direction. Scene
+`generation_prompt` is a short Look & Lighting override; Scene Location, time,
+and tone define the setting boundary, while Scene lens and camera movement are
+defaults. A nonblank Shot lens or camera movement replaces the matching Scene
+default, and explicit `locked_off` is therefore a meaningful override. Shot
+`motion_direction` contains one visible action in temporal order, while Shot
+`generation_prompt` is reserved for exceptional constraints.
 
-1. for video, a motion-first direction and the selected output intent's
-   creative objective;
-2. the content type and title, then bounded inherited ancestor context;
-3. non-duplicate excerpt and post content;
-4. labeled, type-appropriate SCF details, including long-form descriptions,
-   appearance, world rules, scripts, dialogue, production notes, and camera
-   details where applicable;
-5. dependent Story Graph context for Scene and Episode filmstrips;
-6. for non-video outputs, the selected output intent's creative objective;
-7. `generation_prompt`;
-8. optional `base_prompt` text labeled **Additional request instructions**; and
-9. output-specific continuity, detail, and no-watermark constraints.
+The composer starts with the requested Shot or asset description and then adds
+only visual details that identify the subject, action, setting, characters,
+camera, motion, look, or continuity. A still receives the decisive frame moment
+and never receives movement prose. A video receives the one Shot action,
+effective camera settings, duration, and relevant ending. Completed setup beats
+are removed, so a character mentioned only in an earlier action is not added to
+the frame. Shot prompts inherit the compact Scene setting and style boundary,
+not Project/Episode synopsis, Scene summary, script, dialogue, production notes,
+or Sound prose. Scene-wide music, ambience, and effects remain linked Sound
+records, with Shot-linked Sounds acting as narrower cues.
 
-Markup is removed, select values and relationship titles are made readable,
-and the final provider prompt has a global 2,400-word bound. `base_prompt` adds
-author direction without removing saved Story Graph context or
-`generation_prompt`; in Project scope it is appended to every source prompt.
-The `worldgraph_generate_asset_prompt` filter runs last and receives the prompt,
-source post, and intent.
+The composer represents input as semantic sections: `primary`, `objective`,
+`identity`, `subject`, `action`, `setting`, `characters`, `camera`, `motion`,
+`look`, `continuity`, bounded ancestor/dependent context, protected author
+instructions, constraints, and verbatim text. Markup is removed, relationship
+titles are rendered readably, and duplicate source text is removed.
+`base_prompt` remains additive and does not erase the saved Story Graph context
+or `generation_prompt`.
 
-Template selection happens after this base composition. For a video Template,
-`Generation_Prompt_Profiles` then prepends one idempotent family-specific
-positive-prompt opening. Wan uses explicit camera/subject motion, temporal
-progression, a cinematic-lighting anchor, and stable identity. LTX uses one
-continuous chronological action description covering subject, environment,
-camera, lighting, and color through the final frame; audio cues are recommended
-only for workflows that generate audio. Negative-prompt notes remain separate
-guidance. Prompt profiles do not override workflow model files or sampling,
-resolution, frame-rate, CFG, denoise, or motion values.
+After Template selection, `Generation_Prompt_Policy` orders, omits, and bounds
+those sections using a normalized non-executable policy. It accepts numeric
+target and hard word/character/byte limits, preferred or forbidden optional
+section IDs, a sanitized `profile`, and the enumerated `lead_with` and `format`
+hints.
+`lead_with` is `subject`, `action`, or `motion`; it prioritizes that section
+immediately after the required opening description. Formats are
+`natural_language`, `concise_phrases`, and `chronological_prose`.
+Primary intent, author instructions, constraints, and verbatim author text are
+protected from policy suppression; the hard output ceiling still applies.
+
+Policy precedence is core output/modality/intent fallback, trusted adapter
+manifest `generation.prompt_policy`, the trusted
+`worldgraph_generation_connection_prompt_policy` Connection filter, reviewed
+model family/model slug, Template
+`configuration.provider_prompt_policy`, operator
+`configuration.prompt_policy`, first-class Template prompt-guidance fields,
+bounded positive-prompt schema `maxLength`, and the final trusted
+`worldgraph_generation_prompt_policy` filter. Hard ceilings combine by taking
+the most restrictive positive bound.
+MCP and provider descriptions, schemas, resources, results, and free-form
+guidance are untrusted data and are never inserted or executed as runtime
+prompt instructions. Provisioning may normalize reviewed numeric or enumerated
+discovery into `configuration.provider_prompt_policy`; generation never asks
+MCP for prompt-writing prose. Negative conditioning remains a separate run
+control. The `worldgraph_generate_asset_prompt` compatibility filter cannot
+expand the final policy bounds.
 
 For the official WAN 2.2 14B first/last-frame quality graph, preserve the
 authored two-expert bundle: no Lightning LoRAs, shift 8, 20 steps, CFG 4,
@@ -288,6 +310,24 @@ template ID, optional workflow JSON, model/checkpoint information, and default
 configuration. Templates are WordPress configuration records, not permission
 to run arbitrary server code.
 
+A Template may also store a reviewed normalized prompt policy. Provider
+discovery writes only bounded numeric or enumerated values to
+`configuration.provider_prompt_policy`; an advanced operator declaration may
+remain in `configuration.prompt_policy`. Trusted adapters may supply
+`generation.prompt_policy` in their manifest. These declarations tune prompt
+length, semantic section priority, and concise formatting without copying raw
+provider or MCP prose into a generation request.
+
+The Template editor makes the common operator layer first-class:
+`prompt_lead_with`, `prompt_format`, `prompt_target_words`, and
+`prompt_max_words`. Blank values inherit reviewed Connection/model guidance;
+the target is a creative goal, while the maximum is a hard ceiling that cannot
+loosen a stricter inherited limit. The **Effective Prompt Guidance** side box
+shows the saved Template's resolved profile, post-opening priority, format,
+target/maximum, and leading section order. Operators therefore do not need to
+write `configuration_json` for common prompt tuning; advanced section lists,
+character/byte limits, and provisioned policy remain normalized JSON data.
+
 Runnable Template DTOs expose a sanitized `run_controls` contract with
 `version: 1`, a deterministic definition `fingerprint`, and ordered `fields`.
 Each field contains a provider-neutral `key`, `label`, UI `type`, and only
@@ -300,10 +340,20 @@ filesystem paths. WordPress re-derives this contract from the selected Template
 when a job is submitted, so a stale or modified browser DTO cannot expand what
 the Template permits.
 
+Known field descriptions begin with bounded provider-neutral help. `cfg` is
+labeled **CFG (Classifier-Free Guidance)** and explains prompt adherence and
+the risk of excessive values; non-CFG `guidance` is explained separately as a
+model-specific control. Distinct provider-schema `description` or `help` text
+is stripped of markup and control characters, whitespace-normalized, bounded,
+and appended as **Provider note:**. A generic allowlisted field may expose only
+that bounded note. This display text never changes the control allowlist,
+validation, default values, bindings, or media prompt.
+
 The conditional field vocabulary covers controls only when the Template's
 workflow or provider schema discovers or declares them: negative conditioning;
-fixed integer seed; bounded sampling steps; classic diffusion CFG or,
-separately, FLUX-style guidance; allowlisted sampler and scheduler; image width
+fixed integer seed; bounded sampling steps; classic diffusion CFG
+(Classifier-Free Guidance) or, separately, FLUX-style guidance; allowlisted
+sampler and scheduler; image width
 and height; video duration and frames per second; prompt enhancement when the
 saved workflow exposes it safely; and distinct extra text-conditioning or
 dual-CLIP channels. The engine does not infer dual
@@ -350,9 +400,31 @@ not defined for the current CPT are disabled.
 The complete prompt for a single output remains server-composed and appears in
 a collapsed read-only preview; a Sequence instead previews its distinct jobs.
 Template-conditional fields live in a separate collapsed **Run controls
-(optional)** disclosure. Its effective precedence is explicit per-run value,
-compatible Project output framing, Template sampling/negative default, then
-the provider/workflow baseline. The browser sends only deliberate changes.
+(optional)** disclosure. Each runnable Template also carries a contextual
+`run_defaults` resolution. Effective precedence is, in ascending order:
+
+1. Template defaults;
+2. compatible owning-Project profile values;
+3. an owning-Project override for the exact Connection + Template pair;
+4. a source-item override for that exact pair; and
+5. explicit one-off direct or batch values.
+
+The generic item layer works for Shot, Character, Location, Prop, Scene,
+Episode, Story World, and other supported sources. Generation never saves a
+default implicitly. The editor provides explicit Project/item save and reset
+actions. A save posts the complete current form; the server stores only values
+that differ from its inherited lower layers. Reset removes only the selected
+scope and pair.
+
+Project and item overrides use post meta
+`_worldgraph_generation_run_defaults`, version 1. Entries are keyed exactly
+`c:{connection_id}:t:{template_id}` and repeat the integer `connection_id` and
+`template_id`, the current 64-character SHA-256 `run_controls.fingerprint`,
+and a scalar `values` map. Connection is derived from the Template. Save and
+reset require the current fingerprint to prevent stale-form writes. Stale
+stored values are revalidated against the current contract on read and either
+returned with a warning or ignored; a Template moved to another Connection
+cannot inherit its old pair accidentally.
 
 Runnable Template lists exclude disabled Connections, mismatched output types,
 and Templates whose required bindings cannot be resolved for every applicable
@@ -366,9 +438,10 @@ corresponding generated tasks when it also selects the explicit per-type
 Template override. Values must be scalar, use advertised keys, and match the
 advertised types, bounds, and allowed choices. A non-empty batch map without
 its matching Template ID, unknown keys, and nested arrays/objects are errors;
-they are not
-silently forwarded. Omitting these maps applies compatible Project framing and
-otherwise preserves the Template/provider defaults. Omitting `seed`
+they are not silently forwarded. Omitting these maps still resolves each
+task's saved Project and item pair overrides after compatible Project framing.
+An explicit per-type map is the highest one-off layer for every applicable
+task. Omitting `seed`
 specifically preserves the existing randomization behavior; integer `0` is not
 treated as omission.
 
@@ -423,9 +496,12 @@ idempotency key, a
 versioned frozen task plan, materialization cursor, planned total, and aggregate
 status. The current frozen workflow contract is version 2. Each task snapshot
 retains its step, source, workflow, intent, output type, Template, prompt,
-prompt hash, featured behavior, normalized explicit run
-values, and separately projected Project output values. Both effective value
-sets are frozen before materialization. Child jobs store
+prompt hash, featured behavior, saved Project/item default values, requested
+one-off values, effective normalized run values, separately projected Project
+profile values, and the run-control fingerprint. All layers are resolved after
+the task's exact Template is selected and frozen before materialization. Child
+jobs retain the saved-default, requested, and effective snapshots as distinct
+metadata so later default edits cannot change accepted work. Child jobs store
 `_worldgraph_gen_batch_id`, `_worldgraph_gen_batch_step`, and
 `_worldgraph_gen_intent`. This separation lets a Project batch run for hours or
 days while every child remains independently observable through the ordinary
@@ -590,9 +666,13 @@ The canonical REST base is `/wp-json/worldgraph/v1/`.
 
 | Method and route | Purpose |
 | --- | --- |
-| `GET /assets/generate/prompt?post_id={id}` | Direct image/Shot-video actions, read-only prompts, and runnable Templates with sanitized run controls |
+| `GET /assets/generate/prompt?post_id={id}` | Direct image/Shot-video actions, read-only prompts and prompt-policy diagnostics, and runnable Templates with sanitized run controls/defaults |
+| `POST /assets/generate/prompt-preview` | Recompose one output for an explicitly selected Template and return bounded prompt-policy diagnostics |
 | `POST /assets/generate` | Queue one story-aware image or Shot video with optional `run_values` |
-| `GET /assets/generate/plan?post_id={id}&scope=item\|project\|demonstration` | Preview representative or whole-story outputs, prompt hashes, runnable Templates and run controls, defaults, fallbacks, and the latest batch |
+| `GET /assets/generate/defaults?post_id={id}&template_id={id}&scope=item\|project` | Inspect effective Template, Project-profile, Project-pair, and item-pair values |
+| `POST /assets/generate/defaults` | Explicitly save the complete current form as sparse Project or item pair defaults; requires the current fingerprint |
+| `DELETE /assets/generate/defaults` | Reset one Project or item pair override; requires the current fingerprint |
+| `GET /assets/generate/plan?post_id={id}&scope=item\|project\|demonstration` | Preview representative or whole-story outputs, prompt hashes, runnable Templates and contextual run defaults, fallbacks, and the latest batch |
 | `POST /assets/generate/batches` | Validate and start a durable item, Project representative-media, or Project demonstration batch with optional image/video/audio Template overrides and run values |
 | `GET /assets/generate/batches/{id}` | Read aggregate batch progress and child jobs |
 | `POST /assets/generate/batches/{id}/cancel` | Cancel not-yet-dispatched children and return refreshed batch status |
@@ -613,8 +693,9 @@ a `worldgraph_conn_configurator` nonce.
 
 The story-aware run-value contract is additive. Clients that omit
 `run_values`, `image_run_values`, `video_run_values`, and `audio_run_values`
-keep the prior Template-default behavior. See the REST specification for their
-exact request and response shapes.
+still inherit the saved Project and per-source item pair defaults. Submitted
+values are non-persistent one-off overrides. See the REST specification for
+their exact request and response shapes.
 
 ## WordPress Abilities and MCP exposure
 
@@ -641,6 +722,9 @@ abilities; their current LLM requests use `tool_choice: none`. See
   network boundary.
 - Treat provider catalogs, workflow descriptions, URLs, and error text as
   untrusted input.
+- Never execute or append provider/MCP descriptions, schemas, resources,
+  results, or free-form guidance as prompt instructions. Normalize only
+  reviewed, bounded numeric and enumerated policy fields at provisioning time.
 - Treat submitted run values as untrusted even when they came from a
   server-rendered control. Re-derive the selected Template's allowlist and
   normalize only scalar, typed, bounded, allowlisted values before persistence
@@ -660,7 +744,9 @@ abilities; their current LLM requests use `tool_choice: none`. See
 - [Generation modalities](../../wordpress/wp-content/plugins/worldgraph/includes/utils/generation-modality.php)
 - [Generation worker](../../wordpress/wp-content/plugins/worldgraph/includes/utils/generation-batch.php)
 - [Representative workflows and batches](../../wordpress/wp-content/plugins/worldgraph/includes/utils/class-generation-workflows.php)
-- [Model-aware prompt profiles](../../wordpress/wp-content/plugins/worldgraph/includes/utils/class-generation-prompt-profiles.php)
+- [Normalized prompt policy](../../wordpress/wp-content/plugins/worldgraph/includes/utils/class-generation-prompt-policy.php)
+- [Prompt-policy compatibility filter](../../wordpress/wp-content/plugins/worldgraph/includes/utils/class-generation-prompt-profiles.php)
+- [Generation run-default repository](../../wordpress/wp-content/plugins/worldgraph/includes/utils/class-generation-run-defaults.php)
 - [FFmpeg rough-cut assembler](../../wordpress/wp-content/plugins/worldgraph/includes/utils/class-rough-cut-assembler.php)
 - [Generation REST controller](../../wordpress/wp-content/plugins/worldgraph/includes/rest-api/generation-controller.php)
 - [Assets metabox controller](../../wordpress/wp-content/plugins/worldgraph/includes/rest-api/asset-generation-controller.php)

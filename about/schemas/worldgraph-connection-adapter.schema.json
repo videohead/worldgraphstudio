@@ -1,9 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://worldgraph.studio/schemas/worldgraph-connection-adapter/1.1.0",
+  "$id": "https://worldgraph.studio/schemas/worldgraph-connection-adapter/1.2.0",
   "title": "World Graph Studio Connection adapter manifest",
   "description": "Strict portable authoring profile for entries returned through worldgraph_conn_adapters. It intentionally requires explicit labels and normalized object shapes even where the PHP runtime accepts older compatibility forms. Runtime closures must be represented by a function/class string or a [class, method] array before validation.",
-  "x-worldgraph-schema-version": "1.1.0",
+  "x-worldgraph-schema-version": "1.2.0",
   "type": "object",
   "propertyNames": {
     "pattern": "^[a-z][a-z0-9_-]*$"
@@ -293,6 +293,143 @@
       },
       "additionalProperties": false
     },
+    "promptPolicyLeaf": {
+      "type": "object",
+      "minProperties": 1,
+      "properties": {
+        "limits": {
+          "type": "object",
+          "minProperties": 1,
+          "properties": {
+            "target_words": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 4000
+            },
+            "max_words": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 4000
+            },
+            "max_characters": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100000
+            },
+            "max_bytes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100000
+            }
+          },
+          "additionalProperties": false
+        },
+        "sections": {
+          "type": "object",
+          "minProperties": 1,
+          "properties": {
+            "preferred": {
+              "$ref": "#/$defs/promptSectionList"
+            },
+            "forbidden": {
+              "$ref": "#/$defs/promptSectionList"
+            }
+          },
+          "additionalProperties": false
+        },
+        "hints": {
+          "type": "object",
+          "minProperties": 1,
+          "properties": {
+            "profile": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80,
+              "pattern": "^[a-z][a-z0-9_-]*$"
+            },
+            "lead_with": {
+              "enum": [
+                "subject",
+                "action",
+                "motion"
+              ]
+            },
+            "format": {
+              "enum": [
+                "natural_language",
+                "concise_phrases",
+                "chronological_prose"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "promptSectionList": {
+      "type": "array",
+      "maxItems": 20,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "primary",
+          "objective",
+          "identity",
+          "subject",
+          "action",
+          "setting",
+          "characters",
+          "camera",
+          "motion",
+          "look",
+          "continuity",
+          "ancestor_context",
+          "dependent_context",
+          "author_instructions",
+          "constraints",
+          "verbatim",
+          "other"
+        ]
+      }
+    },
+    "promptPolicy": {
+      "description": "A normalized non-secret prompt policy, either flat or keyed by output type/modality. It may set bounded composition preferences but cannot carry executable instructions.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/promptPolicyLeaf"
+        },
+        {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {
+            "enum": [
+              "default",
+              "image",
+              "video",
+              "audio",
+              "text",
+              "text_to_image",
+              "image_to_image",
+              "image_text_to_image",
+              "text_to_video",
+              "text_image_to_video",
+              "video_to_video",
+              "video_with_audio",
+              "text_to_speech",
+              "text_to_dialogue",
+              "text_to_sound_effect",
+              "text_to_music",
+              "text_to_voice",
+              "text_to_lyrics"
+            ]
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/promptPolicyLeaf"
+          }
+        }
+      ]
+    },
     "generation": {
       "type": "object",
       "properties": {
@@ -347,6 +484,10 @@
             "pattern": "^[a-z][a-z0-9_-]*$"
           },
           "uniqueItems": true
+        },
+        "prompt_policy": {
+          "description": "Reviewed provider defaults for prompt length, semantic section priority, and surface format. Remote MCP prose must not be copied into this declaration.",
+          "$ref": "#/$defs/promptPolicy"
         }
       },
       "oneOf": [

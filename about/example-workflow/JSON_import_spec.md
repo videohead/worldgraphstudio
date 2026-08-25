@@ -185,10 +185,11 @@ stable.
 
 Ordering is deterministic: Episodes use `episode_number`; Scenes use Sequence
 order and then `scene_number`; Shots and Sounds are grouped by Scene; remaining
-entity collections use external ID order. Connections, Templates, generation
-jobs, WordPress users/status, the non-existent Storyboard CPT, and
-`generation_prompt` or other fields outside the actual importer contract are
-not portable and are excluded.
+entity collections use external ID order. Project visual direction, Scene look
+and lighting overrides, Scene camera defaults, and Shot camera movement, motion
+direction, and exceptional generation constraints are portable. Connections,
+Templates, generation jobs, WordPress users/status, the non-existent Storyboard
+CPT, and other fields outside the actual importer contract are excluded.
 
 ## Top-Level Document
 
@@ -225,6 +226,7 @@ project -> worldgraph_project
 | `title` | string | `post_title`, `meta.project_name` | Required. |
 | `project_slug` | string | `meta.project_slug` | URL-friendly identifier; legacy readers may derive it from `id`. |
 | `description` | string | `post_content`, `meta.description` | Project overview. |
+| `generation_prompt` | string | `meta.generation_prompt` | Optional concise Project Visual Direction applied pervasively to generated media: medium/rendering, lighting, palette, contrast, or texture rather than plot or shot action. |
 | `genres` | string[] | `worldgraph_genre` terms | Taxonomy slugs. |
 | `target_medium` | string | `meta.target_medium` | `film`, `short_film`, `tv_series`, `web_series`, `anime`, `animation`, `documentary`, `game`, or `other`. |
 | `production_status` | string | `worldgraph_status` term | Existing taxonomy slug. |
@@ -396,6 +398,9 @@ scenes[] -> worldgraph_scene
 | `props` | string[] | Story Graph relationships | Prop external IDs used in the Scene. |
 | `time_of_day` | string | `meta.time_of_day` | `dawn`, `morning`, `midday`, `afternoon`, `dusk`, `evening`, or `night`. |
 | `emotional_tone` | string | `meta.emotional_tone` | Dramatic tone. |
+| `lens` | string | `meta.lens` | Optional scene-wide baseline lens or field-of-view note; a Shot lens may override it. |
+| `camera_movement` | string | `meta.camera_movement` | Optional scene-wide video-camera default using the same values as Shot `camera_movement`; a Shot value may override it. |
+| `generation_prompt` | string | `meta.generation_prompt` | Optional Scene Look & Lighting Override that modifies the Project visual direction without repeating story action. |
 | `production_notes` | string | `meta.production_notes` | Staging, continuity, or capture notes. |
 | `tags` | string[] | `worldgraph_scene_tag` terms | Existing taxonomy slugs. |
 | `sequence` | string | `worldgraph_sequence` term | Sequence external ID; must agree with `sequence.id` and `sequence.order`. |
@@ -412,7 +417,8 @@ scenes[] -> worldgraph_scene
 
 Ordinary dialogue remains canonical Scene metadata and must not be duplicated as
 Sound records. Narration, voice-over, ADR, music, ambience, and effects belong
-in `sounds[]`.
+in `sounds[]`. Scene-wide sound and music direction remains represented by those
+linked Sound records; there is no second Scene sound-prose field.
 
 ## Shots
 
@@ -432,10 +438,13 @@ shots[] -> worldgraph_shot
 | `type` | string | `meta.shot_type` | Canonical slug such as `wide`, `medium`, or `close_up`. |
 | `camera_angle` | string | `meta.camera_angle` | Canonical slug such as `eye_level`, `low_angle`, or `high_angle`. |
 | `lens` | string | `meta.lens` | Lens or field-of-view note. |
+| `camera_movement` | string | `meta.camera_movement` | Optional primary video-camera behavior: `locked_off`, `handheld`, `pan_left`, `pan_right`, `tilt_up`, `tilt_down`, `push_in`, `pull_back`, `track_left`, `track_right`, `follow_subject`, `orbit_left`, `orbit_right`, `crane_up`, `crane_down`, `zoom_in`, or `zoom_out`. |
+| `motion_direction` | string | `meta.motion_direction` | Optional generated-video direction describing one continuous visible action in temporal order, including pace or ambient motion when important. |
 | `duration` | string | `meta.duration` | ISO 8601 duration preferred. |
 | `take_number` | number | `meta.take_number` | Planned or selected take. |
 | `slate_id` | string | `meta.slate_id` | Production slate identifier. |
 | `description` | string | `post_content`, `meta.shot_description` | Composition and action. |
+| `generation_prompt` | string | `meta.generation_prompt` | Optional exceptional generation constraints not already captured by the Shot description, framing, motion fields, or Project visual direction. |
 | `editorial_notes` | string | `meta.editorial_notes` | Cut, transition, or timing notes. |
 
 Each Shot owns one required `belongs_to` Scene relationship. The containing

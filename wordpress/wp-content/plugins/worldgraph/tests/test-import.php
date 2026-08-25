@@ -188,6 +188,24 @@ class Test_WorldGraph_Import extends TestCase {
 		$this->assertStringContainsString( 'take_number must be at least 1.', $source );
 	}
 
+	/** Project, Scene, and Shot visual direction must round-trip through the portable mapping. */
+	public function test_importer_and_exporter_map_portable_visual_direction_fields() {
+		$root     = dirname( __DIR__ ) . '/plugins/story-import-export/includes/';
+		$importer = file_get_contents( $root . 'class-worldgraph-importer.php' );
+		$exporter = file_get_contents( $root . 'class-worldgraph-json-exporter.php' );
+
+		$this->assertNotFalse( $importer );
+		$this->assertNotFalse( $exporter );
+		$this->assertStringContainsString( "'generation_prompt' => 'generation_prompt'", $importer );
+		$this->assertStringContainsString( "'camera_movement'   => 'camera_movement'", $importer );
+		$this->assertStringContainsString( "'motion_direction'  => 'motion_direction'", $importer );
+		$this->assertSame( 3, substr_count( $exporter, "'generation_prompt' => \$this->scalar_field(" ) );
+		$this->assertStringContainsString( "scalar_field( \$scene->ID, 'lens' )", $exporter );
+		$this->assertStringContainsString( "scalar_field( \$scene->ID, 'camera_movement' )", $exporter );
+		$this->assertStringContainsString( "'camera_movement'   => \$this->scalar_field( \$shot->ID, 'camera_movement' )", $exporter );
+		$this->assertStringContainsString( "'motion_direction'  => \$this->scalar_field( \$shot->ID, 'motion_direction' )", $exporter );
+	}
+
 	/** Portable taxonomy fields accept only nonempty canonical slug strings. */
 	public function test_importer_enforces_canonical_taxonomy_slug_values() {
 		$source = file_get_contents( dirname( __DIR__ ) . '/plugins/story-import-export/includes/class-worldgraph-importer.php' );
@@ -356,7 +374,7 @@ class Test_WorldGraph_Import extends TestCase {
 
 		$expected_fields = [
 			'project' => [
-				'id', 'title', 'project_slug', 'description', 'genres', 'target_medium',
+				'id', 'title', 'project_slug', 'description', 'generation_prompt', 'genres', 'target_medium',
 				'production_status', 'start_date', 'end_date', 'team_members',
 				'production_stage', 'frame_width', 'frame_height', 'aspect_ratio', 'frame_rate',
 			],
@@ -385,11 +403,13 @@ class Test_WorldGraph_Import extends TestCase {
 			'scenes' => [
 				'id', 'scene_number', 'title', 'location', 'characters', 'props', 'summary',
 				'script_content', 'dialogue', 'time_of_day', 'emotional_tone',
-				'production_notes', 'tags', 'sequence', 'episode',
+				'lens', 'camera_movement', 'generation_prompt', 'production_notes', 'tags',
+				'sequence', 'episode',
 			],
 			'shots' => [
 				'id', 'shot_number', 'title', 'scene', 'sequence', 'type', 'camera_angle',
-				'lens', 'duration', 'take_number', 'slate_id', 'description', 'editorial_notes',
+				'lens', 'camera_movement', 'motion_direction', 'duration', 'take_number',
+				'slate_id', 'description', 'generation_prompt', 'editorial_notes',
 			],
 			'sounds' => [
 				'id', 'title', 'type', 'production_status', 'description', 'spoken_text',

@@ -436,18 +436,48 @@ The editor-facing story-aware image/video workflow is also available through:
 
 ```http
 GET  /wp-json/worldgraph/v1/assets/generate/prompt
+POST /wp-json/worldgraph/v1/assets/generate/prompt-preview
 POST /wp-json/worldgraph/v1/assets/generate
+GET    /wp-json/worldgraph/v1/assets/generate/defaults
+POST   /wp-json/worldgraph/v1/assets/generate/defaults
+DELETE /wp-json/worldgraph/v1/assets/generate/defaults
 ```
 
 The prompt response exposes every directly selectable recipe output in the
 ordered `actions` array. Each action includes its `type`, `intent`, label,
 read-only composed prompt, featured behavior, readiness, and resolved default
-Template. This preserves all six same-type look-development actions for a
-Character, Prop, or Location and both still/video actions for a Shot. The
+Template. Its safe `prompt_policy` diagnostic contains `template_id`,
+`policy_version`, `profile`, word/character/byte counts, `target_words`, hard
+word/character/byte limits, and `prompt_hash`; it does not expose provider
+configuration or schema. This preserves all six same-type look-development
+actions for a Character, Prop, or Location and both still/video actions for a
+Shot. The
 legacy `outputs.image` and `outputs.video` keys remain as first-of-type aliases
 for older clients. Entries in `templates`, `image_templates`, and
 `video_templates` include each Template's sanitized, provider-neutral
 run-control contract:
+
+```json
+{
+  "prompt_policy": {
+    "template_id": 101,
+    "policy_version": 1,
+    "profile": "acme-concise",
+    "word_count": 74,
+    "character_count": 428,
+    "byte_count": 428,
+    "target_words": 80,
+    "hard_limits": {
+      "max_words": 120,
+      "max_characters": 2000,
+      "max_bytes": 0
+    },
+    "prompt_hash": "sha256-of-the-final-prompt"
+  }
+}
+```
+
+Template summaries use this shape:
 
 ```json
 {
@@ -467,6 +497,28 @@ run-control contract:
         "step": 1
       }
     ]
+  },
+  "run_defaults": {
+    "version": 1,
+    "source_id": 42,
+    "project_id": 7,
+    "template_id": 101,
+    "connection_id": 41,
+    "fingerprint": "opaque-deterministic-sha256-value",
+    "scope": "item",
+    "effective": { "steps": 32 },
+    "sources": { "steps": "item" },
+    "layers": {
+      "template": { "post_id": 101, "values": { "steps": 28 }, "status": "current" },
+      "project_profile": { "post_id": 7, "values": {}, "status": "current" },
+      "project": { "post_id": 7, "values": {}, "fingerprint": "", "has_entry": false, "status": "inherited", "warnings": [] },
+      "item": { "post_id": 42, "values": { "steps": 32 }, "fingerprint": "opaque-deterministic-sha256-value", "has_entry": true, "status": "current", "warnings": [] }
+    },
+    "targets": [
+      { "scope": "project", "post_id": 7, "label": "Project", "has_overrides": false, "editable": true },
+      { "scope": "item", "post_id": 42, "label": "Shot", "has_overrides": true, "editable": true }
+    ],
+    "warnings": []
   }
 }
 ```
@@ -478,10 +530,84 @@ run-control contract:
 "label": string }` objects. Submitted values remain scalar. The server omits
 unsafe or unsupported provider schema details, including node IDs, binding
 paths, model paths, and nested objects. `fingerprint` identifies the effective
-v1 field definition for client cache/form invalidation; it is opaque, need not
-be echoed in a request, and is not trusted as proof that a value is valid. The
+v1 field definition for client cache/form invalidation; it is opaque and is
+not trusted as proof that a value is valid. It need not be echoed for an
+ordinary generation request, but is required for a defaults save or reset as
+stale-form concurrency protection. The
 metabox keeps a single-output provider prompt collapsed and uses a separate
 blank field for one-off author instructions.
+
+The prompt starts with the requested Shot/action or source description and is
+rendered from bounded semantic sections under the resolved Template policy.
+`POST /assets/generate/prompt-preview` accepts `post_id`, `type`, `intent`,
+`template_id`, and optional additive `prompt`; it returns the recomposed
+`prompt` plus the same safe `prompt_policy` diagnostic. Policy resolution uses
+trusted core/adapter/Connection/model/Template declarations and only normalized
+numeric or enumerated preferences. Provider or MCP descriptions, schemas,
+resources, results, and free-form prompt advice are never returned as policy or
+inserted as runtime instructions. A positive-prompt schema `maxLength` may
+contribute only a hard size ceiling.
+
+### Contextual run defaults
+
+The effective scalar control hierarchy is, from lowest to highest: Template
+default, compatible owning-Project media profile, owning-Project exact-pair
+override, source-item exact-pair override, and one-off request value. The item
+layer is generic and can belong to a Shot, Character, Location, Prop, Scene,
+Episode, Story World, or another supported source. Generating never changes a
+saved default.
+
+All three defaults methods accept `post_id`, `template_id`, and `scope`
+(`item` or `project`, default `item`). GET is read-only. POST additionally
+requires a complete `values` object and the current `fingerprint`; DELETE
+requires the current fingerprint. Example save:
+
+```json
+{
+  "post_id": 42,
+  "template_id": 101,
+  "scope": "item",
+  "fingerprint": "opaque-deterministic-sha256-value",
+  "values": {
+    "steps": 32,
+    "seed": 873645
+  }
+}
+```
+
+POST validates the complete form and persists only values differing from the
+lower-layer baseline. DELETE removes only the selected scope and pair. Both
+return the refreshed `run_defaults` DTO. A write made with an obsolete
+fingerprint returns `409`; the client must refresh rather than retry the stale
+form. GET may report a stored layer as `revalidated` with a warning when its
+old fingerprint still validates against the current contract, or as
+`incompatible` and omit its values when it does not.
+
+The storage contract is version-1 post meta named
+`_worldgraph_generation_run_defaults` on each Project or source item:
+
+```json
+{
+  "version": 1,
+  "entries": {
+    "c:41:t:101": {
+      "connection_id": 41,
+      "template_id": 101,
+      "fingerprint": "opaque-deterministic-sha256-value",
+      "values": { "steps": 32 }
+    }
+  }
+}
+```
+
+The entry key is exactly `c:{connection_id}:t:{template_id}`. Connection ID is
+derived from the Template and repeated in the validated entry; it is not a
+request parameter. Consequently, a Template moved to another Connection does
+not select the old pair. The repository stores scalar values only and accepts
+at most 64 pair entries and 65,536 serialized bytes per post. Reading or
+writing defaults requires edit permission for the source;
+writing additionally checks the resolved Project/item target. An item-layer
+write against a Project is invalid; use `scope: "project"`.
 
 Direct generation accepts `type: "image"` (the backward-compatible default) or
 `type: "video"`, an intent returned by the prompt route, a matching
@@ -510,13 +636,15 @@ WordPress selects the Template, re-derives its run-control contract, and
 normalizes the submitted object before creating a job. Unknown fields, nested
 arrays or objects, wrong scalar types, out-of-range numbers, and values outside
 advertised select `options` fail validation rather than being forwarded to a
-provider. The server applies compatible output framing from the owning Project
-before the submitted overrides; sampling and negative-conditioning defaults
-remain owned by the Template.
+provider. The server resolves Template defaults, compatible owning-Project
+profile values, exact-pair Project defaults, and exact-pair source-item
+defaults before applying submitted one-off overrides. Sampling and
+negative-conditioning remain Template-owned unless an allowed later layer
+overrides them.
 Omitting `seed` means no fixed-seed override and preserves the Template or
 provider's existing randomization behavior; an explicitly submitted integer
 `0` remains a valid fixed seed. An omitted or empty `run_values` object uses
-compatible Project framing and Template/provider defaults. Direct video is
+the full saved hierarchy through the item layer. Direct video is
 defined by the Shot recipe; Project-wide Shot videos use the durable batch
 route.
 
@@ -548,7 +676,8 @@ fallback key, and `prompt_hash`; long provider prompts are intentionally
 omitted from expanded plan lists. It also returns `ready`, required Template
 `blockers`, `optional_unavailable`, and the Templates runnable across the plan
 as `image_templates`, `video_templates`, and `audio_templates`, including the
-same sanitized `run_controls` object on each Template, resolved
+same sanitized `run_controls` object and contextual `run_defaults` resolution
+on each Template, resolved
 `default_template_ids`, and `latest_batch` when one exists. Existing linked
 media can satisfy a task with `generation_required: false`, so it does not need
 a generation Template.
@@ -604,15 +733,19 @@ duplicating work. WordPress atomically reserves the key while the parent is
 committed and fingerprints scope, additive prompt, Template overrides, and
 normalized image/video/audio run values, so a concurrent retry cannot create a
 duplicate paid batch or reuse the key for different settings. The normalized
-values are frozen into every affected task in the durable batch plan and later
-copied into its child job; later form or catalog refreshes cannot mutate an
-already accepted batch's values. Starting fails before any child is queued if
+values are resolved after each task's exact Template is selected. Every task
+then freezes its saved Project/item override snapshot, requested one-off
+snapshot, effective normalized run values, compatible Project-profile values,
+and run-control fingerprint. These are copied into its child job; later form,
+default, or catalog changes cannot mutate an already accepted batch. Starting fails before any child is queued if
 a required generated task lacks a runnable Template, a submitted value is
 invalid, or the requester cannot edit every source. Optional demonstration
 motion or audio without a runnable Template is frozen as unavailable fallback
 work rather than promoted to a hard blocker. A successful start returns
 `202 Accepted` and a `Location` header for the batch status route. Omitting all
-three per-type run-value objects preserves Template/provider defaults.
+three per-type run-value objects still applies each source's Template,
+Project-profile, Project-pair, and item-pair defaults. An explicit per-type map
+is the one-off highest layer for every matching task.
 
 The version 2 demonstration snapshot freezes stable task keys, required versus
 optional behavior, reference/audio/video phases, dependencies, symbolic media

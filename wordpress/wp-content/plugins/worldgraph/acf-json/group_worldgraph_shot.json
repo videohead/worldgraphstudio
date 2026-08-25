@@ -136,6 +136,69 @@
             "append": ""
         },
         {
+            "key": "field_worldgraph_shot_camera_movement",
+            "label": "Camera Movement",
+            "name": "camera_movement",
+            "aria-label": "",
+            "type": "select",
+            "instructions": "Choose one primary camera behavior for generated video. Leave blank when the Template or reference frames should determine it.",
+            "required": 0,
+            "conditional_logic": 0,
+            "wrapper": {
+                "width": "",
+                "class": "",
+                "id": ""
+            },
+            "choices": {
+                "locked_off": "Locked Off (Static)",
+                "handheld": "Handheld Drift",
+                "pan_left": "Pan Left",
+                "pan_right": "Pan Right",
+                "tilt_up": "Tilt Up",
+                "tilt_down": "Tilt Down",
+                "push_in": "Dolly / Push In",
+                "pull_back": "Dolly / Pull Back",
+                "track_left": "Track Left",
+                "track_right": "Track Right",
+                "follow_subject": "Follow Subject",
+                "orbit_left": "Orbit Left",
+                "orbit_right": "Orbit Right",
+                "crane_up": "Crane Up",
+                "crane_down": "Crane Down",
+                "zoom_in": "Zoom In",
+                "zoom_out": "Zoom Out"
+            },
+            "allow_null": 1,
+            "multiple": 0,
+            "ui": 1,
+            "return_format": "value",
+            "default_value": false,
+            "ajax": 0,
+            "placeholder": "",
+            "create_options": 0,
+            "save_options": 0
+        },
+        {
+            "key": "field_worldgraph_shot_motion_direction",
+            "label": "Motion Direction",
+            "name": "motion_direction",
+            "aria-label": "",
+            "type": "text",
+            "instructions": "For generated video, describe one continuous visible action in temporal order, including pace or ambient motion when important. Do not repeat story context or appearance. Example: \"Red closes both shutters slowly; the curtains settle; then she holds still.\"",
+            "required": 0,
+            "conditional_logic": 0,
+            "wrapper": {
+                "width": "",
+                "class": "",
+                "id": ""
+            },
+            "default_value": "",
+            "maxlength": "",
+            "placeholder": "",
+            "prepend": "",
+            "append": ""
+        },
+        {
             "key": "field_worldgraph_shot_duration",
             "label": "Duration",
             "name": "duration",
@@ -287,11 +350,11 @@
         },
         {
             "key": "field_worldgraph_shot_generation_prompt",
-            "label": "Generation Prompt Instructions",
+            "label": "Additional Generation Constraints",
             "name": "generation_prompt",
             "aria-label": "",
             "type": "textarea",
-            "instructions": "Shot-specific image and motion instructions appended to generated media prompts, for example \"no watermark\" or camera movement.",
+            "instructions": "Optional exceptional requirements not captured by the Shot description, framing, camera movement, motion direction, or Project visual direction. Keep this short and do not repeat those fields.",
             "required": 0,
             "conditional_logic": 0,
             "wrapper": {
@@ -327,5 +390,5 @@
     "display_title": "",
     "allow_ai_access": false,
     "ai_description": "",
-    "modified": 1787242024
+    "modified": 1787678616
 }
