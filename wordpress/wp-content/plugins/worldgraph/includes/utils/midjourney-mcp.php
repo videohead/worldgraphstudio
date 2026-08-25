@@ -396,13 +396,14 @@ class Midjourney_MCP {
 		if ( ! is_array( $allowed ) || ! self::is_list( $allowed ) || count( $allowed ) > 100 ) {
 			return false;
 		}
+		$known = [ 'api:imagine', self::TEMPLATE ];
 		foreach ( $allowed as $candidate ) {
-			if ( is_string( $candidate ) && $reference === $candidate ) {
-				return true;
+			if ( ! is_string( $candidate ) || ! in_array( $candidate, $known, true ) ) {
+				return false;
 			}
 		}
 
-		return false;
+		return in_array( $reference, $allowed, true );
 	}
 
 	/**

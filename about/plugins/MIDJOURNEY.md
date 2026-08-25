@@ -81,6 +81,11 @@ on the same transport. Runtime parameters are allowlisted and revalidated by
 the selected client; arbitrary Template JSON cannot add a callback URL, MCP
 tool, endpoint, or request field.
 
+Leave **Model Access** empty to enable every transport with a configured
+credential. To narrow it, use an exact JSON array containing `api:imagine`,
+`mcp:midjourney_imagine`, or both. Unknown entries and an empty array fail
+closed; the allowlist controls both Template provisioning and runtime dispatch.
+
 ## REST lifecycle
 
 The REST Template calls:

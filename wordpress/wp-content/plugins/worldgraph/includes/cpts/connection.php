@@ -420,7 +420,7 @@ class Connection {
 				'format'      => 'json',
 				'label'       => 'Model Access',
 				'required'    => false,
-				'description' => 'Optional JSON allowlist. Higgsfield uses reviewed api: operation references; fal uses model endpoint IDs; ElevenLabs uses voice IDs; Suno uses model version IDs. Empty lets the adapter select a default.',
+				'description' => 'Optional JSON allowlist. MidJourney and Higgsfield use reviewed transport-operation references; fal uses model endpoint IDs; ElevenLabs uses voice IDs; Suno uses model version IDs. Empty lets the adapter select a default.',
 			],
 			'enabled_structures'   => [
 				'type'        => 'textarea',
@@ -817,6 +817,7 @@ class Connection {
 			<p><?php echo esc_html__( 'World Graph Studio maintains a separate text-to-image Template for each configured MidJourney REST or MCP credential. Saving or checking this Connection refreshes the matching Templates.', 'worldgraph' ); ?></p>
 			<ul>
 				<li><?php echo esc_html__( 'API Key authenticates api.midjourney-api.com; MCP API Key authenticates midjourney.mcp.acedata.cloud. These independent operators issue different credentials.', 'worldgraph' ); ?></li>
+				<li><?php echo esc_html__( 'Model Access may contain api:imagine, mcp:midjourney_imagine, or both as an exact JSON array. Empty enables each transport that has a credential.', 'worldgraph' ); ?></li>
 				<li><?php echo esc_html__( 'The REST Template supports fast or relaxed mode. The MCP Template supports fast, relax, or turbo mode; the different relax spellings follow each provider contract.', 'worldgraph' ); ?></li>
 				<li><?php echo esc_html__( 'Generation is polled without a public callback, and every final image URL is imported into WordPress before the job completes.', 'worldgraph' ); ?></li>
 			</ul>

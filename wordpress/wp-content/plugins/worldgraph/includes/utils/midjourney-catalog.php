@@ -78,6 +78,7 @@ class Midjourney_Catalog {
 				__( 'Add a midjourney-api.com credential, an AceData Cloud MCP credential, or both before provisioning Templates.', 'worldgraph' )
 			);
 		}
+
 		$selected = self::selected_definitions( $connection['model_access'] ?? '' );
 		if ( is_wp_error( $selected ) ) {
 			return $selected;
@@ -136,7 +137,7 @@ class Midjourney_Catalog {
 						)
 					);
 				} else {
-					$mcp_definition  = self::merge_live_imagine_schema(
+					$mcp_definition = self::merge_live_imagine_schema(
 						$mcp_definitions[0],
 						$live_schemas[ self::MCP_IMAGINE_TOOL ]
 					);
@@ -239,7 +240,7 @@ class Midjourney_Catalog {
 	private static function mcp_definitions(): array {
 		return [
 			[
-				'reference'   => 'mcp:' . self::MCP_IMAGINE_TOOL,
+				'reference'   => Midjourney_MCP::TEMPLATE,
 				'tool'        => self::MCP_IMAGINE_TOOL,
 				'name'        => 'MidJourney MCP — Imagine',
 				'description' => 'Generate an image from a text prompt through the hosted AceData Cloud MidJourney MCP server.',
@@ -272,7 +273,7 @@ class Midjourney_Catalog {
 				],
 				'version'     => self::SCHEMA_VERSION,
 				'provenance'  => sprintf(
-					'AceData Cloud MidJourney MCP source revision %s reviewed 2026-08-23, plus bounded live tools/list inputSchema',
+					'AceData Cloud MidJourney MCP source revision %s reviewed 2026-08-25, plus bounded live tools/list inputSchema',
 					self::MCP_SOURCE_REVISION
 				),
 			],

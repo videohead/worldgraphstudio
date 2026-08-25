@@ -177,6 +177,7 @@ class Test_Midjourney extends TestCase {
 		);
 		$this->assertSame( [ 'image', 'image' ], array_map( [ Generation_Modality::class, 'output_type' ], array_column( $definitions, 'modality' ) ) );
 		$this->assertSame( array_keys( Midjourney_API::OPERATIONS ), [ $api['reference'] ] );
+		$this->assertSame( Midjourney_MCP::TEMPLATE, $mcp['reference'] );
 		$this->assertSame( 'mcp:' . $mcp['tool'], $mcp['reference'] );
 		$this->assertContains( $mcp['tool'], Midjourney_MCP::REQUIRED_TOOLS );
 		$this->assertSame( [ 'mode' => 'fast', 'timeout' => 600 ], $api['input'] );
@@ -193,6 +194,13 @@ class Test_Midjourney extends TestCase {
 		$this->assertSame( [ 'fast', 'relax', 'turbo' ], $mcp['schema']['properties']['mode']['enum'] );
 		$this->assertNotContains( 'relax', $api['schema']['properties']['mode']['enum'] );
 		$this->assertNotContains( 'relaxed', $mcp['schema']['properties']['mode']['enum'] );
+
+		$selected = new ReflectionMethod( Midjourney_Catalog::class, 'selected_definitions' );
+		$selected->setAccessible( true );
+		$api_only = $selected->invoke( null, '["api:imagine"]' );
+		$this->assertSame( [ 'api:imagine' ], array_column( $api_only, 'reference' ) );
+		$this->assertInstanceOf( WP_Error::class, $selected->invoke( null, '[]' ) );
+		$this->assertInstanceOf( WP_Error::class, $selected->invoke( null, '["mcp:unreviewed"]' ) );
 	}
 
 	/** REST parameters are bounded, type checked, and copied through an allowlist. */
@@ -255,8 +263,10 @@ class Test_Midjourney extends TestCase {
 		);
 		$this->assertTrue( Midjourney_API::operation_is_allowed( [ 'model_access' => '' ], 'api:imagine' ) );
 		$this->assertTrue( Midjourney_API::operation_is_allowed( [ 'model_access' => '["api:imagine"]' ], 'api:imagine' ) );
+		$this->assertTrue( Midjourney_API::operation_is_allowed( [ 'model_access' => '["api:imagine","mcp:midjourney_imagine"]' ], 'api:imagine' ) );
 		$this->assertFalse( Midjourney_API::operation_is_allowed( [ 'model_access' => '[]' ], 'api:imagine' ) );
 		$this->assertFalse( Midjourney_API::operation_is_allowed( [ 'model_access' => 'not-json' ], 'api:imagine' ) );
+		$this->assertFalse( Midjourney_API::operation_is_allowed( [ 'model_access' => '["api:imagine","api:unreviewed"]' ], 'api:imagine' ) );
 		$this->assertFalse( Midjourney_API::operation_is_allowed( [], 'api:unreviewed' ) );
 		$this->assertTrue( Midjourney_API::is_valid_job_id( 'task_ABC-123' ) );
 		$this->assertFalse( Midjourney_API::is_valid_job_id( 'task/ABC' ) );
@@ -272,6 +282,10 @@ class Test_Midjourney extends TestCase {
 		$this->assertGreaterThan( 0, Midjourney_MCP::MAX_PAGES );
 		$this->assertGreaterThan( 0, Midjourney_MCP::MAX_EVENTS );
 		$this->assertGreaterThan( 0, Midjourney_MCP::MAX_RESPONSE_BYTES );
+		$this->assertTrue( Midjourney_MCP::operation_is_allowed( [ 'model_access' => '' ], Midjourney_MCP::TEMPLATE ) );
+		$this->assertTrue( Midjourney_MCP::operation_is_allowed( [ 'model_access' => '["mcp:midjourney_imagine"]' ], Midjourney_MCP::TEMPLATE ) );
+		$this->assertFalse( Midjourney_MCP::operation_is_allowed( [ 'model_access' => '["api:imagine"]' ], Midjourney_MCP::TEMPLATE ) );
+		$this->assertFalse( Midjourney_MCP::operation_is_allowed( [ 'model_access' => '["mcp:midjourney_imagine","mcp:unreviewed"]' ], Midjourney_MCP::TEMPLATE ) );
 	}
 
 	/** MCP submission and polling normalize terminal flags and all safe images. */

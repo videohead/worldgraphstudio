@@ -268,13 +268,14 @@ class Midjourney_API {
 		if ( ! is_array( $allowed ) || ! self::is_list( $allowed ) || count( $allowed ) > 100 ) {
 			return false;
 		}
+		$known = [ self::TEMPLATE, 'mcp:midjourney_imagine' ];
 		foreach ( $allowed as $candidate ) {
-			if ( is_string( $candidate ) && $reference === $candidate ) {
-				return true;
+			if ( ! is_string( $candidate ) || ! in_array( $candidate, $known, true ) ) {
+				return false;
 			}
 		}
 
-		return false;
+		return in_array( $reference, $allowed, true );
 	}
 
 	/** Map the documented numeric task states to generation-worker states. */

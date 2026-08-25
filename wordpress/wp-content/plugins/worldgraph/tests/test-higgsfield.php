@@ -7,6 +7,10 @@
 
 defined( 'ABSPATH' ) || exit;
 
+if ( ! defined( 'DAY_IN_SECONDS' ) ) {
+	define( 'DAY_IN_SECONDS', 86400 );
+}
+
 use PHPUnit\Framework\TestCase;
 use WorldGraph\Connections\Connection_OAuth;
 use WorldGraph\Utils\Connection_Adapters;
@@ -265,6 +269,37 @@ class Test_Higgsfield extends TestCase {
 		$this->assertTrue( Higgsfield_API::operation_is_allowed( [ 'model_access' => '["' . $soul . '"]' ], $soul ) );
 		$this->assertFalse( Higgsfield_API::operation_is_allowed( [ 'model_access' => '["' . $soul . '"]' ], $dop ) );
 		$this->assertFalse( Higgsfield_API::operation_is_allowed( [ 'model_access' => 'not-json' ], $soul ) );
+		$this->assertFalse( Higgsfield_API::operation_is_allowed( [ 'model_access' => '{"selected":"' . $soul . '"}' ], $soul ) );
+		$this->assertFalse( Higgsfield_API::operation_is_allowed( [ 'model_access' => '["' . $soul . '","api:unknown/model"]' ], $soul ) );
+		$this->assertFalse( Higgsfield_API::operation_is_allowed( [ 'model_access' => '["' . $soul . '",7]' ], $soul ) );
+	}
+
+	/** Paid REST operation parameters reject schema-invalid types instead of coercing them. */
+	public function test_api_operation_parameters_are_strictly_typed(): void {
+		$normalize = new ReflectionMethod( Higgsfield_API::class, 'normalize_operation_body' );
+		$normalize->setAccessible( true );
+		$soul  = 'api:higgsfield-ai/soul/standard';
+		$dop   = 'api:higgsfield-ai/dop/standard';
+		$kling = 'api:kling-video/v2.1/pro/image-to-video';
+
+		$this->assertIsArray( $normalize->invoke( null, $soul, [ 'prompt' => 'A portrait', 'num_images' => 2, 'resolution' => '2K', 'aspect_ratio' => '4:3' ] ) );
+		$this->assertIsArray( $normalize->invoke( null, $dop, [ 'prompt' => 'Move', 'seed' => 7, 'enhance_prompt' => true ] ) );
+		$this->assertIsArray( $normalize->invoke( null, $kling, [ 'prompt' => 'Move', 'duration' => 5, 'cfg_scale' => 0.25 ] ) );
+
+		foreach (
+			[
+				[ $soul, [ 'num_images' => 1.5 ] ],
+				[ $soul, [ 'num_images' => '2' ] ],
+				[ $dop, [ 'seed' => 7.9 ] ],
+				[ $dop, [ 'enhance_prompt' => 'true' ] ],
+				[ $kling, [ 'duration' => '5' ] ],
+				[ $kling, [ 'cfg_scale' => 'garbage' ] ],
+				[ $kling, [ 'cfg_scale' => 0.555 ] ],
+				[ $kling, [ 'negative_prompt' => [ 'not', 'text' ] ] ],
+			] as [ $reference, $body ]
+		) {
+			$this->assertInstanceOf( WP_Error::class, $normalize->invoke( null, $reference, $body ) );
+		}
 	}
 
 	/** JSON and fully framed SSE ignore notifications and correlate by request ID. */
@@ -290,6 +325,28 @@ class Test_Higgsfield extends TestCase {
 		$this->assertSame( 'wanted-request', $decoded['id'] );
 		$this->assertSame( 'generate', $decoded['result']['tools'][0]['name'] );
 		$this->assertNull( Higgsfield_MCP::decode_response_for_id( $sse, 'missing-request' ) );
+
+		$bare_cr = 'data: {"jsonrpc":"2.0","id":"wanted-request",' . "\r"
+			. 'data: "result":{"resultType":"complete"}}' . "\r\r";
+		$this->assertSame( 'wanted-request', Higgsfield_MCP::decode_response_for_id( $bare_cr, 'wanted-request' )['id'] );
+		$this->assertNull( Higgsfield_MCP::decode_response_for_id( '{"jsonrpc":"1.0","id":"wanted-request","result":{}}', 'wanted-request' ) );
+		$this->assertNull( Higgsfield_MCP::decode_response_for_id( '{"jsonrpc":"2.0","id":[],"result":{}}', 'wanted-request' ) );
+	}
+
+	/** Current-era 400s use the exact official modern-error fallback matrix. */
+	public function test_mcp_modern_400_fallback_matrix(): void {
+		$decode   = new ReflectionMethod( Higgsfield_MCP::class, 'modern_error_response' );
+		$fallback = new ReflectionMethod( Higgsfield_MCP::class, 'should_fallback_to_legacy' );
+		$decode->setAccessible( true );
+		$fallback->setAccessible( true );
+
+		foreach ( [ '', '{malformed', '{"jsonrpc":"2.0","error":{"code":-32002,"message":"Not initialized"}}', '{"jsonrpc":"2.0","error":{"code":-32600,"message":"Unknown"}}' ] as $body ) {
+			$this->assertTrue( $fallback->invoke( null, $decode->invoke( null, $body ) ) );
+		}
+		foreach ( [ -32020, -32021, -32022 ] as $code ) {
+			$body = wp_json_encode( [ 'jsonrpc' => '2.0', 'error' => [ 'code' => $code, 'message' => 'Initialize is mentioned but the code is authoritative.' ] ] );
+			$this->assertFalse( $fallback->invoke( null, $decode->invoke( null, $body ) ) );
+		}
 	}
 
 	/** x-mcp-header is accepted only along static properties chains and safe scalar types. */
@@ -340,6 +397,37 @@ class Test_Higgsfield extends TestCase {
 				]
 			)
 		);
+		$this->assertFalse(
+			$validate->invoke(
+				null,
+				[ 'properties' => [ 'trace' => [ 'type' => 'string', 'x-mcp-header' => [ 'X-Trace' ] ] ] ]
+			)
+		);
+	}
+
+	/** Readiness retains only bounded tools with an object input schema. */
+	public function test_mcp_tool_catalog_rejects_invalid_schemas_without_truncation(): void {
+		$merge = new ReflectionMethod( Higgsfield_MCP::class, 'merge_tools' );
+		$merge->setAccessible( true );
+
+		$catalog = $merge->invoke(
+			null,
+			[],
+			[
+				[ 'name' => 'valid', 'description' => 'Valid tool', 'inputSchema' => [ 'type' => 'object', 'properties' => [] ] ],
+				[ 'name' => 'missing-schema' ],
+				[ 'name' => 'wrong-root', 'inputSchema' => [ 'type' => 'array' ] ],
+			]
+		);
+		$this->assertSame( [ 'valid' ], array_keys( $catalog ) );
+		$this->assertInstanceOf( stdClass::class, $catalog['valid']['inputSchema']['properties'] );
+
+		$nested = [ 'type' => 'object' ];
+		for ( $depth = 0; $depth < Higgsfield_MCP::MAX_SCHEMA_DEPTH + 2; ++$depth ) {
+			$nested = [ 'type' => 'object', 'properties' => [ 'nested' => $nested ] ];
+		}
+		$this->assertSame( [], $merge->invoke( null, [], [ [ 'name' => 'too-deep', 'inputSchema' => $nested ] ] ) );
+		$this->assertInstanceOf( WP_Error::class, $merge->invoke( null, [], [ 'not-a-list' => [ 'name' => 'tool', 'inputSchema' => [ 'type' => 'object' ] ] ] ) );
 	}
 
 	/** The reusable broker implements the RFC 7636 S256 transform exactly. */

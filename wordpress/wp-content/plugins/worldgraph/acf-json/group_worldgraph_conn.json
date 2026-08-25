@@ -335,7 +335,7 @@
             "name": "model_access",
             "aria-label": "",
             "type": "textarea",
-            "instructions": "Optional JSON allowlist. Higgsfield uses reviewed api: operation references; fal uses model endpoint IDs; ElevenLabs uses voice IDs; Suno uses model version IDs. Empty lets the adapter select a default.",
+            "instructions": "Optional JSON allowlist. MidJourney and Higgsfield use reviewed transport-operation references; fal uses model endpoint IDs; ElevenLabs uses voice IDs; Suno uses model version IDs. Empty lets the adapter select a default.",
             "required": 0,
             "conditional_logic": 0,
             "wrapper": {
