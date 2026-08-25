@@ -628,7 +628,7 @@ function analyze_character_network( array $graph, int $limit = 0 ): array {
 	$presence = [];
 	$relationships = [];
 	foreach ( $characters as $id => $name ) {
-		$presence[ $id ] = [ 'name' => $name, 'scenes' => [], 'shots' => [] ];
+		$presence[ $id ] = [ 'id' => $id, 'name' => $name, 'scenes' => [], 'shots' => [] ];
 	}
 
 	foreach ( $edges as $edge ) {
@@ -644,7 +644,9 @@ function analyze_character_network( array $graph, int $limit = 0 ): array {
 			$key  = implode( ':', $pair );
 			if ( ! isset( $relationships[ $key ] ) ) {
 				$relationships[ $key ] = [
+					'character_a_id' => $pair[0],
 					'character_a'  => $characters[ $pair[0] ],
+					'character_b_id' => $pair[1],
 					'character_b'  => $characters[ $pair[1] ],
 					'relationship' => ucwords( str_replace( '_', ' ', $type ) ),
 					'cooccurrences' => 0,
@@ -672,7 +674,9 @@ function analyze_character_network( array $graph, int $limit = 0 ): array {
 				$key  = implode( ':', $pair );
 				if ( ! isset( $relationships[ $key ] ) ) {
 					$relationships[ $key ] = [
+						'character_a_id' => $pair[0],
 						'character_a'  => $characters[ $pair[0] ],
+						'character_b_id' => $pair[1],
 						'character_b'  => $characters[ $pair[1] ],
 						'relationship' => 'Appears Together',
 						'cooccurrences' => 0,
@@ -688,7 +692,7 @@ function analyze_character_network( array $graph, int $limit = 0 ): array {
 	$scene_presence = array_values(
 		array_map(
 			static function( array $item ): array {
-				return [ 'name' => $item['name'], 'scenes' => count( $item['scenes'] ), 'shots' => count( $item['shots'] ) ];
+				return [ 'id' => $item['id'], 'name' => $item['name'], 'scenes' => count( $item['scenes'] ), 'shots' => count( $item['shots'] ) ];
 			},
 			$presence
 		)

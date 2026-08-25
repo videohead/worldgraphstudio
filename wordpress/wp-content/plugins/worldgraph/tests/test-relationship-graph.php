@@ -248,9 +248,11 @@ class Test_WorldGraph_Relationship_Graph extends TestCase {
 		$this->assertCount( 2, $network['nodes'] );
 		$this->assertSame( 'Ada', $network['strongest_relationships'][0]['character_a'] );
 		$this->assertSame( 'Ben', $network['strongest_relationships'][0]['character_b'] );
+		$this->assertSame( 1, $network['strongest_relationships'][0]['character_a_id'] );
+		$this->assertSame( 2, $network['strongest_relationships'][0]['character_b_id'] );
 		$this->assertSame( 1, $network['strongest_relationships'][0]['cooccurrences'] );
 		$this->assertSame( 'Related To', $network['strongest_relationships'][0]['relationship'] );
-		$this->assertSame( [ 'name' => 'Ada', 'scenes' => 1, 'shots' => 1 ], $network['character_scene_presence'][0] );
+		$this->assertSame( [ 'id' => 1, 'name' => 'Ada', 'scenes' => 1, 'shots' => 1 ], $network['character_scene_presence'][0] );
 	}
 
 	/**

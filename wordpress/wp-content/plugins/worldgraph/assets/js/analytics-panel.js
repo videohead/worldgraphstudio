@@ -527,7 +527,7 @@
 
 				$tbody.append(
 					'<tr>' +
-					'<td>' + $('<div>').text(name).html() + '</td>' +
+					$('<td>').append(this.entityEditLink(name, entity.id)).prop('outerHTML') +
 					'<td>' + $('<div>').text(type).html() + '</td>' +
 					'<td>' + connections + '</td>' +
 					'</tr>'
@@ -599,7 +599,7 @@
 
 				$tbody.append(
 					'<tr>' +
-					'<td>' + $('<div>').text(name).html() + '</td>' +
+					$('<td>').append(this.entityEditLink(name, entity.id)).prop('outerHTML') +
 					'<td>' + $('<div>').text(type).html() + '</td>' +
 					'<td>No relationships</td>' +
 					'</tr>'
@@ -630,8 +630,8 @@
 
 				$tbody.append(
 					'<tr>' +
-					'<td>' + $('<div>').text(charA).html() + '</td>' +
-					'<td>' + $('<div>').text(charB).html() + '</td>' +
+					$('<td>').append(this.entityEditLink(charA, rel.character_a_id)).prop('outerHTML') +
+					$('<td>').append(this.entityEditLink(charB, rel.character_b_id)).prop('outerHTML') +
 					'<td>' + $('<div>').text(relationship).html() + '</td>' +
 					'<td>' + cooccurrences + '</td>' +
 					'</tr>'
@@ -661,12 +661,27 @@
 
 				$tbody.append(
 					'<tr>' +
-					'<td>' + $('<div>').text(name).html() + '</td>' +
+					$('<td>').append(this.entityEditLink(name, char.id)).prop('outerHTML') +
 					'<td>' + scenes + '</td>' +
 					'<td>' + shots + '</td>' +
 					'</tr>'
 				);
 			});
+		}
+
+		/**
+		 * Build a link to an entity edit screen.
+		 *
+		 * @param {string} name Entity name.
+		 * @param {number} postId Entity post ID.
+		 * @returns {JQuery} Entity name link or text.
+		 */
+		entityEditLink(name, postId) {
+			const editUrl = this.editUrl(postId);
+			if (!editUrl) {
+				return $('<span>').text(name);
+			}
+			return $('<a>', { href: editUrl, text: name });
 		}
 
 		/**
