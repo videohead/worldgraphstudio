@@ -44,7 +44,8 @@ class Continuity_Panel {
 	 * @param string $hook The current admin page hook.
 	 */
 	public static function enqueue_scripts( string $hook ): void {
-		if ( 'toplevel_page_worldgraph' !== $hook && 'worldgraph_page_worldgraph-continuity' !== $hook ) {
+		$current_page = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
+		if ( ! in_array( $hook, [ 'worldgraph-analysis_page_worldgraph-continuity', 'worldgraph_page_worldgraph-continuity' ], true ) && 'worldgraph-continuity' !== $current_page ) {
 			return;
 		}
 
@@ -343,10 +344,15 @@ class Continuity_Panel {
 		$project_id = isset( $_POST['project_id'] ) ? absint( $_POST['project_id'] ) : 0;
 
 		if ( $project_id > 0 && 'worldgraph_project' !== get_post_type( $project_id ) ) {
-			wp_send_json_error( 'Invalid project selected.', 400 );
+			// Fall back to global validation when a stale project ID is submitted.
+			$project_id = 0;
 		}
 
-		$result = \WorldGraph\Utils\fetch_continuity_validation( $episode_id, $scene_ids, $project_id );
+		try {
+			$result = \WorldGraph\Utils\fetch_continuity_validation( $episode_id, $scene_ids, $project_id );
+		} catch ( \Throwable $throwable ) {
+			wp_send_json_error( 'Validation crashed: ' . $throwable->getMessage(), 500 );
+		}
 
 		if ( ! empty( $result['error'] ) ) {
 			wp_send_json_error( 'Validation error: ' . $result['error'], 500 );

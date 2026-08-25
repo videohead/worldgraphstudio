@@ -74,6 +74,7 @@
 				url: window.worldgraph_continuity?.ajax_url || '/wp-admin/admin-ajax.php',
 				type: 'POST',
 				data: data,
+				timeout: 120000,
 				beforeSend: function() {
 					self.$loading.show();
 				},
@@ -83,11 +84,26 @@
 						self.renderIssues(response.data.issues || []);
 						self.$clearBtn.show();
 					} else {
-						self.showError(response.data || self.strings.error || 'Error running validation.');
+						const message = (response && response.data)
+							? (typeof response.data === 'string' ? response.data : (response.data.message || JSON.stringify(response.data)))
+							: (self.strings.error || 'Error running validation.');
+						self.showError(message);
 					}
 				},
-				error: function() {
-					self.showError(self.strings.error || 'Error running validation.');
+				error: function(xhr, statusText, errorThrown) {
+					let message = self.strings.error || 'Error running validation.';
+					if (xhr && xhr.responseJSON && xhr.responseJSON.data) {
+						message = typeof xhr.responseJSON.data === 'string'
+							? xhr.responseJSON.data
+							: (xhr.responseJSON.data.message || message);
+					} else if (xhr && xhr.responseText) {
+						message = xhr.responseText;
+					} else if (errorThrown) {
+						message = errorThrown;
+					} else if (statusText) {
+						message = statusText;
+					}
+					self.showError(message);
 				},
 				complete: function() {
 					self.$loading.hide();
@@ -287,6 +303,8 @@
 			this.$issuesContainer = $('#worldgraph-issues-container');
 			if (this.$issuesContainer.length) {
 				this.$issuesContainer.html(html);
+			} else if ($('.worldgraph-no-issues').length) {
+				$('.worldgraph-no-issues').first().replaceWith(html);
 			} else {
 				$('.worldgraph-summary').after(html);
 			}
