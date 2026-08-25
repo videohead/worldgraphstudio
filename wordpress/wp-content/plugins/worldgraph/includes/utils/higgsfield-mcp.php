@@ -312,7 +312,8 @@ class Higgsfield_MCP {
 			'tools/list' === $method
 			&& (
 				! array_key_exists( 'ttlMs', $result )
-				|| ! is_numeric( $result['ttlMs'] )
+				|| ( ! is_int( $result['ttlMs'] ) && ! is_float( $result['ttlMs'] ) )
+				|| ! is_finite( (float) $result['ttlMs'] )
 				|| (float) $result['ttlMs'] < 0
 				|| ! is_string( $result['cacheScope'] ?? null )
 				|| ! in_array( $result['cacheScope'], [ 'public', 'private' ], true )
@@ -450,9 +451,9 @@ class Higgsfield_MCP {
 		}
 
 		return [
-			'status'     => (int) wp_remote_retrieve_response_code( $response ),
-			'body'       => (string) wp_remote_retrieve_body( $response ),
-			'session_id' => (string) wp_remote_retrieve_header( $response, 'mcp-session-id' ),
+			'status'       => (int) wp_remote_retrieve_response_code( $response ),
+			'body'         => (string) wp_remote_retrieve_body( $response ),
+			'session_id'   => (string) wp_remote_retrieve_header( $response, 'mcp-session-id' ),
 			'content_type' => (string) wp_remote_retrieve_header( $response, 'content-type' ),
 		];
 	}
@@ -696,19 +697,22 @@ class Higgsfield_MCP {
 	}
 
 	/** Bound remote schema depth, count, keys, and scalar lengths. */
-	private static function sanitize_schema( $value, int $depth, int &$remaining ) {
+	private static function sanitize_schema( $value, int $depth, int &$remaining, string $parent_key = '' ) {
 		if ( $remaining <= 0 || $depth > self::MAX_SCHEMA_DEPTH ) {
 			return null;
 		}
 		--$remaining;
 		if ( is_array( $value ) ) {
+			if ( empty( $value ) && in_array( $parent_key, [ '$defs', 'definitions', 'dependentSchemas', 'patternProperties', 'properties' ], true ) ) {
+				return new \stdClass();
+			}
 			$sanitized = [];
 			foreach ( $value as $key => $item ) {
 				if ( $remaining <= 0 ) {
 					break;
 				}
-				$key = is_int( $key ) ? $key : substr( sanitize_text_field( (string) $key ), 0, 200 );
-				$sanitized[ $key ] = self::sanitize_schema( $item, $depth + 1, $remaining );
+				$key               = is_int( $key ) ? $key : substr( sanitize_text_field( (string) $key ), 0, 200 );
+				$sanitized[ $key ] = self::sanitize_schema( $item, $depth + 1, $remaining, is_string( $key ) ? $key : '' );
 			}
 			return $sanitized;
 		}

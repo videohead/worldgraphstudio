@@ -95,7 +95,16 @@
       "type": "object",
       "maxProperties": 30,
       "propertyNames": {
-        "pattern": "^[A-Za-z][A-Za-z0-9._~-]{0,99}$"
+        "allOf": [
+          {
+            "pattern": "^[A-Za-z][A-Za-z0-9._~-]{0,99}$"
+          },
+          {
+            "not": {
+              "pattern": "^[Cc][Ll][Ii][Ee][Nn][Tt]_(?:[Ss][Ee][Cc][Rr][Ee][Tt]|[Aa][Ss][Ss][Ee][Rr][Tt][Ii][Oo][Nn](?:_[Tt][Yy][Pp][Ee])?)$"
+            }
+          }
+        ]
       },
       "additionalProperties": {
         "anyOf": [
@@ -246,7 +255,7 @@
           "type": "object",
           "minProperties": 1,
           "propertyNames": {
-            "pattern": "^[a-z][a-z0-9_-]*$"
+            "pattern": "^[a-z][a-z0-9_-]{0,63}$"
           },
           "additionalProperties": {
             "$ref": "#/$defs/oauthProfile"

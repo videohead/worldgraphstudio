@@ -78,17 +78,37 @@ class Midjourney_Catalog {
 				__( 'Add a midjourney-api.com credential, an AceData Cloud MCP credential, or both before provisioning Templates.', 'worldgraph' )
 			);
 		}
+		$selected = self::selected_definitions( $connection['model_access'] ?? '' );
+		if ( is_wp_error( $selected ) ) {
+			return $selected;
+		}
+		$api_definitions = array_values(
+			array_filter(
+				$selected,
+				static function ( array $definition ): bool {
+					return 'api' === ( $definition['transport'] ?? '' );
+				}
+			)
+		);
+		$mcp_definitions = array_values(
+			array_filter(
+				$selected,
+				static function ( array $definition ): bool {
+					return 'mcp' === ( $definition['transport'] ?? '' );
+				}
+			)
+		);
 
 		$definitions = [];
 		$transports  = [];
 		$mcp_error   = null;
 
-		if ( '' !== $api_credential ) {
-			$definitions = self::definitions( 'api' );
+		if ( '' !== $api_credential && ! empty( $api_definitions ) ) {
+			$definitions = $api_definitions;
 			$transports[] = 'api';
 		}
 
-		if ( '' !== $mcp_credential ) {
+		if ( '' !== $mcp_credential && ! empty( $mcp_definitions ) ) {
 			$live_schemas = Midjourney_MCP::tool_schemas( $connection_id );
 			if ( is_wp_error( $live_schemas ) ) {
 				$mcp_error = $live_schemas;
@@ -116,7 +136,6 @@ class Midjourney_Catalog {
 						)
 					);
 				} else {
-					$mcp_definitions = self::definitions( 'mcp' );
 					$mcp_definition  = self::merge_live_imagine_schema(
 						$mcp_definitions[0],
 						$live_schemas[ self::MCP_IMAGINE_TOOL ]
@@ -133,6 +152,12 @@ class Midjourney_Catalog {
 
 		if ( is_wp_error( $mcp_error ) && empty( $definitions ) ) {
 			return $mcp_error;
+		}
+		if ( empty( $definitions ) ) {
+			return new WP_Error(
+				'midjourney_catalog_credentials_missing',
+				__( 'Add a credential for at least one MidJourney transport allowed by Model Access.', 'worldgraph' )
+			);
 		}
 
 		$template_ids = [];
@@ -252,6 +277,49 @@ class Midjourney_Catalog {
 				),
 			],
 		];
+	}
+
+	/** Apply an optional exact transport-operation allowlist. */
+	private static function selected_definitions( $raw_allowlist ) {
+		$definitions = self::definitions();
+		if ( is_array( $raw_allowlist ) ) {
+			$allowed = $raw_allowlist;
+		} else {
+			$raw_allowlist = trim( (string) $raw_allowlist );
+			if ( '' === $raw_allowlist ) {
+				return $definitions;
+			}
+			if ( strlen( $raw_allowlist ) > Midjourney_API::MAX_RESPONSE_BYTES ) {
+				return new WP_Error( 'midjourney_catalog_allowlist_invalid', __( 'MidJourney Model Access is too large.', 'worldgraph' ) );
+			}
+			$allowed = json_decode( $raw_allowlist, true );
+		}
+
+		if ( ! is_array( $allowed ) || $allowed !== array_values( $allowed ) || count( $allowed ) > 100 ) {
+			return new WP_Error( 'midjourney_catalog_allowlist_invalid', __( 'MidJourney Model Access must be a JSON array of exact transport-operation references.', 'worldgraph' ) );
+		}
+		if ( count( $allowed ) !== count( array_filter( $allowed, 'is_string' ) ) ) {
+			return new WP_Error( 'midjourney_catalog_allowlist_invalid', __( 'MidJourney Model Access entries must be exact transport-operation strings.', 'worldgraph' ) );
+		}
+
+		$allowed = array_values( array_unique( $allowed ) );
+		$known   = array_column( $definitions, 'reference' );
+		if ( ! empty( array_diff( $allowed, $known ) ) ) {
+			return new WP_Error( 'midjourney_catalog_allowlist_invalid', __( 'MidJourney Model Access contains an operation that this adapter has not reviewed.', 'worldgraph' ) );
+		}
+		$selected = array_values(
+			array_filter(
+				$definitions,
+				static function ( array $definition ) use ( $allowed ): bool {
+					return in_array( (string) $definition['reference'], $allowed, true );
+				}
+			)
+		);
+		if ( empty( $selected ) ) {
+			return new WP_Error( 'midjourney_catalog_allowlist_empty', __( 'MidJourney Model Access contains no reviewed transport-operation references.', 'worldgraph' ) );
+		}
+
+		return $selected;
 	}
 
 	/**

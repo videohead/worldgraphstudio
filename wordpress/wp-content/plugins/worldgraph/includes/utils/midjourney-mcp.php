@@ -28,6 +28,9 @@ class Midjourney_MCP {
 		'midjourney_get_task',
 	];
 
+	/** The only reviewed MCP Template reference. */
+	const TEMPLATE = 'mcp:midjourney_imagine';
+
 	/** Provider default generation timeout in seconds. */
 	const DEFAULT_GENERATION_TIMEOUT = 480;
 
@@ -145,13 +148,16 @@ class Midjourney_MCP {
 	 * @return array<string, mixed>|WP_Error
 	 */
 	public static function run_template( string $template, string $prompt, array $parameters, int $connection_id = 0 ) {
-		if ( 'mcp:midjourney_imagine' !== strtolower( trim( $template ) ) ) {
+		if ( self::TEMPLATE !== trim( $template ) ) {
 			return new WP_Error( 'midjourney_mcp_template_invalid', __( 'The Midjourney Template has an unsupported MCP transport reference.', 'worldgraph' ) );
 		}
 
 		$connection = self::connection( $connection_id );
 		if ( is_wp_error( $connection ) ) {
 			return $connection;
+		}
+		if ( ! self::operation_is_allowed( $connection, self::TEMPLATE ) ) {
+			return new WP_Error( 'midjourney_mcp_template_invalid', __( 'That Midjourney MCP Template is not allowed by the selected Connection.', 'worldgraph' ) );
 		}
 
 		$prompt = trim( sanitize_textarea_field( wp_strip_all_tags( $prompt ) ) );
@@ -218,15 +224,21 @@ class Midjourney_MCP {
 	 * @param string $template      Template reference retained for polling parity.
 	 * @return array<string, mixed>|WP_Error
 	 */
-	public static function get_job_status( string $job_id, int $connection_id = 0, string $template = '' ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed
+	public static function get_job_status( string $job_id, int $connection_id = 0, string $template = '' ) {
 		$job_id = self::task_id( $job_id );
 		if ( is_wp_error( $job_id ) ) {
 			return $job_id;
+		}
+		if ( '' !== trim( $template ) && self::TEMPLATE !== trim( $template ) ) {
+			return new WP_Error( 'midjourney_mcp_template_invalid', __( 'The Midjourney Template has an unsupported MCP transport reference.', 'worldgraph' ) );
 		}
 
 		$connection = self::connection( $connection_id );
 		if ( is_wp_error( $connection ) ) {
 			return $connection;
+		}
+		if ( ! self::operation_is_allowed( $connection, self::TEMPLATE ) ) {
+			return new WP_Error( 'midjourney_mcp_template_invalid', __( 'That Midjourney MCP Template is not allowed by the selected Connection.', 'worldgraph' ) );
 		}
 
 		$result = self::call_tool(
@@ -358,6 +370,39 @@ class Midjourney_MCP {
 		}
 
 		return 'submitted';
+	}
+
+	/** Whether the reviewed MCP operation is permitted by Model Access. */
+	public static function operation_is_allowed( array $connection, string $reference ): bool {
+		$reference = trim( $reference );
+		if ( self::TEMPLATE !== $reference ) {
+			return false;
+		}
+
+		$raw = $connection['model_access'] ?? '';
+		if ( is_array( $raw ) ) {
+			$allowed = $raw;
+		} else {
+			$raw = trim( (string) $raw );
+			if ( '' === $raw ) {
+				return true;
+			}
+			if ( strlen( $raw ) > self::MAX_RESPONSE_BYTES ) {
+				return false;
+			}
+			$allowed = json_decode( $raw, true );
+		}
+
+		if ( ! is_array( $allowed ) || ! self::is_list( $allowed ) || count( $allowed ) > 100 ) {
+			return false;
+		}
+		foreach ( $allowed as $candidate ) {
+			if ( is_string( $candidate ) && $reference === $candidate ) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	/**

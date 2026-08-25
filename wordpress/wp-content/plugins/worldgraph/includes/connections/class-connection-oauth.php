@@ -354,6 +354,7 @@ final class Connection_OAuth {
 		if ( is_wp_error( $lock ) ) {
 			self::redirect_to_connection( $connection_id, $profile, 'busy' );
 		}
+		$stored = false;
 		try {
 			$stored = Credential_Store::store_connection_secret( $connection_id, (string) $context['config']['credential_field'], '' );
 		} finally {
@@ -565,7 +566,7 @@ final class Connection_OAuth {
 		}
 		if ( is_array( $oauth['profiles'] ?? null ) ) {
 			foreach ( $oauth['profiles'] as $declared_profile => $declared_config ) {
-				if ( ! is_string( $declared_profile ) || sanitize_key( $declared_profile ) !== $declared_profile || ! is_array( $declared_config ) ) {
+				if ( ! is_string( $declared_profile ) || ! preg_match( '/^[a-z][a-z0-9_-]{0,63}$/', $declared_profile ) || ! is_array( $declared_config ) ) {
 					return new WP_Error( 'worldgraph_oauth_profile_invalid', __( 'This provider declares an invalid OAuth profile.', 'worldgraph' ) );
 				}
 			}
@@ -639,7 +640,11 @@ final class Connection_OAuth {
 		}
 
 		foreach ( [ 'authorization_parameters', 'token_parameters', 'registration_parameters' ] as $parameter_group ) {
-			if ( self::contains_confidential_client_parameter( $raw[ $parameter_group ] ?? [] ) ) {
+			$parameters = $raw[ $parameter_group ] ?? [];
+			if ( ! self::static_parameters_are_valid( $parameters ) ) {
+				return new WP_Error( 'worldgraph_oauth_static_parameters_invalid', __( 'This provider declares invalid OAuth static parameters.', 'worldgraph' ) );
+			}
+			if ( self::contains_confidential_client_parameter( $parameters ) ) {
 				return new WP_Error( 'worldgraph_oauth_confidential_parameter_forbidden', __( 'Public-client OAuth profiles cannot declare confidential-client parameters.', 'worldgraph' ) );
 			}
 		}
@@ -683,6 +688,20 @@ final class Connection_OAuth {
 		return $safe;
 	}
 
+	/** Whether an optional static-parameter map matches the portable manifest contract. */
+	private static function static_parameters_are_valid( $parameters ): bool {
+		if ( ! is_array( $parameters ) || count( $parameters ) > 30 ) {
+			return false;
+		}
+		foreach ( $parameters as $key => $value ) {
+			if ( ! is_string( $key ) || ! preg_match( '/^[A-Za-z][A-Za-z0-9._~-]{0,99}$/', $key ) || ! is_scalar( $value ) || strlen( (string) $value ) > 2000 ) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
 	/** Reject static parameters that would silently turn PKCE into a confidential client. */
 	private static function contains_confidential_client_parameter( $parameters ): bool {
 		if ( ! is_array( $parameters ) ) {
@@ -702,7 +721,8 @@ final class Connection_OAuth {
 		$url   = trim( $url );
 		$parts = wp_parse_url( $url );
 		if (
-			'' === $url
+				'' === $url
+				|| strlen( $url ) > 2048
 			|| ! is_array( $parts )
 			|| 'https' !== strtolower( (string) ( $parts['scheme'] ?? '' ) )
 			|| '' === (string) ( $parts['host'] ?? '' )
