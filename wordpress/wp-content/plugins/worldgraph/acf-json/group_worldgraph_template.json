@@ -237,7 +237,7 @@
             "name": "provider_template_id",
             "aria-label": "",
             "type": "text",
-            "instructions": "Provider identifier paired with the Connection. For Suno use an api: or mcp: operation reference; for fal use a model endpoint ID; for ElevenLabs use a voice ID; for ComfyUI use the discovered MCP Template ID.",
+            "instructions": "Provider identifier paired with the Connection. For Suno or MidJourney use an api: or mcp: operation reference; for fal use a model endpoint ID; for ElevenLabs use a voice ID; for ComfyUI use the discovered MCP Template ID; for OpenRouter use a video model slug, e.g. google\/veo-3.1.",
             "required": 0,
             "conditional_logic": 0,
             "wrapper": {

@@ -32,8 +32,8 @@ it is not a first-run Setup Wizard choice.
 5. In the provider controls, choose **Connect Higgsfield MCP**, sign in to the
    Higgsfield account, and approve `openid`, `email`, and `offline_access`.
 6. Run **Check connection**. Readiness requires REST authentication, a
-   non-empty valid MCP tool catalog, and successful provisioning of the three
-   reviewed REST Templates.
+   non-empty valid MCP tool catalog, and successful provisioning of the
+   selected reviewed REST Templates—three when `Model Access` is blank.
 
 The MCP button uses the shared profile-based Connection OAuth broker. It runs
 the public-client authorization-code flow with S256 PKCE, performs dynamic
@@ -170,9 +170,10 @@ or rights-restricted material.
   contains both parts in `KEY_ID:KEY_SECRET` form, with no `Key ` prefix.
 - **OAuth button unavailable:** save the Connection as published and enabled,
   and confirm the WordPress admin URL is HTTPS (or a loopback development URL).
-- **OAuth expired:** reconnect from the Connection editor. An externally
-  supplied `env://` bearer token must be rotated by its secret manager rather
-  than by WordPress.
+- **OAuth expired:** a locally stored envelope refreshes automatically when it
+  has a usable refresh token. Reconnect when refresh is unavailable, fails, or
+  the trusted profile binding changed. An `env://` credential must instead be
+  rotated by its external secret manager.
 - **MCP test fails with no tools:** reconnect the Higgsfield account and retry.
   Do not add guessed tool names to satisfy readiness.
 - **No Templates appear:** clear a malformed `Model Access` value or set it to

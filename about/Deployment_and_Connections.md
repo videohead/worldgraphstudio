@@ -2,7 +2,8 @@
 
 World Graph Studio keeps stories, Story Graph data, and specialist creative
 advisors in WordPress. Generative media workflows can run through configured
-tools including ComfyUI, fal, ElevenLabs, Suno, VideoDraft, and OpenRouter.
+tools including ComfyUI, fal, ElevenLabs, Suno, MidJourney, VideoDraft, and
+OpenRouter.
 The delivered Higgsfield adapter adds reviewed REST image/video generation and
 OAuth-protected MCP catalog inspection.
 Neither a GPU nor a generation connection is required for writing, planning, continuity,
@@ -21,7 +22,8 @@ Every World Graph Studio user needs:
 
 1. A WordPress.org-capable host, WP Local, or a local Docker/Lando deployment.
 2. Optionally, a local ComfyUI installation, Comfy Cloud account, fal account,
-   ElevenLabs account, separate SunoAPI.org and AceData Cloud accounts, a
+   ElevenLabs account, separate SunoAPI.org and Ace Data Cloud accounts,
+   separate midjourney-api.com and Ace Data Cloud MidJourney credentials, a
    Higgsfield developer API credential plus an eligible Higgsfield account for
    MCP, a VideoDraft account with a personal access token, an OpenRouter
    account with an API key, or another manually managed asset source.
@@ -256,6 +258,40 @@ final track into the media library before completing the generation record.
 
 See [Suno Integration](plugins/SUNO.md) for credential setup, Template
 contracts, callback-token behavior, polling, import, limits, and
+troubleshooting.
+
+## MidJourney REST and MCP
+
+World Graph Studio represents MidJourney generation with one `midjourney`
+Connection and two independent third-party transports:
+
+- midjourney-api.com REST uses `https://api.midjourney-api.com`, the
+  `credential_reference` field, and an `API-KEY` header; and
+- Ace Data Cloud MCP uses
+  `https://midjourney.mcp.acedata.cloud/mcp`, the
+  `mcp_credential_reference` field, and Bearer authentication.
+
+Midjourney does not offer an official public API. The REST service describes
+itself as a bridge, while Ace Data Cloud operates the separate MCP service.
+Neither credential is a Midjourney browser-subscription credential, and a key
+from one intermediary cannot authenticate the other.
+
+Configure this provider from **World Graph Studio > Connections**, not the
+first-run Setup Wizard. Prefer `env://MIDJOURNEY_API_KEY` for REST and a
+service-scoped `env://ACEDATACLOUD_API_TOKEN` reference for MCP. Saving or
+testing provisions `api:imagine` and `mcp:midjourney_imagine` text-to-image
+Templates. The REST Template accepts `fast` or `relaxed`; the MCP Template
+accepts `fast`, `relax`, or `turbo`.
+
+Both paths are asynchronous. REST polls `/midjourney/v1/job-status`; MCP polls
+with the allowlisted `midjourney_get_task` tool after completing the provider's
+documented `2025-03-26` initialization lifecycle. Every distinct final image
+is imported into the WordPress Media Library before the generation job is
+complete. No callback URL is sent, arbitrary discovered MCP tools are not
+executable, and an ambiguous paid submission is not retried automatically.
+
+See [MidJourney Connection](plugins/MIDJOURNEY.md) for exact fields, Template
+inputs, protocol behavior, provider ownership, security boundaries, and
 troubleshooting.
 
 ## Higgsfield REST and MCP

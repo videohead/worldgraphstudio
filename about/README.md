@@ -60,6 +60,7 @@ delivery status, then follow the path that matches what you are trying to do.
   placeholders.
 - [Generation engine](plugins/GENERATION_ENGINE.md)
 - [Suno integration](plugins/SUNO.md)
+- [MidJourney connection](plugins/MIDJOURNEY.md)
 - [VideoDraft connection and sync](plugins/VIDEODRAFT.md)
 - [Descript connection and exchange](plugins/DESCRIPT.md)
 - [Comfy template catalog](plugins/COMFY_TEMPLATE_CATALOG.md)

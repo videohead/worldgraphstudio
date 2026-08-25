@@ -273,7 +273,7 @@ class Template {
 				'type'        => 'text',
 				'label'       => 'Provider Template / Model Endpoint ID',
 				'required'    => false,
-				'description' => 'Provider identifier paired with the Connection. For Suno use an api: or mcp: operation reference; for fal use a model endpoint ID; for ElevenLabs use a voice ID; for ComfyUI use the discovered MCP Template ID; for OpenRouter use a video model slug, e.g. google/veo-3.1.',
+				'description' => 'Provider identifier paired with the Connection. For Suno or MidJourney use an api: or mcp: operation reference; for fal use a model endpoint ID; for ElevenLabs use a voice ID; for ComfyUI use the discovered MCP Template ID; for OpenRouter use a video model slug, e.g. google/veo-3.1.',
 			],
 			'configuration_json'  => [
 				'type'        => 'textarea',

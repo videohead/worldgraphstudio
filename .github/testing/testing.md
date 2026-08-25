@@ -139,11 +139,15 @@ rather than treating the build as complete parity evidence.
 ## External connections
 
 Tests should mock LLM, ComfyUI, Comfy Cloud, fal, ElevenLabs, SunoAPI.org REST,
-AceData Cloud Suno MCP, Higgsfield REST/OAuth/MCP, VideoDraft MCP, Celtx, and Web
+AceData Cloud Suno MCP, midjourney-api.com REST, Ace Data Cloud MidJourney MCP,
+Higgsfield REST/OAuth/MCP, VideoDraft MCP, Celtx, and Web
 Stories traffic unless a test is explicitly an environment-specific smoke
 test. A valid credential or reachable model is deployment state, not a unit
 test prerequisite. Suno tests must keep the REST and MCP credentials separate
-and cover the `text_to_lyrics` modality. Higgsfield tests must keep the combined
+and cover the `text_to_lyrics` modality. MidJourney tests must keep the
+midjourney-api.com `API-KEY` separate from the Ace Data Cloud Bearer token,
+cover both transport lifecycles, and import every final image. Higgsfield tests
+must keep the combined
 REST key ID/secret separate from the MCP OAuth credential, exercise only the
 three reviewed REST operation references, and prove MCP discovery does not
 expose arbitrary `tools/call`.

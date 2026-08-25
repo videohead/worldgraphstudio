@@ -32,7 +32,6 @@ function fetch_continuity_validation( int $episode_id = 0, array $scene_ids = []
 		$posts = ! empty( $scene_ids ) ? array_map( 'get_post', array_map( 'absint', $scene_ids ) ) : get_posts( [ 'post_type' => 'worldgraph_scene', 'post_parent' => $episode_id ?: 0, 'post_status' => 'any', 'posts_per_page' => -1 ] );
 	}
 
-	$errors = 0;
 	foreach ( array_filter( $posts ) as $post ) {
 		if ( '' === trim( wp_strip_all_tags( $post->post_content ) ) ) {
 			$post_type_label = continuity_entity_type_label( $post->post_type );
@@ -49,17 +48,18 @@ function fetch_continuity_validation( int $episode_id = 0, array $scene_ids = []
 
 		foreach ( continuity_structural_issues_for_post( $post ) as $issue ) {
 			$issues[] = $issue;
-			if ( 'error' === $issue['severity'] ) {
-				$errors++;
-			}
 		}
 	}
+
+	$errors   = count( filter_issues_by_severity( $issues, 'error' ) );
+	$warnings = count( filter_issues_by_severity( $issues, 'warning' ) );
+	$infos    = count( filter_issues_by_severity( $issues, 'info' ) );
 
 	return [
 		'total_issues'     => count( $issues ),
 		'errors'           => $errors,
-		'warnings'         => count( $issues ) - $errors,
-		'infos'            => 0,
+		'warnings'         => $warnings,
+		'infos'            => $infos,
 		'scenes_validated' => count( array_filter( $posts ) ),
 		'issues'           => $issues,
 	];
@@ -102,13 +102,16 @@ function continuity_structural_issues_for_post( \WP_Post $post ): array {
 		}
 
 		$dialogue = worldgraph_get_field_value( $post->ID, 'dialogue' );
-		if ( is_array( $dialogue ) && ! empty( $dialogue ) && empty( array_filter( $character_ids ) ) ) {
+		$has_dialogue = is_array( $dialogue ) && ! empty( $dialogue );
+		if ( empty( array_filter( $character_ids ) ) ) {
 			$issues[] = [
-				'severity'    => 'warning',
+				'severity'    => $has_dialogue ? 'warning' : 'info',
 				'category'    => 'character',
-				'description' => 'Scene has dialogue but no characters linked.',
+				'description' => $has_dialogue
+					? 'Scene has dialogue but no characters linked.'
+					: 'Scene has no characters linked.',
 				'entities'    => [ build_issue_entity_context( $post ) ],
-				'suggestion'  => 'Link the speaking characters, or confirm a character was not deleted.',
+				'suggestion'  => 'Link the scene\'s characters, or confirm a character was not deleted.',
 			];
 		}
 	}

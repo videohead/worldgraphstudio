@@ -166,11 +166,16 @@ class Chat_Abilities extends AbstractAbilityGroup {
                 ],
             ],
             'execute_callback' => function( $input ) {
-                return \WorldGraph\AI\Editor\AI_Editor::instance()->chat(
-                    $input['prompt'],
-                    isset( $input['agent'] ) ? $input['agent'] : null,
-                    isset( $input['post_id'] ) ? (int) $input['post_id'] : 0
-                );
+                $request = new \WP_REST_Request( 'POST' );
+                $request->set_param( 'prompt', $input['prompt'] );
+                if ( isset( $input['agent'] ) ) {
+                    $request->set_param( 'agent', $input['agent'] );
+                }
+                if ( isset( $input['post_id'] ) ) {
+                    $request->set_param( 'post_id', (int) $input['post_id'] );
+                }
+                $response = ( new \WorldGraph\AI\AI_Editor_REST() )->chat( $request );
+                return $response->get_data();
             },
             'permission_callback' => function() {
                 return current_user_can( 'edit_posts' );
@@ -213,10 +218,11 @@ class Chat_Abilities extends AbstractAbilityGroup {
                 ],
             ],
             'execute_callback' => function( $input ) {
-                return \WorldGraph\AI\Editor\AI_Editor::instance()->analyze(
-                    (int) $input['post_id'],
-                    isset( $input['focus'] ) ? $input['focus'] : null
-                );
+                $request = new \WP_REST_Request( 'POST' );
+                $request->set_param( 'post_id', (int) $input['post_id'] );
+                $request->set_param( 'prompt', isset( $input['focus'] ) ? $input['focus'] : 'story' );
+                $response = ( new \WorldGraph\AI\AI_Editor_REST() )->analyze( $request );
+                return $response->get_data();
             },
             'permission_callback' => function() {
                 return current_user_can( 'edit_posts' );
@@ -262,11 +268,16 @@ class Chat_Abilities extends AbstractAbilityGroup {
                 ],
             ],
             'execute_callback' => function( $input ) {
-                return \WorldGraph\AI\Editor\AI_Editor::instance()->generate(
-                    $input['prompt'],
-                    isset( $input['type'] ) ? $input['type'] : null,
-                    isset( $input['post_id'] ) ? (int) $input['post_id'] : 0
-                );
+                $request = new \WP_REST_Request( 'POST' );
+                $request->set_param( 'prompt', $input['prompt'] );
+                if ( isset( $input['type'] ) ) {
+                    $request->set_param( 'agent', $input['type'] );
+                }
+                if ( isset( $input['post_id'] ) ) {
+                    $request->set_param( 'post_id', (int) $input['post_id'] );
+                }
+                $response = ( new \WorldGraph\AI\AI_Editor_REST() )->generate( $request );
+                return $response->get_data();
             },
             'permission_callback' => function() {
                 return current_user_can( 'edit_posts' );
@@ -304,9 +315,10 @@ class Chat_Abilities extends AbstractAbilityGroup {
                 ],
             ],
             'execute_callback' => function( $input ) {
-                return \WorldGraph\AI\Editor\AI_Editor::instance()->continuity_check(
-                    (int) $input['post_id']
-                );
+                $request = new \WP_REST_Request( 'POST' );
+                $request->set_param( 'post_id', (int) $input['post_id'] );
+                $response = ( new \WorldGraph\AI\AI_Editor_REST() )->continuity_check( $request );
+                return $response->get_data();
             },
             'permission_callback' => function() {
                 return current_user_can( 'edit_posts' );
@@ -359,7 +371,7 @@ class Context_Resources extends AbstractAbilityGroup {
                 ],
             ],
             'execute_callback' => function( $input ) {
-                return \WorldGraph\AI\Editor\AI_Context_Builder::instance()->build_post_context(
+                return ( new \WorldGraph\AI\AI_Context_Builder() )->build_post_context(
                     (int) $input['post_id']
                 );
             },
@@ -401,7 +413,7 @@ class Context_Resources extends AbstractAbilityGroup {
                 ],
             ],
             'execute_callback' => function( $input ) {
-                return \WorldGraph\AI\Editor\AI_Context_Builder::instance()->build_character_context(
+                return ( new \WorldGraph\AI\AI_Context_Builder() )->build_character_context(
                     (int) $input['character_id']
                 );
             },
@@ -444,7 +456,7 @@ class Context_Resources extends AbstractAbilityGroup {
                 ],
             ],
             'execute_callback' => function( $input ) {
-                return \WorldGraph\AI\Editor\AI_Context_Builder::instance()->build_scene_context(
+                return ( new \WorldGraph\AI\AI_Context_Builder() )->build_scene_context(
                     (int) $input['scene_id']
                 );
             },
@@ -647,7 +659,8 @@ class Prompt_Templates extends AbstractAbilityGroup {
                 ],
             ],
             'execute_callback' => function( $input ) {
-                $context = \WorldGraph\AI\Editor\AI_Context_Builder::instance()->build_post_context(
+                $context_builder = new \WorldGraph\AI\AI_Context_Builder();
+                $context = $context_builder->build_post_context(
                     (int) $input['post_id']
                 );
                 $post = get_post( (int) $input['post_id'] );
@@ -662,7 +675,7 @@ class Prompt_Templates extends AbstractAbilityGroup {
 
                 if ( ! empty( $context ) ) {
                     $user_prompt .= "Story Graph Context:\n"
-                        . \WorldGraph\AI\Editor\AI_Context_Builder::instance()->build_context_for_llm( $context ) . "\n\n";
+                        . $context_builder->build_context_for_llm( $context ) . "\n\n";
                 }
 
                 return [
@@ -720,7 +733,8 @@ class Prompt_Templates extends AbstractAbilityGroup {
                 ],
             ],
             'execute_callback' => function( $input ) {
-                $context = \WorldGraph\AI\Editor\AI_Context_Builder::instance()->build_post_context(
+                $context_builder = new \WorldGraph\AI\AI_Context_Builder();
+                $context = $context_builder->build_post_context(
                     (int) $input['post_id']
                 );
                 $post = get_post( (int) $input['post_id'] );
@@ -734,7 +748,7 @@ class Prompt_Templates extends AbstractAbilityGroup {
 
                 if ( ! empty( $context ) ) {
                     $user_prompt .= "Story Graph Context:\n"
-                        . \WorldGraph\AI\Editor\AI_Context_Builder::instance()->build_context_for_llm( $context ) . "\n\n";
+                        . $context_builder->build_context_for_llm( $context ) . "\n\n";
                 }
 
                 return [

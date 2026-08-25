@@ -45,7 +45,9 @@ Connection routes are administrator-only because `credential_reference` and
 `mcp_credential_reference` may be `env://` pointers or credentials entered for
 local evaluation. Treat their responses as sensitive control-plane data; do
 not expose them to public clients or application logs. Suno uses the first for
-SunoAPI.org REST and the second for AceData Cloud MCP; the values are distinct.
+SunoAPI.org REST and the second for AceData Cloud MCP; MidJourney likewise uses
+the first for midjourney-api.com and the second for its Ace Data Cloud MCP
+service. Each pair contains distinct values.
 
 ## Common Resource Contract
 
@@ -725,17 +727,20 @@ import an attachment matching its requested image/video/audio output type.
 
 Delivered execution adapters are Comfy Cloud MCP, local ComfyUI HTTP workflows,
 fal MCP, ElevenLabs, Suno through SunoAPI.org REST and AceData Cloud MCP,
-VideoDraft MCP, and OpenRouter video generation REST.
+MidJourney through midjourney-api.com REST and Ace Data Cloud MCP, VideoDraft
+MCP, and OpenRouter video generation REST.
 The Suno callback route is public because the provider calls it, but an HMAC
 query token binds it to one Suno Connection. It only schedules an authenticated
 poll; the worker still retrieves canonical status and imports every final track
 before completing the job. The built-in catalogs provision text-to-image,
-ElevenLabs audio, and Suno music/lyrics Templates. Additional output modalities
+MidJourney Imagine, ElevenLabs audio, and Suno music/lyrics Templates. Additional output modalities
 need an adapter that registers and executes a compatible Template; a provider
 value without that implementation is configuration metadata only.
 
 See [Suno Integration](plugins/SUNO.md) for the transport-specific Template,
-callback, polling, credential, and result contracts.
+callback, polling, credential, and result contracts, and [MidJourney
+Connection](plugins/MIDJOURNEY.md) for the two-intermediary REST/MCP image
+contract. Neither provider guide adds a new public REST route to WordPress.
 
 ## Connections
 

@@ -21,7 +21,7 @@ not been configured.
 | AI assistance | Gutenberg AI Editor, Story Graph context, configured LLM access, WordPress Abilities, and 50+ specialist agents loaded from extensible profiles |
 | Story intelligence | Search, optional semantic assistance, continuity checks, relationship analytics, summaries, and admin panels |
 | Generation | Connection and template records, validation, queued generation jobs, WP-Cron processing, job state, cancellation, result import, and provenance |
-| Provider adapters | A filterable, callback-driven Connection/Template/generation registry plus local ComfyUI HTTP workflows, Comfy Cloud MCP, fal MCP, ElevenLabs, SunoAPI.org REST, AceData Cloud Suno MCP, Higgsfield reviewed REST generation with OAuth MCP catalog discovery, VideoDraft MCP, OpenRouter video generation REST, and manually managed external-generator workflows where configured |
+| Provider adapters | A filterable, callback-driven Connection/Template/generation registry plus local ComfyUI HTTP workflows, Comfy Cloud MCP, fal MCP, ElevenLabs, SunoAPI.org REST, AceData Cloud Suno MCP, midjourney-api.com REST, Ace Data Cloud MidJourney MCP, Higgsfield reviewed REST generation with OAuth MCP catalog discovery, VideoDraft MCP, OpenRouter video generation REST, and manually managed external-generator workflows where configured |
 | Project interchange | Default-enabled Story Import & Export plugin with canonical World Graph Studio JSON import/export, Markdown screenplay/storyboard export, and preview/confirm LLM decomposition of supported persisted story documents; Final Draft FDX import; optional VideoDraft structural Project push/pull |
 | Synchronization | Optional bidirectional VideoDraft structural synchronization, with persistent remote-ID mappings |
 | Editorial format code | CMX 3600 and SMPTE 436m XML parsing, timecode, and format-generation functions; the bundled admin workflow remains incomplete |
@@ -39,6 +39,15 @@ the SunoAPI.org REST credential distinct from the AceData Cloud MCP credential.
 See [Suno Integration](plugins/SUNO.md) for the transport boundary and the
 [Integration Catalog](Integration_Catalog.md) for the complete table view,
 including source-only and experimental integrations.
+
+The delivered MidJourney boundary provisions one text-to-image Imagine
+Template for midjourney-api.com REST and one for Ace Data Cloud MCP. One
+`midjourney` Connection keeps the two intermediary credentials and auth
+headers distinct. Only `midjourney_imagine` and `midjourney_get_task` are
+allowlisted on MCP; other advertised image-editing, transformation, reference,
+description, seed, and video tools are not executable in this scope. Both
+asynchronous paths import every final image before completion. See
+[MidJourney Connection](plugins/MIDJOURNEY.md).
 
 The delivered Higgsfield boundary provisions three reviewed REST Templates:
 Soul standard text-to-image, Higgsfield DoP standard image-to-video, and Kling
@@ -104,6 +113,10 @@ commitments, and they do not reopen the closed roadmap category.
   schemas are provider-owned and volatile. World Graph Studio executes only
   three reviewed allowlisted operations, does not retry ambiguous submits, and
   treats MCP as discovery rather than generation.
+- The delivered MidJourney transports are third-party intermediaries, not an
+  official Midjourney public API. Neither reviewed submit operation documents
+  an idempotency key or cancellation contract, so ambiguous paid submits are
+  not automatically retried and provider-side cancellation is not claimed.
 - Self-hosting gives the operator control of deployment and data location; site
   visibility and access still depend on WordPress and hosting configuration.
 - Story-source uploads are retained as WordPress Media Library attachments;

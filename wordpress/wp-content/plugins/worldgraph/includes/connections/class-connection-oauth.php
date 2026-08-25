@@ -35,6 +35,9 @@ final class Connection_OAuth {
 	/** The one external host temporarily permitted for an authorization redirect. */
 	private static string $redirect_host = '';
 
+	/** OAuth forms rendered in the admin footer, outside WordPress's post form. */
+	private static array $admin_forms = [];
+
 	/** Prevent duplicate global action registration. */
 	private static bool $initialized = false;
 
@@ -48,6 +51,7 @@ final class Connection_OAuth {
 		add_action( 'admin_post_worldgraph_connection_oauth_start', [ __CLASS__, 'handle_start' ] );
 		add_action( 'admin_post_worldgraph_connection_oauth_callback', [ __CLASS__, 'handle_callback' ] );
 		add_action( 'admin_post_worldgraph_connection_oauth_disconnect', [ __CLASS__, 'handle_disconnect' ] );
+		add_action( 'admin_footer', [ __CLASS__, 'render_queued_admin_forms' ] );
 	}
 
 	/**
@@ -140,14 +144,34 @@ final class Connection_OAuth {
 		];
 		?>
 		<p><strong><?php echo esc_html( sprintf( __( '%s authorization:', 'worldgraph' ), $label ) ); ?></strong> <?php echo esc_html( $status_labels[ $credential_status ] ?? $status_labels['not_connected'] ); ?></p>
-		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
-			<input type="hidden" name="action" value="<?php echo esc_attr( $connected ? 'worldgraph_connection_oauth_disconnect' : 'worldgraph_connection_oauth_start' ); ?>" />
-			<input type="hidden" name="connection_id" value="<?php echo esc_attr( (string) $post->ID ); ?>" />
-			<input type="hidden" name="oauth_profile" value="<?php echo esc_attr( $profile ); ?>" />
-			<?php wp_nonce_field( 'worldgraph_connection_oauth_' . ( $connected ? 'disconnect_' : 'start_' ) . $post->ID . '_' . $profile ); ?>
-			<button type="submit" class="button <?php echo $connected ? '' : 'button-primary'; ?>"><?php echo esc_html( $connected ? (string) $config['disconnect_label'] : (string) $config['connect_label'] ); ?></button>
-		</form>
 		<?php
+		$action       = $connected ? 'worldgraph_connection_oauth_disconnect' : 'worldgraph_connection_oauth_start';
+		$form_id      = 'worldgraph-connection-oauth-' . (int) $post->ID . '-' . $profile;
+		$nonce_action = 'worldgraph_connection_oauth_' . ( $connected ? 'disconnect_' : 'start_' ) . $post->ID . '_' . $profile;
+		self::$admin_forms[ $form_id ] = [
+			'action'        => $action,
+			'connection_id' => (int) $post->ID,
+			'profile'       => $profile,
+			'nonce_action'  => $nonce_action,
+		];
+		?>
+		<button type="submit" form="<?php echo esc_attr( $form_id ); ?>" class="button <?php echo $connected ? '' : 'button-primary'; ?>"><?php echo esc_html( $connected ? (string) $config['disconnect_label'] : (string) $config['connect_label'] ); ?></button>
+		<?php
+	}
+
+	/** Render queued mutation forms after WordPress closes the native post form. */
+	public static function render_queued_admin_forms(): void {
+		foreach ( self::$admin_forms as $form_id => $form ) {
+			?>
+			<form id="<?php echo esc_attr( (string) $form_id ); ?>" method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" hidden>
+				<input type="hidden" name="action" value="<?php echo esc_attr( (string) $form['action'] ); ?>" />
+				<input type="hidden" name="connection_id" value="<?php echo esc_attr( (string) $form['connection_id'] ); ?>" />
+				<input type="hidden" name="oauth_profile" value="<?php echo esc_attr( (string) $form['profile'] ); ?>" />
+				<?php wp_nonce_field( (string) $form['nonce_action'] ); ?>
+			</form>
+			<?php
+		}
+		self::$admin_forms = [];
 	}
 
 	/** Begin a one-time authorization-code + PKCE exchange. */
@@ -304,7 +328,9 @@ final class Connection_OAuth {
 		if ( is_wp_error( $context ) ) {
 			wp_die( esc_html__( 'This Connection does not have a valid OAuth configuration.', 'worldgraph' ) );
 		}
-		Credential_Store::store_connection_secret( $connection_id, (string) $context['config']['credential_field'], '' );
+		if ( ! Credential_Store::store_connection_secret( $connection_id, (string) $context['config']['credential_field'], '' ) ) {
+			self::redirect_to_connection( $connection_id, $profile, 'storage_failed' );
+		}
 		self::redirect_to_connection( $connection_id, $profile, 'disconnected' );
 	}
 
@@ -523,8 +549,17 @@ final class Connection_OAuth {
 				return new WP_Error( 'worldgraph_oauth_scopes_invalid', __( 'The provider OAuth scopes are invalid.', 'worldgraph' ) );
 			}
 		}
-		if ( 'none' !== (string) ( $raw['token_endpoint_auth_method'] ?? 'none' ) ) {
+		$auth_method = is_scalar( $raw['token_endpoint_auth_method'] ?? null ) ? (string) $raw['token_endpoint_auth_method'] : 'none';
+		if ( 'none' !== $auth_method ) {
 			return new WP_Error( 'worldgraph_oauth_auth_method_unsupported', __( 'This OAuth service currently supports public PKCE clients.', 'worldgraph' ) );
+		}
+		$client_id = is_scalar( $raw['client_id'] ?? null ) ? (string) $raw['client_id'] : '';
+		if ( '' !== $client_id && ! self::valid_client_id( $client_id ) ) {
+			return new WP_Error( 'worldgraph_oauth_client_invalid', __( 'The provider OAuth public client ID is invalid.', 'worldgraph' ) );
+		}
+		$client_id_from_filter = true === ( $raw['client_id_from_filter'] ?? false );
+		if ( '' === $client_id && '' === (string) $registration_endpoint && ! $client_id_from_filter ) {
+			return new WP_Error( 'worldgraph_oauth_client_missing', __( 'This OAuth profile must declare dynamic registration, a public client ID, or a deployment-supplied client ID.', 'worldgraph' ) );
 		}
 
 		$label = substr( sanitize_text_field( (string) ( $raw['service_label'] ?? $manifest['label'] ?? $provider ) ), 0, 100 );
@@ -536,7 +571,8 @@ final class Connection_OAuth {
 			'resource'               => $resource,
 			'scopes'                 => $scopes,
 			'credential_field'       => $field,
-			'client_id'              => substr( sanitize_text_field( (string) ( $raw['client_id'] ?? '' ) ), 0, 512 ),
+			'client_id'              => $client_id,
+			'client_id_from_filter'  => $client_id_from_filter,
 			'client_name'            => substr( sanitize_text_field( (string) ( $raw['client_name'] ?? 'World Graph Studio' ) ), 0, 100 ),
 			'service_label'          => $label,
 			'admin_intro'            => substr( sanitize_text_field( (string) ( $raw['admin_intro'] ?? '' ) ), 0, 1000 ),
@@ -587,9 +623,12 @@ final class Connection_OAuth {
 
 	/** Resolve a static/filter client or register a reusable public client. */
 	private static function resolve_client_id( int $connection_id, string $provider, string $profile, array $config, string $redirect_uri ) {
-		$meta_key  = self::client_id_meta( $provider, $profile );
-		$client_id = (string) get_post_meta( $connection_id, $meta_key, true );
-		if ( ! self::valid_client_id( $client_id ) ) {
+		$meta_key     = self::client_id_meta( $provider, $profile );
+		$binding_key  = $meta_key . '_binding';
+		$binding_hash = self::client_registration_hash( $config, $redirect_uri );
+		$client_id    = (string) get_post_meta( $connection_id, $meta_key, true );
+		$saved_hash   = (string) get_post_meta( $connection_id, $binding_key, true );
+		if ( ! self::valid_client_id( $client_id ) || ! hash_equals( $binding_hash, $saved_hash ) ) {
 			$client_id = (string) $config['client_id'];
 		}
 		$client_id = (string) apply_filters( 'worldgraph_connection_oauth_client_id', $client_id, $provider, $profile, $connection_id, $config );
@@ -605,6 +644,13 @@ final class Connection_OAuth {
 			return $client_id;
 		}
 		update_post_meta( $connection_id, $meta_key, $client_id );
+		update_post_meta( $connection_id, $binding_key, $binding_hash );
+		if (
+			! hash_equals( $client_id, (string) get_post_meta( $connection_id, $meta_key, true ) )
+			|| ! hash_equals( $binding_hash, (string) get_post_meta( $connection_id, $binding_key, true ) )
+		) {
+			return new WP_Error( 'worldgraph_oauth_client_storage_failed', __( 'WordPress could not persist the provider OAuth client registration.', 'worldgraph' ) );
+		}
 		return $client_id;
 	}
 
@@ -695,7 +741,8 @@ final class Connection_OAuth {
 		if ( ! self::valid_token( $access_token ) || 'bearer' !== $token_type || ! self::valid_client_id( $client_id ) || ( '' !== $refresh_token && ! self::valid_token( $refresh_token ) ) ) {
 			return new WP_Error( 'worldgraph_oauth_token_invalid', __( 'The provider returned an invalid OAuth token.', 'worldgraph' ) );
 		}
-		$expires_in = isset( $tokens['expires_in'] ) && is_numeric( $tokens['expires_in'] )
+		$has_expiry = array_key_exists( 'expires_in', $tokens ) && is_numeric( $tokens['expires_in'] );
+		$expires_in = $has_expiry
 			? max( 0, min( DAY_IN_SECONDS * 365, (int) $tokens['expires_in'] ) )
 			: 0;
 
@@ -711,7 +758,7 @@ final class Connection_OAuth {
 			'token_type'         => 'Bearer',
 			'access_token'       => $access_token,
 			'refresh_token'      => $refresh_token,
-			'expires_at'         => $expires_in ? time() + $expires_in : 0,
+			'expires_at'         => $has_expiry ? time() + $expires_in : 0,
 			'client_id'          => $client_id,
 			'scope'              => $scope,
 			'token_endpoint'     => (string) $config['token_endpoint'],
@@ -831,6 +878,24 @@ final class Connection_OAuth {
 		return '_worldgraph_oauth_client_id_' . sanitize_key( $provider ) . '_' . sanitize_key( $profile );
 	}
 
+	/** Bind a dynamically registered client to its callback and registration contract. */
+	private static function client_registration_hash( array $config, string $redirect_uri ): string {
+		return hash(
+			'sha256',
+			(string) wp_json_encode(
+				[
+					$redirect_uri,
+					$config['authorization_endpoint'],
+					$config['token_endpoint'],
+					$config['registration_endpoint'],
+					$config['scopes'],
+					$config['client_name'],
+					$config['registration_parameters'],
+				]
+			)
+		);
+	}
+
 	/** Hash security-relevant configuration into the one-time callback state. */
 	private static function config_hash( array $config ): string {
 		return hash(
@@ -845,6 +910,7 @@ final class Connection_OAuth {
 					$config['scopes'],
 					$config['credential_field'],
 					$config['client_id'],
+					$config['client_id_from_filter'],
 					$config['authorization_parameters'],
 					$config['token_parameters'],
 					$config['registration_parameters'],

@@ -28,7 +28,7 @@
             "name": "provider_type",
             "aria-label": "",
             "type": "select",
-            "instructions": "Provider adapter used by the paired Templates, such as ComfyUI, fal, Higgsfield, ElevenLabs, or Suno.",
+            "instructions": "Provider adapter used by the paired Templates, such as ComfyUI, fal, Higgsfield, ElevenLabs, Suno, or MidJourney.",
             "required": 1,
             "conditional_logic": 0,
             "wrapper": {
@@ -155,7 +155,7 @@
             "name": "endpoint_url",
             "aria-label": "",
             "type": "text",
-            "instructions": "Provider endpoint. For Higgsfield use https:\/\/platform.higgsfield.ai; for SunoAPI.org use https:\/\/api.sunoapi.org; for ElevenLabs use https:\/\/api.elevenlabs.io\/v1; for local ComfyUI use its HTTP API base URL.",
+            "instructions": "Provider endpoint. For MidJourney REST use https:\/\/api.midjourney-api.com; for Higgsfield use https:\/\/platform.higgsfield.ai; for SunoAPI.org use https:\/\/api.sunoapi.org; for ElevenLabs use https:\/\/api.elevenlabs.io\/v1; for local ComfyUI use its HTTP API base URL.",
             "required": 1,
             "conditional_logic": 0,
             "wrapper": {
@@ -175,7 +175,7 @@
             "name": "mcp_endpoint_url",
             "aria-label": "",
             "type": "text",
-            "instructions": "Streamable HTTP MCP endpoint. Required for fal; use https:\/\/mcp.higgsfield.ai\/mcp for Higgsfield and https:\/\/suno.mcp.acedata.cloud\/mcp for Suno; optional for local ComfyUI discovery and downloads.",
+            "instructions": "Streamable HTTP MCP endpoint. Required for fal; use https:\/\/midjourney.mcp.acedata.cloud\/mcp for MidJourney, https:\/\/mcp.higgsfield.ai\/mcp for Higgsfield, or https:\/\/suno.mcp.acedata.cloud\/mcp for Suno; optional for local ComfyUI discovery and downloads.",
             "required": 0,
             "conditional_logic": 0,
             "wrapper": {
@@ -195,7 +195,7 @@
             "name": "credential_reference",
             "aria-label": "",
             "type": "text",
-            "instructions": "REST\/API credential or environment reference, e.g. env:\/\/HIGGSFIELD_API_CREDENTIAL, env:\/\/SUNO_API_KEY, env:\/\/ELEVENLABS_API_KEY, or env:\/\/COMFYUI_API_KEY. Higgsfield expects KEY_ID:KEY_SECRET.",
+            "instructions": "REST\/API credential or environment reference, e.g. env:\/\/MIDJOURNEY_API_KEY, env:\/\/HIGGSFIELD_API_CREDENTIAL, env:\/\/SUNO_API_KEY, env:\/\/ELEVENLABS_API_KEY, or env:\/\/COMFYUI_API_KEY. Higgsfield expects KEY_ID:KEY_SECRET.",
             "required": 0,
             "conditional_logic": 0,
             "wrapper": {
@@ -215,7 +215,7 @@
             "name": "mcp_credential_reference",
             "aria-label": "",
             "type": "text",
-            "instructions": "Optional separate credential for the MCP endpoint. OAuth-enabled adapters manage this field through their Connect control; Suno MCP accepts an AceData Cloud token such as env:\/\/ACEDATACLOUD_API_TOKEN.",
+            "instructions": "Optional separate credential for the MCP endpoint. OAuth-enabled adapters manage this field through their Connect control; MidJourney and Suno MCP accept a service-scoped AceData Cloud token such as env:\/\/ACEDATACLOUD_API_TOKEN.",
             "required": 0,
             "conditional_logic": 0,
             "wrapper": {

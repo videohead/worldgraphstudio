@@ -255,11 +255,14 @@ The shared broker owns:
 - local disconnect controls that clear only the declared credential field.
 
 The broker accepts a deployment-supplied public client ID through
-`worldgraph_connection_oauth_client_id`. Dynamic registration is used only
-when no valid saved, manifest, or filtered public ID exists. The fixed callback
-requires an HTTPS WordPress administrator URL, except for loopback development.
-The Connection must already be published, enabled, and manageable by the
-current administrator before authorization begins.
+`worldgraph_connection_oauth_client_id`. A portable filter-only profile marks
+that requirement with `client_id_from_filter => true`; otherwise it declares a
+public `client_id` or `registration_endpoint`. Dynamic registration is used
+only when no valid callback/configuration-bound saved, manifest, or filtered
+public ID exists. The fixed callback requires an HTTPS WordPress administrator
+URL, except for loopback development. The Connection must already be
+published, enabled, and manageable by the current administrator before
+authorization begins.
 
 Provider clients retrieve a saved token through:
 
@@ -273,9 +276,9 @@ Connection_OAuth::access_token(
 
 Use `token_from_reference( $provider, $profile, $reference )` only when a
 provider test must validate an explicit credential reference. A plain bearer
-or `env://` value remains compatible, but WordPress cannot refresh it; its
-external secret manager owns rotation. Never serialize the broker's token or
-versioned envelope.
+or `env://` value remains compatible, but WordPress cannot refresh it. Replace
+a literal bearer manually; an external secret manager owns only `env://`
+rotation. Never serialize the broker's token or versioned envelope.
 
 Profiles are authentication configuration, not execution grants. The provider
 adapter must still implement endpoint validation, protocol negotiation,

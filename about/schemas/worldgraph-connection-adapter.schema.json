@@ -94,12 +94,21 @@
       "description": "Trusted bounded scalar parameters added by the adapter. Protocol-owned parameters are always supplied by core and take precedence.",
       "type": "object",
       "maxProperties": 30,
+      "propertyNames": {
+        "pattern": "^[A-Za-z][A-Za-z0-9._~-]{0,99}$"
+      },
       "additionalProperties": {
-        "type": [
-          "string",
-          "number",
-          "integer",
-          "boolean"
+        "anyOf": [
+          {
+            "type": "string",
+            "maxLength": 2000
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "boolean"
+          }
         ]
       }
     },
@@ -126,22 +135,26 @@
         "authorization_endpoint": {
           "type": "string",
           "format": "uri",
-          "pattern": "^https://"
+          "maxLength": 2048,
+          "pattern": "^https://[^/?#@]+(?:/[^?#]*)?$"
         },
         "token_endpoint": {
           "type": "string",
           "format": "uri",
-          "pattern": "^https://"
+          "maxLength": 2048,
+          "pattern": "^https://[^/?#@]+(?:/[^?#]*)?$"
         },
         "registration_endpoint": {
           "type": "string",
           "format": "uri",
-          "pattern": "^https://"
+          "maxLength": 2048,
+          "pattern": "^https://[^/?#@]+(?:/[^?#]*)?$"
         },
         "resource": {
           "type": "string",
           "format": "uri",
-          "pattern": "^https://"
+          "maxLength": 2048,
+          "pattern": "^https://[^/?#@]+(?:/[^?#]*)?$"
         },
         "scopes": {
           "type": "array",
@@ -150,6 +163,7 @@
           "uniqueItems": true,
           "items": {
             "type": "string",
+            "maxLength": 200,
             "pattern": "^[A-Za-z0-9._~:/-]+$"
           }
         },
@@ -159,7 +173,11 @@
         "client_id": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 512
+          "maxLength": 512,
+          "pattern": "^[^\\u0000-\\u0020\\u007F]+$"
+        },
+        "client_id_from_filter": {
+          "const": true
         },
         "client_name": {
           "type": "string",
@@ -205,6 +223,11 @@
         {
           "required": [
             "client_id"
+          ]
+        },
+        {
+          "required": [
+            "client_id_from_filter"
           ]
         }
       ],

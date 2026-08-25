@@ -81,11 +81,40 @@ it does not replace the REST key pair. The site admin URL must be HTTPS except
 on a loopback development host.
 
 Testing requires both transports: a non-destructive REST authentication check,
-a non-empty bounded MCP `tools/list` catalog, and provisioning of three reviewed
-REST Templates. All generation uses REST. MCP is discovery/readiness only and
-does not execute discovered tools. See the [Higgsfield Connection
+a non-empty bounded MCP `tools/list` catalog, and provisioning of the selected
+reviewed REST Templates (three when `Model Access` is blank). All generation
+uses REST. MCP is discovery/readiness only and does not execute discovered
+tools. See the [Higgsfield Connection
 guide](../../../../../about/plugins/HIGGSFIELD.md) for operation references,
 retention, retries, upload formats, OAuth behavior, and troubleshooting.
+
+### MidJourney (Connections screen only)
+
+MidJourney is not a first-run wizard choice because it represents two separate
+third-party services and credentials. Finish or skip the wizard, then open
+**World Graph Studio > Connections** and create a **MidJourney** Connection
+with:
+
+- Endpoint URL: `https://api.midjourney-api.com`
+- MCP Endpoint URL: `https://midjourney.mcp.acedata.cloud/mcp`
+- API Key / OAuth Reference: the midjourney-api.com key, preferably
+  `env://MIDJOURNEY_API_KEY`
+- MCP API Key / OAuth Reference: the Ace Data Cloud MidJourney service token,
+  preferably `env://ACEDATACLOUD_API_TOKEN`
+- Environment: `production`
+
+Midjourney does not provide an official public API. midjourney-api.com operates
+the REST bridge, and Ace Data Cloud operates the independent MCP service. A
+Midjourney web subscription, the REST key, and the Ace Data Cloud token cannot
+replace one another.
+
+Testing performs a non-generating REST task-status lookup, completes MCP
+`2025-03-26` initialization, verifies `midjourney_imagine` and
+`midjourney_get_task`, and provisions `api:imagine` plus
+`mcp:midjourney_imagine` text-to-image Templates. Both paths poll
+asynchronously and import every final image. See the [MidJourney Connection
+guide](../../../../../about/plugins/MIDJOURNEY.md) for modes, lifecycle,
+security boundaries, and troubleshooting.
 
 ### Local ComfyUI HTTP API plus optional MCP
 
@@ -260,9 +289,10 @@ not expose separate fallback fields. Do not expect the wizard to save
 - provisions the managed local ComfyUI Template where applicable; and
 - sets `worldgraph_setup_complete = true`.
 
-Higgsfield is intentionally absent from this managed wizard save. Configure it
-afterward on the Connections screen so its saved-record OAuth state and callback
-can be bound to the exact Connection.
+Higgsfield and MidJourney are intentionally absent from this managed wizard
+save. Configure them afterward on the Connections screen. Higgsfield needs a
+saved record for its OAuth state and callback; MidJourney needs two explicitly
+separated intermediary credentials.
 
 The generation credential entered in this form is stored on the managed
 Connection's `credential_reference` meta. For Suno, the separate AceData Cloud
@@ -299,6 +329,9 @@ Provider-specific behavior:
   tools, then synchronizes transport-specific Templates;
 - Higgsfield verifies REST authentication and OAuth MCP discovery, then
   provisions three reviewed REST-only image/video Templates;
+- MidJourney verifies the midjourney-api.com REST key and required Ace Data
+  Cloud MCP tools, then provisions two transport-specific text-to-image
+  Templates;
 - VideoDraft verifies hosted MCP generation and Project tools, then
   synchronizes live-schema Templates;
 - Comfy Cloud's Connection test currently verifies credential presence; catalog
@@ -423,10 +456,18 @@ the SunoAPI.org key. The combined Suno Connection test fails when either the
 REST credit check or required MCP-tool check fails.
 
 For Higgsfield, do not paste the REST `KEY_ID:KEY_SECRET` into the MCP field.
-Save the Connection, use **Connect Higgsfield MCP**, and reconnect the account
-if the OAuth envelope has expired or no longer matches the trusted provider
+Save the Connection and use **Connect Higgsfield MCP**. A locally stored OAuth
+envelope refreshes automatically when possible; reconnect only when refresh is
+unavailable, fails, or the envelope no longer matches the trusted provider
 profile. Do not add guessed MCP tool names: Higgsfield MCP is catalog discovery
-only in this adapter.
+only in this adapter. Rotate an `env://` credential in its external secret
+manager.
+
+For MidJourney, put the midjourney-api.com key in the primary field and the Ace
+Data Cloud MidJourney service token in the MCP field. Confirm the REST mode is
+`fast` or `relaxed`; MCP deliberately spells the slower mode `relax` and also
+supports `turbo`. The combined Connection check fails when either transport or
+either required MCP tool is unavailable.
 
 ### No Template appears in the Assets metabox
 
@@ -465,3 +506,4 @@ only in this adapter.
 - [Deployment and Connections](../../../../../about/Deployment_and_Connections.md)
 - [Suno Integration](../../../../../about/plugins/SUNO.md)
 - [Higgsfield Connection](../../../../../about/plugins/HIGGSFIELD.md)
+- [MidJourney Connection](../../../../../about/plugins/MIDJOURNEY.md)
