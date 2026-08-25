@@ -1,945 +1,979 @@
 {
   "worldgraph_version": "1.2",
   "project": {
-    "id": "lrrh_full_project_lrrh_full",
-    "title": "Little Red Riding Hood: The Woodland Path",
-    "project_slug": "little-red-riding-hood-woodland-path",
-    "description": "A full-featured animated fairy-tale episode demonstrating World Graph Studio story development, production planning, sound design, asset intent, storyboards, sequencing, and editorial metadata.",
-    "generation_prompt": "Hand-painted storybook animation, warm amber interiors and cool moss-green forests, soft directional light, restrained contrast, and tactile paper texture.",
+    "id": "lrrh_story_project",
+    "title": "Little Red Riding Hood",
+    "project_slug": "little-red-riding-hood",
+    "description": "A short fairy-tale production about a compassionate girl whose journey through a shadowed forest becomes a lesson in caution, courage, and the consequences of trusting a charming stranger.",
     "genres": [
       "fantasy"
     ],
-    "target_medium": "tv_series",
-    "production_status": "in-development",
-    "start_date": "2026-08-21",
-    "end_date": "2026-11-30",
-    "associates": [
-      "lrrh_full_char_red",
-      "lrrh_full_char_grandmother",
-      "lrrh_full_char_wolf",
-      "lrrh_full_char_woodsman"
+    "target_medium": "short_film",
+    "team_members": [
+      "lrrh_char_red",
+      "lrrh_char_grandmother",
+      "lrrh_char_wolf",
+      "lrrh_char_woodsman"
     ],
-    "production_stage": "pre_production",
-    "frame_width": 1280,
-    "frame_height": 720,
+    "production_stage": "development",
+    "frame_width": 1920,
+    "frame_height": 1080,
     "aspect_ratio": "16:9",
     "frame_rate": 24
   },
   "world": {
-    "id": "lrrh_full_world_woodland_village_full",
-    "name": "Woodland Village and the Old Forest",
-    "description": "A close-knit rural village borders an ancient forest whose winding path leads to Grandmother's cottage. Familiar daylight spaces become uncertain as the trees close in, but communal care remains stronger than the dangers in the wood.",
-    "timeline": "The episode unfolds over one autumn day: Red leaves the village in the morning, meets the Wolf near midday, reaches Grandmother's cottage at dusk, and returns safely by early evening.",
-    "rules": "Animals may speak, but most conceal that gift from villagers. Paths remember travelers and seem to lengthen when someone acts with deceptive intent. A promise freely made carries social and symbolic weight.",
-    "themes": "Discernment, keeping promises without surrendering curiosity, intergenerational trust, and the protection created by a caring community.",
-    "geography": "The village sits east of the Old Forest. A marked path runs west past a creek and pine ridge to Grandmother's cottage. Woodland Warden markers identify safe crossings and emergency meeting points.",
-    "references": "European oral fairy-tale traditions, hand-painted storybooks, practical miniature forests, warm candlelit interiors, and restrained theatrical staging.",
-    "project": "lrrh_full_project_lrrh_full"
+    "id": "lrrh_story_world",
+    "name": "The Forest Road",
+    "description": "A close-knit rural community borders an ancient forest where familiar paths can quickly feel uncertain. Warm kitchens, a lonely cottage, and the dark trees form a world in which ordinary kindness must be balanced with good judgment.",
+    "timeline": "The story unfolds over one autumn day, from a clear morning departure to an evening return home.",
+    "rules": "The world is grounded in fairy-tale realism. Animals may speak, but people otherwise live by ordinary physical rules. Promises matter, the forest rewards attention, and strangers may conceal dangerous intentions behind polite words.",
+    "themes": "Compassion guided by caution; the difference between politeness and trust; listening to intuition; community protection; learning without losing kindness.",
+    "geography": "Little Red Riding Hood's home and her grandmother's cottage are connected by a narrow public road that passes through a dense old-growth forest. A woodcutter's trail crosses the road near the cottage.",
+    "references": "A family-friendly adaptation of the European folktale, designed with storybook autumn colors, deep forest shadows, tactile handmade props, and restrained suspense rather than graphic violence.",
+    "project": "lrrh_story_project"
   },
   "characters": [
     {
-      "id": "lrrh_full_char_red",
+      "id": "lrrh_char_red",
       "name": "Little Red Riding Hood",
-      "description": "A thoughtful young courier learning how to balance independence with the wisdom offered by her community.",
-      "age": "12",
-      "appearance": "A small, alert girl in a weathered scarlet wool cloak, sturdy walking boots, and a cream linen dress. She carries a woven basket with a red checked lining.",
-      "personality": "Curious, compassionate, observant, and determined; polite enough to listen, but brave enough to question a story that does not fit the evidence.",
-      "motivation": "Deliver food and medicine to Grandmother, keep her promise to stay on the marked path, and prove she can be trusted with a journey of her own.",
-      "backstory": "Red has grown up hearing the Woodland Wardens' safety stories. This is her first trip to Grandmother's cottage without an adult companion.",
-      "voice_profile": "Clear young alto with quick, precise phrasing; warmth replaces caution when she feels safe, while fear makes her speak more deliberately rather than more loudly.",
+      "description": "A thoughtful village girl who carries a basket of food to her ill grandmother. Her generosity begins the journey, her careful observations expose the wolf's disguise, and her mistake in revealing her destination teaches her to combine openness with discernment.",
+      "age": "About 12",
+      "appearance": "A small, alert girl in a vivid red hooded cloak over a cream blouse, dark skirt, sturdy walking shoes, and a woven basket looped over one arm.",
+      "personality": "Kind, curious, observant, responsible, and initially too willing to assume that a friendly manner means a trustworthy heart.",
+      "motivation": "Deliver nourishing food to her sick grandmother before the day grows late.",
+      "backstory": "She has walked the forest road with adults many times and knows the route, but this is her first trip carrying responsibility on her own.",
+      "voice_profile": "Clear, youthful, and sincere. Her speech begins warm and unguarded, tightens as suspicion grows, and becomes calm and reflective after the rescue.",
       "roles": [
         "protagonist"
       ],
       "relations": [
         "family"
       ],
-      "avatar_asset": "lrrh_full_asset_red_character_concept",
-      "story_world": "lrrh_full_world_woodland_village_full"
+      "avatar_asset": "lrrh_asset_red_concept",
+      "story_world": "lrrh_story_world"
     },
     {
-      "id": "lrrh_full_char_grandmother",
+      "id": "lrrh_char_grandmother",
       "name": "Grandmother",
-      "description": "An experienced herbalist whose calm attention helps Red understand that wisdom can be practiced rather than merely inherited.",
-      "age": "Early 70s",
-      "appearance": "Silver hair braided around her head, kind dark eyes, a plum house dress, knitted shawl, and flour-dusted apron.",
-      "personality": "Patient, dryly funny, resourceful, and protective without being controlling.",
-      "motivation": "Keep Red safe, preserve her independence at the woodland cottage, and teach through questions instead of fear.",
-      "backstory": "Grandmother helped establish the Woodland Wardens' marked path and knows old remedies, animal tracks, and every change in the forest light.",
-      "voice_profile": "Low, textured contralto with measured pauses and an intimate storytelling cadence.",
+      "description": "Little Red Riding Hood's recovering grandmother, whose quiet cottage is the destination of the journey. Though physically weak from illness, she remains composed, practical, and reassuring after the danger passes.",
+      "age": "Late 70s",
+      "appearance": "A silver-haired woman with kind eyes, a pale linen nightcap, a knitted shawl, and a face made tired but not diminished by illness.",
+      "personality": "Patient, affectionate, perceptive, and resilient.",
+      "motivation": "Recover her strength and keep her granddaughter safe.",
+      "backstory": "She has lived beside the forest for many years and understands both its beauty and its risks.",
+      "voice_profile": "Soft, textured, and deliberate, with warmth beneath a trace of fatigue.",
       "roles": [
         "mentor"
       ],
       "relations": [
         "family"
       ],
-      "story_world": "lrrh_full_world_woodland_village_full"
+      "story_world": "lrrh_story_world"
     },
     {
-      "id": "lrrh_full_char_wolf",
-      "name": "Wolf",
-      "description": "A clever forest predator who relies on charm, speed, and other people's assumptions more than brute force.",
+      "id": "lrrh_char_wolf",
+      "name": "The Wolf",
+      "description": "A clever forest predator who masks his intentions with courtly conversation. After learning where Little Red Riding Hood is headed, he races ahead, traps Grandmother, steals her clothes, and waits for the basket to arrive.",
       "age": "Adult",
-      "appearance": "A rangy charcoal-gray wolf with amber eyes, a torn left ear, unusually expressive brows, and silent paws stained with pine resin.",
-      "personality": "Patient, theatrical, vain, opportunistic, and easily unsettled when someone notices a flaw in his performance.",
-      "motivation": "Reach Grandmother's cottage first, take control of the house, and lure Red close enough to seize the basket and its provisions.",
-      "backstory": "The Wolf learned scraps of human speech by watching travelers near the marked path and has used borrowed manners to hide predatory intent.",
-      "voice_profile": "Velvety baritone with careful consonants; the cultivated warmth frays into a rough growl when his deception fails.",
+      "appearance": "A large gray humanoid, bi-pedal wolf with silver-tipped fur, amber eyes, long ears, powerful paws, and an expressive face that can shift from charming to threatening in an instant.",
+      "personality": "Patient, manipulative, theatrical, opportunistic, and quick to anger when his disguise fails.",
+      "motivation": "Steal the basket of food without having to chase or bargain for it.",
+      "backstory": "He has learned that travelers reveal more than they intend when he approaches them politely.",
+      "voice_profile": "Smooth and measured on the road; strained and falsely delicate in disguise; low, sharp, and feral when exposed.",
       "roles": [
         "antagonist"
       ],
       "relations": [
         "rival"
       ],
-      "story_world": "lrrh_full_world_woodland_village_full"
+      "avatar_asset": "lrrh_asset_wolf_concept",
+      "story_world": "lrrh_story_world"
     },
     {
-      "id": "lrrh_full_char_woodsman",
+      "id": "lrrh_char_woodsman",
       "name": "The Woodsman",
-      "description": "Leader of the Woodland Wardens and a dependable neighbor who treats preparedness as a shared civic practice rather than heroic spectacle.",
-      "age": "Late 30s",
-      "appearance": "Broad-shouldered, with a moss-green coat, leather gloves, a trimmed dark beard, and a brass storm lantern marked with the Warden emblem.",
-      "personality": "Steady, practical, attentive, humble, and reassuring under pressure.",
-      "motivation": "Maintain the safe path, answer Red's emergency call, and protect the village without teaching children that courage belongs only to adults.",
-      "backstory": "A former carpenter, he organized the Wardens after a winter storm isolated several woodland homes. Grandmother taught him the oldest forest routes.",
-      "voice_profile": "Grounded mid-range voice with unhurried delivery, soft rural vowels, and a firm command tone used sparingly.",
+      "description": "A local guardian who knows the forest trails and responds when he hears the struggle inside the cottage. He places himself between the wolf and the family, drives the animal away, and escorts Little Red Riding Hood safely home.",
+      "age": "Mid-40s",
+      "appearance": "A broad-shouldered worker in a weathered green coat, heavy boots, leather gloves, and a wool cap, carrying a well-used wood axe as a tool of his trade.",
+      "personality": "Steady, attentive, brave, restrained, and protective without being boastful.",
+      "motivation": "Protect his neighbors and keep the forest road safe.",
+      "backstory": "Years of working in the forest have taught him to recognize the sounds of ordinary wildlife and the sounds of trouble.",
+      "voice_profile": "Grounded, economical, and reassuring, with a firm command voice when confronting danger.",
       "roles": [
-        "ally"
+        "mentor"
       ],
       "relations": [
         "ally"
       ],
-      "avatar_asset": "lrrh_full_asset_woodsman_character_concept",
-      "story_world": "lrrh_full_world_woodland_village_full"
+      "story_world": "lrrh_story_world"
     }
   ],
   "locations": [
     {
-      "id": "lrrh_full_loc_village",
-      "name": "Red's Village Cottage",
-      "description": "A whitewashed cottage beside the village square, with a herb garden, blue shutters, and a bench where the Woodland Wardens check their route markers.",
-      "environment_type": "rural",
-      "geography": "Eastern edge of Woodland Village, where the cobbled lane becomes the marked forest path.",
-      "mood": "Safe, bustling, and warmly domestic, with a faint sense of departure at the tree line.",
-      "visual_reference": "lrrh_full_asset_village_environment",
-      "story_world": "lrrh_full_world_woodland_village_full"
-    },
-    {
-      "id": "lrrh_full_loc_forest",
-      "name": "Old Forest Path",
-      "description": "A narrow path beneath ancient pine and beech trees, crossed by roots and shafts of cold green light. Small brass Warden markers gleam at each fork.",
-      "environment_type": "outdoor",
-      "geography": "Runs west from the village, over a shallow creek and along a pine ridge toward Grandmother's cottage.",
-      "mood": "Beautiful but watchful; birdsong and open light gradually give way to stillness and deep shadow.",
-      "visual_reference": "lrrh_full_asset_forest_environment",
-      "story_world": "lrrh_full_world_woodland_village_full"
-    },
-    {
-      "id": "lrrh_full_loc_grandmother_house",
-      "name": "Grandmother's Woodland Cottage",
-      "description": "A small timber cottage with a steep roof, a kitchen full of drying herbs, and a bedroom lit by one leaded-glass window and a brass bedside candle.",
+      "id": "lrrh_loc_red_home",
+      "name": "Little Red Riding Hood's Home",
+      "description": "A modest stone-and-timber village house with a bright kitchen, shelves of preserves, a scarred preparation table, and an inviting hearth.",
       "environment_type": "indoor",
-      "geography": "A clearing west of the pine ridge, beside an old well and the final Woodland Warden marker.",
-      "mood": "Normally intimate and restorative; during the Wolf's deception, familiar details feel subtly displaced and claustrophobic.",
-      "visual_reference": "lrrh_full_asset_grandmother_house_storyboard",
-      "story_world": "lrrh_full_world_woodland_village_full"
+      "geography": "At the eastern edge of the village, near the entrance to the forest road.",
+      "mood": "Warm, orderly, secure, and gently bustling in the morning; quiet and reflective at night.",
+      "story_world": "lrrh_story_world"
+    },
+    {
+      "id": "lrrh_loc_forest_path",
+      "name": "The Dark Forest Road",
+      "description": "A narrow dirt road winding beneath tall pines and ancient oaks. Ferns crowd the edges, shafts of light divide the shadows, and fallen leaves.",
+      "environment_type": "outdoor",
+      "geography": "Between the village and Grandmother's clearing, crossed by smaller animal tracks and a woodcutter's trail.",
+      "mood": "Beautiful but watchful, with mounting unease as the trees close around the road.",
+      "visual_reference": "lrrh_asset_forest_environment",
+      "story_world": "lrrh_story_world"
+    },
+    {
+      "id": "lrrh_loc_grandmother_cottage",
+      "name": "Grandmother's Cottage",
+      "description": "A small cottage in a forest clearing, with a herb garden, low windows, a creaking front door, a pantry with a sturdy latch, and a bedroom warmed by a patchwork quilt and a small iron stove.",
+      "environment_type": "rural",
+      "geography": "At the far end of the forest road, beside the woodcutter's crossing and within earshot of his work trail.",
+      "mood": "Comforting in its familiar details but increasingly claustrophobic once the wolf enters and alters the room.",
+      "visual_reference": "lrrh_asset_cottage_environment",
+      "story_world": "lrrh_story_world"
     }
   ],
   "props": [
     {
-      "id": "lrrh_full_prop_cloak",
-      "name": "Red Wool Cloak",
-      "description": "A weathered scarlet wool cloak with a deep hood, wooden toggle, and a small stitched repair at the right shoulder.",
-      "purpose": "Red's visual identifier and a continuity marker that remains readable through changing forest light.",
-      "owner_character": "lrrh_full_char_red",
-      "notes": "Keep the right-shoulder repair visible in close shots; the hood is down in the village, raised in the forest, and lowered after the rescue."
+      "id": "lrrh_prop_basket",
+      "name": "Food Basket",
+      "description": "A round woven basket lined with blue cloth and packed with bread, vegetable broth, soft cheese, apples, and a small jar of honey.",
+      "purpose": "The gift for Grandmother, the practical reason for Red's journey, and the object the wolf intends to steal.",
+      "owner_character": "lrrh_char_red",
+      "notes": "The food arrangement should remain consistent. The blue cloth should remain visible beneath the lid, and the honey jar should never appear broken or opened."
     },
     {
-      "id": "lrrh_full_prop_basket",
-      "name": "Provision Basket",
-      "description": "A sturdy willow basket lined with red checked cloth and packed with bread, preserves, tea, and wrapped medicine.",
-      "purpose": "The delivery objective, a source of visual business, and the item whose safety represents Red's promise.",
-      "owner_character": "lrrh_full_char_red",
-      "notes": "The medicine remains beneath the bread. The handle is in Red's right hand on the path and the lining stays tied until Scene 4."
+      "id": "lrrh_prop_red_cloak",
+      "name": "Red Hooded Cloak",
+      "description": "A hand-sewn scarlet wool cloak with a deep hood, a simple wooden clasp, and slight wear along the hem.",
+      "purpose": "The protagonist's defining visual silhouette and a saturated color anchor against the muted forest.",
+      "owner_character": "lrrh_char_red",
+      "notes": "The hood is up outdoors, lowered inside each home."
     },
     {
-      "id": "lrrh_full_prop_bed",
-      "name": "Grandmother's Carved Bed",
-      "description": "An old oak bed with a tall carved headboard, patchwork quilt, linen curtains, and enough depth for the Wolf to hide his silhouette.",
-      "purpose": "Provides the familiar frame that makes the Wolf's imperfect disguise legible to Red and the audience.",
-      "owner_character": "lrrh_full_char_grandmother",
-      "notes": "The blue quilt corner is folded back before the Wolf arrives and reversed after he climbs into bed; preserve that continuity clue."
+      "id": "lrrh_prop_grandmother_bonnet",
+      "name": "Grandmother's Bonnet",
+      "description": "A pale linen sleeping bonnet with a narrow lace edge and long ties.",
+      "purpose": "A familiar object misused by the wolf as part of his unconvincing disguise.",
+      "owner_character": "lrrh_char_grandmother",
+      "notes": "The bonnet should sit awkwardly over the wolf's ears so the audience can read the deception before Red fully accepts it."
     },
     {
-      "id": "lrrh_full_prop_lantern",
-      "name": "Woodland Warden Lantern",
-      "description": "A brass storm lantern with green glass side panels and the pine-tree emblem of the Woodland Wardens.",
-      "purpose": "Marks the safe path in Scene 1 and announces the Woodsman's arrival through moving green light in Scene 4.",
-      "owner_character": "lrrh_full_char_woodsman",
-      "notes": "The left panel carries a hairline crack. Its green light should precede the Woodsman into frame during the rescue."
+      "id": "lrrh_prop_woodsman_axe",
+      "name": "Woodsman's Axe",
+      "description": "A practical long-handled wood axe with a polished steel head and a worn ash grip.",
+      "purpose": "Identifies the Woodsman's trade and gives him a credible way to hold the wolf at a distance without showing graphic violence.",
+      "owner_character": "lrrh_char_woodsman",
+      "notes": "The blade is never used on screen. The Woodsman keeps the axe lowered after the wolf retreats."
     }
   ],
   "organizations": [
     {
-      "id": "lrrh_full_org_woodland_wardens",
+      "id": "lrrh_org_woodland_wardens",
       "name": "Woodland Wardens",
-      "organization_type": "Community path and safety guild",
-      "description": "A volunteer village organization that maintains trail markers, checks isolated cottages, and teaches travelers how to signal for help without treating the forest as an enemy.",
-      "leadership": "lrrh_full_char_woodsman",
-      "goals": "Keep the marked path passable, connect remote neighbors to the village, document changes in animal behavior, and make practical safety knowledge available to every child.",
-      "story_world": "lrrh_full_world_woodland_village_full",
+      "organization_type": "Village safety guild",
+      "description": "A small informal guild of foresters who maintain the public road, watch for storm damage and dangerous animals, and assist travelers between the village and outlying homes.",
+      "leadership": "lrrh_char_woodsman",
+      "goals": "Keep the forest road passable, respond to danger, and help isolated residents remain connected to the village.",
+      "story_world": "lrrh_story_world",
       "members": [
-        "lrrh_full_char_woodsman"
+        "lrrh_char_woodsman"
       ]
     }
   ],
   "episodes": [
     {
-      "id": "lrrh_full_episode_woodland_path",
+      "id": "lrrh_episode_01",
       "episode_number": 1,
-      "title": "The Woodland Path",
-      "synopsis": "On her first solo delivery to Grandmother, Red follows the marked woodland path, recognizes the Wolf's deception, and uses a Warden signal to bring help without surrendering her own agency.",
-      "production_status": "in-development",
-      "project": "lrrh_full_project_lrrh_full",
+      "title": "The Road Through the Woods",
+      "synopsis": "Little Red Riding Hood sets out with food for her sick grandmother, carelessly tells a courteous wolf where she is going, discovers his disguise at the cottage, and survives his attack with help from a nearby Woodsman. She returns home wiser about the difference between friendliness and trust.",
+      "project": "lrrh_story_project",
       "scenes": [
-        "lrrh_full_scene_1",
-        "lrrh_full_scene_2",
-        "lrrh_full_scene_3",
-        "lrrh_full_scene_4"
+        "lrrh_scene_01_promise",
+        "lrrh_scene_02_stranger",
+        "lrrh_scene_03_cottage",
+        "lrrh_scene_04_reveal_rescue",
+        "lrrh_scene_05_return"
       ]
     }
   ],
   "scenes": [
     {
-      "id": "lrrh_full_scene_1",
+      "id": "lrrh_scene_01_promise",
       "scene_number": 1,
-      "title": "The Assignment",
-      "location": "lrrh_full_loc_village",
-      "characters": [
-        "lrrh_full_char_red",
-        "lrrh_full_char_woodsman"
-      ],
-      "props": [
-        "lrrh_full_prop_basket",
-        "lrrh_full_prop_cloak",
-        "lrrh_full_prop_lantern"
-      ],
-      "summary": "Red accepts the delivery while the Woodsman checks the final Warden marker and reminds her how to call for help.",
-      "script_content": "EXT. RED'S VILLAGE COTTAGE - MORNING\n\nAutumn light warms the cottage garden. RED secures the checked lining over her basket while THE WOODSMAN tests a brass lantern beside the first trail marker.\n\nWOODSMAN\nThe forest is calm this morning, but calm is not the same as empty.\n\nRED\nI will stay on the marked path and keep the basket closed.\n\nThe Woodsman turns the lantern so its green panels flash against the trees.\n\nWOODSMAN\nIf danger finds you, lift the hood, call twice, and look for this green light.\n\nRed raises her hood, takes the basket, and steps from cobbles onto the woodland path.",
+      "title": "A Promise and a Basket",
+      "summary": "Red prepares a basket for her sick grandmother and leaves the safety of home with a clear purpose.",
+      "script_content": "INT. RED'S KITCHEN - MORNING\n\nMorning light warms a small kitchen. LITTLE RED RIDING HOOD folds a blue cloth over bread, broth, cheese, apples, and honey. She checks each item, closes the basket, and fastens her scarlet cloak.\n\nAt the door, she looks toward the distant tree line. The errand is familiar, but this is the first time the responsibility belongs entirely to her. She lifts the basket and steps onto the road.",
       "dialogue": [
         {
-          "speaker": "The Woodsman",
-          "line": "The forest is calm this morning, but calm is not the same as empty.",
-          "description": "He checks the lantern wick without trying to frighten her.",
+          "speaker": "Little Red Riding Hood",
+          "line": "Grandmother needs something warm, something sweet, and a friendly face.",
+          "description": "Checking the basket contents with quiet determination.",
           "sequence": 1
         },
         {
           "speaker": "Little Red Riding Hood",
-          "line": "I will stay on the marked path and keep the basket closed.",
-          "description": "Red tightens the basket lining.",
+          "line": "I'll be there before the afternoon shadows reach her gate.",
+          "description": "Fastening her cloak and taking responsibility for the journey.",
           "sequence": 2
-        },
-        {
-          "speaker": "The Woodsman",
-          "line": "If danger finds you, lift the hood, call twice, and look for this green light.",
-          "description": "He turns the lantern so the Warden color catches the trees.",
-          "sequence": 3
         }
+      ],
+      "location": "lrrh_loc_red_home",
+      "characters": [
+        "lrrh_char_red"
+      ],
+      "props": [
+        "lrrh_prop_basket",
+        "lrrh_prop_red_cloak"
       ],
       "time_of_day": "morning",
-      "emotional_tone": "Warm responsibility with a quiet edge of anticipation",
-      "lens": "35mm",
-      "camera_movement": "locked_off",
-      "generation_prompt": "Warm amber morning light, soft cottage bounce, gently saturated autumn reds, and open welcoming shadows.",
-      "production_notes": "Begin with open village ambience and warm backlight. Establish the lantern's green panels and cloak repair clearly because both become continuity signals later.",
-      "tags": [
-        "exposition",
-        "quiet"
-      ],
-      "sequence": "lrrh_full_sequence_lrrh_full",
-      "episode": "lrrh_full_episode_woodland_path"
+      "emotional_tone": "Warm, purposeful, and lightly expectant.",
+      "production_notes": "Begin with golden practical light and close tactile details of food, cloth, and basket weave. Preserve the packed-basket continuity established here.",
+      "tags": [],
+      "sequence": "lrrh_sequence_main",
+      "episode": "lrrh_episode_01"
     },
     {
-      "id": "lrrh_full_scene_2",
+      "id": "lrrh_scene_02_stranger",
       "scene_number": 2,
-      "title": "The Encounter",
-      "location": "lrrh_full_loc_forest",
-      "characters": [
-        "lrrh_full_char_red",
-        "lrrh_full_char_wolf"
-      ],
-      "props": [
-        "lrrh_full_prop_basket",
-        "lrrh_full_prop_cloak"
-      ],
-      "summary": "The Wolf tests Red's promise with flattery and a false shortcut, but she notices that he avoids every Warden marker.",
-      "script_content": "EXT. OLD FOREST PATH - MIDDAY\n\nThe marked path narrows beneath dark pines. RED walks with the basket tucked against her hip. A WOLF steps from behind a beech tree as if joining a conversation already in progress.\n\nWOLF\nHello, little traveler. Where does such an important basket need to be?\n\nRED\nGrandmother's cottage, by the old well. I am keeping to the marked path.\n\nThe Wolf smiles and circles past a brass marker without touching its pool of light.\n\nWOLF\nThen you should take my shortcut. It is quicker, and the flowers are finer.\n\nRED\nA path that avoids every marker is not a shortcut meant for me.\n\nA branch cracks uphill. While Red looks toward it, the Wolf vanishes between the trees.",
+      "title": "The Stranger on the Forest Road",
+      "summary": "A polite wolf draws Red into conversation, learns her destination, and secretly chooses a faster route to the cottage.",
+      "script_content": "EXT. DARK FOREST ROAD - LATE MORNING\n\nRed follows the road beneath high branches. Birdsong thins as a GRAY WOLF steps from the ferns, careful to remain several paces away. He bows as though they are neighbors meeting in the village square.\n\nFlattered by his manners, Red answers his questions and points toward the bend beyond which her grandmother lives. The wolf smiles, suggests that she gather a few cheerful flowers, then disappears along a narrow animal track.\n\nRed watches the leaves settle behind him. A small doubt crosses her face, but she continues on the public road.",
       "dialogue": [
         {
-          "speaker": "Wolf",
-          "line": "Hello, little traveler. Where does such an important basket need to be?",
-          "description": "He presents curiosity as courtesy.",
+          "speaker": "The Wolf",
+          "line": "Good morning, traveler. That basket looks far too important for an ordinary walk.",
+          "description": "Smoothly, from a respectful-looking distance.",
           "sequence": 1
         },
         {
           "speaker": "Little Red Riding Hood",
-          "line": "Grandmother's cottage, by the old well. I am keeping to the marked path.",
-          "description": "Red keeps walking rather than accepting his pace.",
+          "line": "It's a basket of delicious treats for my grandmother. She's ill, and her cottage is just past the old oak at the far end of the road.",
+          "description": "Proud of her useful errand and unaware she has revealed too much.",
           "sequence": 2
         },
         {
-          "speaker": "Wolf",
-          "line": "Then you should take my shortcut. It is quicker, and the flowers are more beautiful.",
-          "description": "He gestures toward an unmarked trail.",
+          "speaker": "The Wolf",
+          "line": "Then she is fortunate to have such a thoughtful granddaughter.",
+          "description": "Hiding his interest behind a courteous smile.",
           "sequence": 3
         },
         {
-          "speaker": "Little Red Riding Hood",
-          "line": "A path that avoids every marker is not a shortcut meant for me.",
-          "description": "She notices pine resin on his paws and grips the basket handle.",
-          "sequence": 4
-        }
-      ],
-      "time_of_day": "midday",
-      "emotional_tone": "Polite tension sharpening into alert suspicion",
-      "production_notes": "Cool the palette as the exchange progresses. Keep a Warden marker in the deep background of Red's coverage and exclude it from the Wolf's singles.",
-      "tags": [
-        "tension",
-        "drama"
-      ],
-      "sequence": "lrrh_full_sequence_lrrh_full",
-      "episode": "lrrh_full_episode_woodland_path"
-    },
-    {
-      "id": "lrrh_full_scene_3",
-      "scene_number": 3,
-      "title": "The Reveal",
-      "location": "lrrh_full_loc_grandmother_house",
-      "characters": [
-        "lrrh_full_char_red",
-        "lrrh_full_char_grandmother",
-        "lrrh_full_char_wolf"
-      ],
-      "props": [
-        "lrrh_full_prop_bed",
-        "lrrh_full_prop_basket",
-        "lrrh_full_prop_cloak"
-      ],
-      "summary": "At the cottage, Red reads the displaced details in Grandmother's room, exposes the Wolf's disguise, and calls the Warden signal before he can close the distance.",
-      "script_content": "INT. GRANDMOTHER'S WOODLAND COTTAGE - DUSK\n\nThe cottage is too still. RED sets the basket by the bed. Beneath the reversed blue quilt, the WOLF wears Grandmother's cap and keeps his torn ear pressed flat. A muffled knock sounds from the pantry.\n\nRED\nSomething seems different.\n\nWOLF\nCome closer, my dear. The room is only dim.\n\nRED\nGrandmother, what big eyes you have.\n\nWOLF\nThe better to see what you have brought me.\n\nRED\nAnd what big ears you have.\n\nWOLF\nThe better to hear every little promise.\n\nRed notices the quilt corner, the pine resin, and the hidden torn ear. She raises her hood.\n\nRED\nOh, Grandmother. What big teeth you have.\n\nWOLF\nThe better to eat you with!\n\nThe Wolf throws off the cap. Red backs to the window and calls into the clearing.\n\nRED\nYou are not Grandmother! Warden! Warden!\n\nGreen light flickers between the trees outside.",
-      "dialogue": [
-        {
-          "speaker": "Little Red Riding Hood",
-          "line": "Something seems different here, Grandmother.",
-          "description": "She studies the reversed quilt corner.",
-          "sequence": 1
-        },
-        {
-          "speaker": "Wolf",
-          "line": "Come closer, my dear. The room is very dim.",
-          "description": "He imitates Grandmother's cadence but rushes the final word.",
-          "sequence": 2
-        },
-        {
-          "speaker": "Little Red Riding Hood",
-          "line": "Grandmother, what big eyes you have.",
-          "description": "Red remains beside the basket.",
-          "sequence": 3
-        },
-        {
-          "speaker": "Wolf",
-          "line": "The better to see what you have brought me.",
-          "description": "His gaze drops to the provisions.",
+          "speaker": "The Wolf",
+          "line": "The late flowers beside the creek would brighten her room.",
+          "description": "Indicating a harmless-looking detour while judging the shortcut.",
           "sequence": 4
         },
         {
           "speaker": "Little Red Riding Hood",
-          "line": "And what big ears you have.",
-          "description": "She sees the torn ear slip free of the cap.",
+          "line": "Perhaps another day. I promised to arrive before the shadows grow long.",
+          "description": "Choosing the road, though still speaking more freely than she should.",
           "sequence": 5
-        },
-        {
-          "speaker": "Wolf",
-          "line": "The better to hear every little promise.",
-          "description": "His polished voice roughens.",
-          "sequence": 6
-        },
-        {
-          "speaker": "Little Red Riding Hood",
-          "line": "Oh, Grandmother. What big teeth you have.",
-          "description": "Red raises her hood and shifts toward the window.",
-          "sequence": 7
-        },
-        {
-          "speaker": "Wolf",
-          "line": "The better to eat you with!",
-          "description": "He throws off the disguise and lunges from the bed.",
-          "sequence": 8
-        },
-        {
-          "speaker": "Little Red Riding Hood",
-          "line": "You are not Grandmother! Warden! Warden!",
-          "description": "She calls through the open window without dropping the basket between them.",
-          "sequence": 9
         }
       ],
-      "time_of_day": "dusk",
-      "emotional_tone": "Claustrophobic investigation breaking into decisive alarm",
-      "production_notes": "Reverse the quilt corner established in the Asset and Storyboard. Let the room tone disappear before the torn ear is revealed. The first green lantern reflection lands after Red's second call.",
-      "tags": [
-        "tension",
-        "revelation"
-      ],
-      "sequence": "lrrh_full_sequence_lrrh_full",
-      "episode": "lrrh_full_episode_woodland_path"
-    },
-    {
-      "id": "lrrh_full_scene_4",
-      "scene_number": 4,
-      "title": "The Rescue and Return",
-      "location": "lrrh_full_loc_grandmother_house",
+      "location": "lrrh_loc_forest_path",
       "characters": [
-        "lrrh_full_char_red",
-        "lrrh_full_char_grandmother",
-        "lrrh_full_char_wolf",
-        "lrrh_full_char_woodsman"
+        "lrrh_char_red",
+        "lrrh_char_wolf"
       ],
       "props": [
-        "lrrh_full_prop_basket",
-        "lrrh_full_prop_cloak",
-        "lrrh_full_prop_lantern"
+        "lrrh_prop_basket",
+        "lrrh_prop_red_cloak"
       ],
-      "summary": "The Woodsman's green lantern interrupts the Wolf's attack, Red frees Grandmother, and the reunited neighbors send the Wolf back into the unmarked forest.",
-      "script_content": "EXT./INT. GRANDMOTHER'S WOODLAND COTTAGE - EARLY EVENING\n\nGreen lantern light sweeps across the bedroom wall. THE WOODSMAN fills the doorway, calm and empty-handed, while the WOLF freezes between RED and the bed.\n\nWOODSMAN\nStep away from the child and face the open door.\n\nWOLF\nThis is no concern of yours, Warden.\n\nRED\nGrandmother is in the pantry. I heard her answer.\n\nRed keeps the bed between herself and the Wolf as the Woodsman opens a clear path outside. The Wolf bolts through it and disappears beyond the final marker. Red frees GRANDMOTHER, who takes her hands.\n\nGRANDMOTHER\nYou noticed what fear hoped you would overlook.\n\nRED\nI kept the promise, but I also changed the plan.\n\nWOODSMAN\nThat is what a good path is for. It brings help close enough to choose.\n\nGrandmother unties the basket lining. They share bread and tea as the lantern glows on the windowsill.",
+      "time_of_day": "morning",
+      "emotional_tone": "Courteous on the surface, with quiet predatory tension underneath.",
+      "production_notes": "Keep a visible distance between Red and the wolf. Shift from natural birdsong to sparse forest ambience as his questions become more specific.",
+      "tags": [],
+      "sequence": "lrrh_sequence_main",
+      "episode": "lrrh_episode_01"
+    },
+    {
+      "id": "lrrh_scene_03_cottage",
+      "scene_number": 3,
+      "title": "The Wolf Reaches the Cottage",
+      "summary": "Taking a shortcut, the wolf arrives first, traps Grandmother safely in the pantry, and builds a hurried disguise.",
+      "script_content": "INT. GRANDMOTHER'S COTTAGE - MIDDAY\n\nThe wolf knocks softly and imitates Red's voice. GRANDMOTHER opens the door only a crack, but he shoulders inside. She backs toward the pantry, keeping a chair between them.\n\nThe wolf wants the food still coming down the road, not a noisy struggle. He forces Grandmother into the pantry and drops the heavy latch. Her pounding is muffled by the thick door.\n\nIn the bedroom, he pulls the curtains, puts on Grandmother's bonnet and shawl, and climbs beneath the patchwork quilt. His ears bend the bonnet out of shape. The cottage clock ticks while he practices a fragile voice.",
       "dialogue": [
         {
-          "speaker": "The Woodsman",
-          "line": "Step away from the child and face the open door.",
-          "description": "He holds the lantern high and leaves the escape route visible.",
+          "speaker": "The Wolf",
+          "line": "Grandmother, it's me. I've brought your basket.",
+          "description": "Imitating Red through the closed door.",
           "sequence": 1
         },
         {
-          "speaker": "Wolf",
-          "line": "This is no concern of yours, Warden.",
-          "description": "The cultivated voice has collapsed into a growl.",
+          "speaker": "Grandmother",
+          "line": "That is not my granddaughter's step.",
+          "description": "Opening the door cautiously and recognizing danger too late.",
           "sequence": 2
         },
         {
-          "speaker": "Little Red Riding Hood",
-          "line": "Grandmother is in the pantry. I heard her answer.",
-          "description": "Red keeps the bed between herself and the Wolf.",
+          "speaker": "The Wolf",
+          "line": "Be still, and this will be over as soon as the basket arrives.",
+          "description": "Low and impatient as he secures the pantry latch.",
           "sequence": 3
         },
         {
           "speaker": "Grandmother",
-          "line": "You noticed what fear hoped you would overlook.",
-          "description": "She takes Red's hands after being freed.",
+          "line": "She will see through you.",
+          "description": "Firmly, from behind the pantry door.",
+          "sequence": 4
+        }
+      ],
+      "location": "lrrh_loc_grandmother_cottage",
+      "characters": [
+        "lrrh_char_grandmother",
+        "lrrh_char_wolf"
+      ],
+      "props": [
+        "lrrh_prop_grandmother_bonnet"
+      ],
+      "time_of_day": "midday",
+      "emotional_tone": "Urgent, confined, and suspenseful without graphic violence.",
+      "production_notes": "Stage Grandmother's confinement clearly but gently: no injury is shown. The pantry latch must remain visible so the later rescue action reads instantly.",
+      "tags": [],
+      "sequence": "lrrh_sequence_main",
+      "episode": "lrrh_episode_01"
+    },
+    {
+      "id": "lrrh_scene_04_reveal_rescue",
+      "scene_number": 4,
+      "title": "Eyes, Ears, and Teeth",
+      "summary": "Red notices that the figure in Grandmother's bed is wrong; the wolf reveals himself, but a nearby Woodsman hears the commotion and drives him away.",
+      "script_content": "INT. GRANDMOTHER'S COTTAGE - AFTERNOON\n\nRed enters, sets the basket on a stool, and approaches the darkened bed. The bonnet is familiar, but everything beneath it is the wrong shape. She studies the large ears, amber eyes, and long teeth as her questions become tests rather than innocent observations.\n\nThe wolf abandons the disguise and springs from the bed. Red pulls the stool between them and shouts. From the woodcutter's trail, the WOODSMAN hears furniture scrape and the pantry door shake. He rushes inside, steps between Red and the wolf, and raises his axe only as a barrier.\n\nOutmatched and exposed, the wolf bolts through the open door and disappears into the forest. The Woodsman lowers the axe. Red immediately lifts the pantry latch and embraces Grandmother.",
+      "dialogue": [
+        {
+          "speaker": "Little Red Riding Hood",
+          "line": "Grandmother, what large ears you have today.",
+          "description": "Keeping her voice even while she studies the misshapen bonnet.",
+          "sequence": 1
+        },
+        {
+          "speaker": "The Wolf",
+          "line": "All the better to hear you with, my dear.",
+          "description": "Forcing a weak imitation of Grandmother's voice.",
+          "sequence": 2
+        },
+        {
+          "speaker": "Little Red Riding Hood",
+          "line": "And what bright eyes you have.",
+          "description": "Stepping back toward the stool and the open door.",
+          "sequence": 3
+        },
+        {
+          "speaker": "The Wolf",
+          "line": "All the better to see you with.",
+          "description": "Letting his real voice break through.",
           "sequence": 4
         },
         {
           "speaker": "Little Red Riding Hood",
-          "line": "I kept the promise, but I also changed the plan.",
-          "description": "Relief arrives as a small, proud smile.",
+          "line": "Those are not Grandmother's teeth.",
+          "description": "Certain now, bracing the stool between them.",
           "sequence": 5
         },
         {
-          "speaker": "The Woodsman",
-          "line": "That is what a good path is for. It brings help close enough to choose.",
-          "description": "He sets the green lantern on the windowsill.",
+          "speaker": "The Wolf",
+          "line": "No. They are mine.",
+          "description": "Throwing off the quilt and revealing himself.",
           "sequence": 6
+        },
+        {
+          "speaker": "The Woodsman",
+          "line": "Away from them. Back to the forest, now.",
+          "description": "Entering with controlled force and blocking the wolf's path to Red.",
+          "sequence": 7
+        },
+        {
+          "speaker": "Grandmother",
+          "line": "You noticed the truth before fear could silence you.",
+          "description": "After Red opens the pantry and helps her sit.",
+          "sequence": 8
         }
       ],
-      "time_of_day": "evening",
-      "emotional_tone": "Controlled intervention resolving into relief, warmth, and earned confidence",
-      "production_notes": "The Woodsman does not strike the Wolf; staging prioritizes a safe exit and Red's agency. Restore warm ambience gradually after Grandmother enters frame. End on the basket, lantern, and repaired family tableau.",
-      "tags": [
-        "action",
-        "emotional"
+      "location": "lrrh_loc_grandmother_cottage",
+      "characters": [
+        "lrrh_char_red",
+        "lrrh_char_grandmother",
+        "lrrh_char_wolf",
+        "lrrh_char_woodsman"
       ],
-      "sequence": "lrrh_full_sequence_lrrh_full",
-      "episode": "lrrh_full_episode_woodland_path"
+      "props": [
+        "lrrh_prop_basket",
+        "lrrh_prop_red_cloak",
+        "lrrh_prop_grandmother_bonnet",
+        "lrrh_prop_woodsman_axe"
+      ],
+      "time_of_day": "afternoon",
+      "emotional_tone": "Suspicion tightening into danger, then decisive relief.",
+      "production_notes": "Build suspicion through eyelines and inserts before revealing the wolf. Choreograph the attack as a brief blocked advance: the stool and Woodsman maintain distance, and the axe is never swung.",
+      "tags": [],
+      "sequence": "lrrh_sequence_main",
+      "episode": "lrrh_episode_01"
+    },
+    {
+      "id": "lrrh_scene_05_return",
+      "scene_number": 5,
+      "title": "The Safer Road Home",
+      "summary": "After Grandmother is safe, the Woodsman escorts Red home, where she reflects on what trust should require.",
+      "script_content": "INT. RED'S KITCHEN - EVENING\n\nThe scarlet cloak lies folded beside the now-empty basket. Through the window, the Woodsman checks the road before continuing back toward the village.\n\nRed sets a written note from Grandmother on the shelf and looks toward the dark tree line. The forest has not become evil, and kindness has not become foolish. What has changed is her understanding: a stranger earns trust through more than pleasant words. She closes the shutters, safe at home and better prepared for her next journey.",
+      "dialogue": [
+        {
+          "speaker": "The Woodsman",
+          "line": "A careful question can be as useful as a loud warning.",
+          "description": "At the doorway after escorting Red home.",
+          "sequence": 1
+        },
+        {
+          "speaker": "Little Red Riding Hood",
+          "line": "I'll still be kind. I just won't give my trust away before it has been earned.",
+          "description": "With calm conviction, setting down the empty basket.",
+          "sequence": 2
+        }
+      ],
+      "location": "lrrh_loc_red_home",
+      "characters": [
+        "lrrh_char_red",
+        "lrrh_char_woodsman"
+      ],
+      "props": [
+        "lrrh_prop_basket",
+        "lrrh_prop_red_cloak"
+      ],
+      "time_of_day": "evening",
+      "emotional_tone": "Safe, reflective, and quietly hopeful.",
+      "production_notes": "Echo the opening kitchen compositions with cooler evening light. End on Red closing the shutters without suggesting that she has become fearful of the world.",
+      "tags": [],
+      "sequence": "lrrh_sequence_main",
+      "episode": "lrrh_episode_01"
     }
   ],
   "shots": [
     {
-      "id": "lrrh_full_shot_1",
+      "id": "lrrh_shot_01",
       "shot_number": 1,
-      "title": "Village Cottage Establishing",
-      "scene": "lrrh_full_scene_1",
-      "sequence": "lrrh_full_sequence_lrrh_full",
-      "type": "establishing",
+      "title": "Morning Kitchen Establishing Shot",
+      "scene": "lrrh_scene_01_promise",
+      "sequence": "lrrh_sequence_main",
+      "type": "wide",
       "camera_angle": "eye_level",
       "lens": "24mm",
-      "camera_movement": "push_in",
-      "motion_direction": "The camera pushes slowly toward Red's cottage as villagers cross the foreground and the Woodsman checks the brass marker.",
-      "duration": "PT5S",
+      "duration": "PT6S",
       "take_number": 1,
-      "slate_id": "1A",
-      "description": "Morning village activity frames Red's cottage, the path entrance, and the Woodsman checking a brass marker.",
-      "generation_prompt": "Keep the marked path entrance readable behind the foreground activity.",
-      "editorial_notes": "Open from black on birds and cart wheels; hold long enough to read the safe geography."
+      "slate_id": "LRRH-001-A",
+      "description": "A slow push through the warm kitchen toward Red arranging food at the central table.",
+      "editorial_notes": "Open from black on the hearth glow, then reveal Red and the basket in the same frame."
     },
     {
-      "id": "lrrh_full_shot_2",
+      "id": "lrrh_shot_02",
       "shot_number": 2,
-      "title": "Basket and Promise",
-      "scene": "lrrh_full_scene_1",
-      "sequence": "lrrh_full_sequence_lrrh_full",
+      "title": "Basket Packing Inserts",
+      "scene": "lrrh_scene_01_promise",
+      "sequence": "lrrh_sequence_main",
+      "type": "close_up",
+      "camera_angle": "high_angle",
+      "lens": "50mm macro",
+      "duration": "PT8S",
+      "take_number": 1,
+      "slate_id": "LRRH-001-B",
+      "description": "Tactile inserts of bread, broth, cheese, apples, honey, and the blue lining as Red checks each item.",
+      "editorial_notes": "Cut on hand movements and retain a final clean frame of the closed basket."
+    },
+    {
+      "id": "lrrh_shot_03",
+      "shot_number": 3,
+      "title": "Red Leaves Home",
+      "scene": "lrrh_scene_01_promise",
+      "sequence": "lrrh_sequence_main",
       "type": "medium",
       "camera_angle": "eye_level",
-      "lens": "50mm",
+      "lens": "35mm",
       "duration": "PT7S",
       "take_number": 1,
-      "slate_id": "1B",
-      "description": "Red secures the basket while answering the Woodsman's warning in a balanced two-shot.",
-      "editorial_notes": "Cut on Red tightening the checked lining; preserve both hands for prop continuity."
+      "slate_id": "LRRH-001-C",
+      "description": "Red fastens her cloak in profile, lifts the basket, and exits toward the distant forest road.",
+      "editorial_notes": "Match the red cloak's movement to the first exterior shot."
     },
     {
-      "id": "lrrh_full_shot_3",
-      "shot_number": 3,
-      "title": "Green Lantern Signal",
-      "scene": "lrrh_full_scene_1",
-      "sequence": "lrrh_full_sequence_lrrh_full",
-      "type": "close_up",
-      "camera_angle": "low_angle",
-      "lens": "85mm",
-      "duration": "PT4S",
-      "take_number": 1,
-      "slate_id": "1C",
-      "description": "The Woodsman turns the lantern; green light crosses Red's raised hood and the first path marker.",
-      "editorial_notes": "Use as the visual match for the lantern reflection in Scene 3."
-    },
-    {
-      "id": "lrrh_full_shot_4",
+      "id": "lrrh_shot_04",
       "shot_number": 4,
-      "title": "Forest Path Establishing",
-      "scene": "lrrh_full_scene_2",
-      "sequence": "lrrh_full_sequence_lrrh_full",
+      "title": "Forest Road Establishing Shot",
+      "scene": "lrrh_scene_02_stranger",
+      "sequence": "lrrh_sequence_main",
       "type": "wide",
       "camera_angle": "high_angle",
-      "lens": "28mm",
-      "duration": "PT6S",
-      "take_number": 1,
-      "slate_id": "2A",
-      "description": "Red appears small beneath the pines while the marked path remains a bright line through the composition.",
-      "editorial_notes": "Transition from warm village gold to cool forest green over the first two seconds."
-    },
-    {
-      "id": "lrrh_full_shot_5",
-      "shot_number": 5,
-      "title": "Wolf Enters the Path",
-      "scene": "lrrh_full_scene_2",
-      "sequence": "lrrh_full_sequence_lrrh_full",
-      "type": "medium",
-      "camera_angle": "low_angle",
-      "lens": "50mm",
-      "duration": "PT5S",
-      "take_number": 1,
-      "slate_id": "2B",
-      "description": "The Wolf steps from behind a beech tree and settles into Red's walking pace without crossing a brass marker's light.",
-      "editorial_notes": "Let leaf movement announce him one beat before his muzzle enters frame."
-    },
-    {
-      "id": "lrrh_full_shot_6",
-      "shot_number": 6,
-      "title": "Red Rejects the Shortcut",
-      "scene": "lrrh_full_scene_2",
-      "sequence": "lrrh_full_sequence_lrrh_full",
-      "type": "over_the_shoulder",
-      "camera_angle": "eye_level",
-      "lens": "65mm",
-      "duration": "PT8S",
-      "take_number": 1,
-      "slate_id": "2C",
-      "description": "Over the Wolf's shoulder, Red notices resin on his paw and aligns herself with the next Warden marker.",
-      "editorial_notes": "Rack focus from the stained paw to the marker before Red delivers her final line."
-    },
-    {
-      "id": "lrrh_full_shot_7",
-      "shot_number": 7,
-      "title": "Grandmother's Room",
-      "scene": "lrrh_full_scene_3",
-      "sequence": "lrrh_full_sequence_lrrh_full",
-      "type": "wide",
-      "camera_angle": "eye_level",
-      "lens": "32mm",
-      "duration": "PT6S",
-      "take_number": 1,
-      "slate_id": "3A",
-      "description": "Red enters the dim bedroom; the bed, reversed quilt corner, basket landing place, pantry door, and window share one readable frame.",
-      "editorial_notes": "Hold the geography before dialogue so later evasive movement remains clear."
-    },
-    {
-      "id": "lrrh_full_shot_8",
-      "shot_number": 8,
-      "title": "Details Do Not Match",
-      "scene": "lrrh_full_scene_3",
-      "sequence": "lrrh_full_sequence_lrrh_full",
-      "type": "reaction",
-      "camera_angle": "eye_level",
-      "lens": "85mm",
+      "lens": "24mm",
       "duration": "PT7S",
       "take_number": 1,
-      "slate_id": "3B",
-      "description": "Red's gaze connects the quilt, pine resin, and torn ear while the room falls unnaturally silent.",
-      "editorial_notes": "Build three inserts into one reaction rhythm, then return to Red before the teeth question."
+      "slate_id": "LRRH-002-A",
+      "description": "Red appears small beneath the canopy as the road curves into deep shadow and the wolf watches unseen from the ferns.",
+      "editorial_notes": "Hold long enough for the audience to discover the wolf before he moves."
     },
     {
-      "id": "lrrh_full_shot_9",
-      "shot_number": 9,
-      "title": "Wolf Revealed",
-      "scene": "lrrh_full_scene_3",
-      "sequence": "lrrh_full_sequence_lrrh_full",
-      "type": "close_up",
-      "camera_angle": "low_angle",
-      "lens": "75mm",
-      "duration": "PT5S",
-      "take_number": 1,
-      "slate_id": "3C",
-      "description": "The cap falls, the Wolf bares his teeth, and Red's raised hood remains sharp at the frame edge as she calls for help.",
-      "editorial_notes": "End on the first green reflection rather than the lunge itself."
-    },
-    {
-      "id": "lrrh_full_shot_10",
-      "shot_number": 10,
-      "title": "Lantern at the Door",
-      "scene": "lrrh_full_scene_4",
-      "sequence": "lrrh_full_sequence_lrrh_full",
-      "type": "establishing",
-      "camera_angle": "low_angle",
-      "lens": "28mm",
-      "duration": "PT5S",
-      "take_number": 1,
-      "slate_id": "4A",
-      "description": "Moving green light reaches the bedroom before the Woodsman fills the doorway and establishes an open route outside.",
-      "editorial_notes": "Match the lantern flare from Shot 3 and avoid framing the Woodsman as an attacking silhouette."
-    },
-    {
-      "id": "lrrh_full_shot_11",
-      "shot_number": 11,
-      "title": "The Safe Exit",
-      "scene": "lrrh_full_scene_4",
-      "sequence": "lrrh_full_sequence_lrrh_full",
-      "type": "medium_wide",
-      "camera_angle": "eye_level",
-      "lens": "40mm",
-      "duration": "PT9S",
-      "take_number": 1,
-      "slate_id": "4B",
-      "description": "Red uses the bed as cover while the Woodsman opens a clear path and the Wolf chooses flight.",
-      "editorial_notes": "Play the intervention in one readable master; cut only when the Wolf crosses the threshold."
-    },
-    {
-      "id": "lrrh_full_shot_12",
-      "shot_number": 12,
-      "title": "Lantern, Basket, and Home",
-      "scene": "lrrh_full_scene_4",
-      "sequence": "lrrh_full_sequence_lrrh_full",
+      "id": "lrrh_shot_05",
+      "shot_number": 5,
+      "title": "The Courteous Encounter",
+      "scene": "lrrh_scene_02_stranger",
+      "sequence": "lrrh_sequence_main",
       "type": "medium",
       "camera_angle": "eye_level",
-      "lens": "50mm",
+      "lens": "40mm",
+      "duration": "PT24S",
+      "take_number": 1,
+      "slate_id": "LRRH-002-B",
+      "description": "A measured two-shot preserves the space between Red and the wolf while his questions gradually direct her gaze toward the cottage road.",
+      "editorial_notes": "Let the blocking remain polite; tension comes from the wolf's attention to the basket and Red's pointing hand."
+    },
+    {
+      "id": "lrrh_shot_06",
+      "shot_number": 6,
+      "title": "The Wolf Chooses the Shortcut",
+      "scene": "lrrh_scene_02_stranger",
+      "sequence": "lrrh_sequence_main",
+      "type": "close_up",
+      "camera_angle": "low_angle",
+      "lens": "65mm",
+      "duration": "PT6S",
+      "take_number": 1,
+      "slate_id": "LRRH-002-C",
+      "description": "The wolf's courteous expression empties as he glances toward a narrow track and vanishes through foreground leaves.",
+      "editorial_notes": "Use the leaf wipe to transition from Red's road to the cottage door."
+    },
+    {
+      "id": "lrrh_shot_07",
+      "shot_number": 7,
+      "title": "A Knock at the Cottage",
+      "scene": "lrrh_scene_03_cottage",
+      "sequence": "lrrh_sequence_main",
+      "type": "wide",
+      "camera_angle": "eye_level",
+      "lens": "28mm",
+      "duration": "PT12S",
+      "take_number": 1,
+      "slate_id": "LRRH-003-A",
+      "description": "From inside the quiet cottage, Grandmother approaches the door as the wolf's shadow crosses the frosted window.",
+      "editorial_notes": "Keep the pantry and bedroom doorways legible in the establishing composition."
+    },
+    {
+      "id": "lrrh_shot_08",
+      "shot_number": 8,
+      "title": "The Pantry Latch",
+      "scene": "lrrh_scene_03_cottage",
+      "sequence": "lrrh_sequence_main",
+      "type": "medium",
+      "camera_angle": "eye_level",
+      "lens": "40mm",
+      "duration": "PT13S",
+      "take_number": 1,
+      "slate_id": "LRRH-003-B",
+      "description": "Grandmother backs into the pantry while keeping a chair between herself and the wolf; he closes the door and drops the latch.",
+      "editorial_notes": "Avoid impact imagery. End on Grandmother's hand visible at the safe gap beneath the door."
+    },
+    {
+      "id": "lrrh_shot_09",
+      "shot_number": 9,
+      "title": "An Unconvincing Disguise",
+      "scene": "lrrh_scene_03_cottage",
+      "sequence": "lrrh_sequence_main",
+      "type": "close_up",
+      "camera_angle": "eye_level",
+      "lens": "55mm",
+      "duration": "PT9S",
+      "take_number": 1,
+      "slate_id": "LRRH-003-C",
+      "description": "The wolf adjusts the lace bonnet around his ears, pulls the quilt up to his muzzle, and practices a fragile smile.",
+      "editorial_notes": "Balance menace with storybook absurdity; finish on the amber eyes opening."
+    },
+    {
+      "id": "lrrh_shot_10",
+      "shot_number": 10,
+      "title": "Red Enters the Darkened Room",
+      "scene": "lrrh_scene_04_reveal_rescue",
+      "sequence": "lrrh_sequence_main",
+      "type": "medium",
+      "camera_angle": "eye_level",
+      "lens": "35mm",
+      "duration": "PT12S",
+      "take_number": 1,
+      "slate_id": "LRRH-004-A",
+      "description": "Red sets the basket on a stool and crosses toward the bed while the pantry door trembles almost imperceptibly behind her.",
+      "editorial_notes": "Use a deep composition so the bed, Red, basket, and pantry clue remain connected."
+    },
+    {
+      "id": "lrrh_shot_11",
+      "shot_number": 11,
+      "title": "Eyes, Ears, and Teeth",
+      "scene": "lrrh_scene_04_reveal_rescue",
+      "sequence": "lrrh_sequence_main",
+      "type": "close_up",
+      "camera_angle": "eye_level",
+      "lens": "85mm",
+      "duration": "PT24S",
+      "take_number": 1,
+      "slate_id": "LRRH-004-B",
+      "description": "Alternating close views trace Red's gaze from the misshapen ears to the amber eyes and finally the visible teeth as she backs toward the stool.",
+      "editorial_notes": "Shorten each response beat so the rhythm accelerates toward the reveal."
+    },
+    {
+      "id": "lrrh_shot_12",
+      "shot_number": 12,
+      "title": "Reveal and Rescue",
+      "scene": "lrrh_scene_04_reveal_rescue",
+      "sequence": "lrrh_sequence_main",
+      "type": "wide",
+      "camera_angle": "low_angle",
+      "lens": "28mm",
+      "duration": "PT18S",
+      "take_number": 1,
+      "slate_id": "LRRH-004-C",
+      "description": "The wolf throws off the quilt and advances, Red blocks him with the stool, and the Woodsman enters to drive him through the open door before Red frees Grandmother.",
+      "editorial_notes": "Keep the geography simple and the action readable. Cut away from the fleeing wolf to the pantry latch opening."
+    },
+    {
+      "id": "lrrh_shot_13",
+      "shot_number": 13,
+      "title": "Escort at Dusk",
+      "scene": "lrrh_scene_05_return",
+      "sequence": "lrrh_sequence_main",
+      "type": "wide",
+      "camera_angle": "eye_level",
+      "lens": "35mm",
       "duration": "PT8S",
       "take_number": 1,
-      "slate_id": "4C",
-      "description": "Grandmother, Red, and the Woodsman share bread beside the open basket while the green lantern warms the window.",
-      "editorial_notes": "Finish on Red lowering her hood; dissolve to the marked path at evening."
+      "slate_id": "LRRH-005-A",
+      "description": "Seen through the kitchen window, Red and the Woodsman arrive from the forest road as the last daylight fades.",
+      "editorial_notes": "Mirror the opening palette while shifting the sky from gold to deep blue."
+    },
+    {
+      "id": "lrrh_shot_14",
+      "shot_number": 14,
+      "title": "Cloak and Empty Basket",
+      "scene": "lrrh_scene_05_return",
+      "sequence": "lrrh_sequence_main",
+      "type": "close_up",
+      "camera_angle": "high_angle",
+      "lens": "50mm",
+      "duration": "PT7S",
+      "take_number": 1,
+      "slate_id": "LRRH-005-B",
+      "description": "Red folds her cloak beside the empty basket and places Grandmother's note safely on the shelf.",
+      "editorial_notes": "Echo the packing inserts, but use fewer cuts and a calmer tempo."
+    },
+    {
+      "id": "lrrh_shot_15",
+      "shot_number": 15,
+      "title": "The Shutters Close",
+      "scene": "lrrh_scene_05_return",
+      "sequence": "lrrh_sequence_main",
+      "type": "medium",
+      "camera_angle": "eye_level",
+      "lens": "40mm",
+      "duration": "PT10S",
+      "take_number": 1,
+      "slate_id": "LRRH-005-C",
+      "description": "After saying goodnight to the Woodsman, Red looks once toward the forest and closes the shutters with a thoughtful, steady expression.",
+      "editorial_notes": "Hold on the warm interior after the shutters meet, then fade out."
     }
   ],
   "sounds": [
     {
-      "id": "lrrh_full_sound_opening_narration",
-      "title": "Opening Narration",
-      "type": "narration",
-      "production_status": "approved",
-      "description": "A warm storybook introduction over the village establishing shot.",
-      "spoken_text": "At the edge of the Old Forest, every safe journey began with a promise and a path.",
-      "start_timecode": "00:00:00:00",
-      "duration": "PT7S",
-      "diegetic": "non_diegetic",
-      "production_notes": "Intimate and reassuring, with enough restraint to leave room for the coming uncertainty.",
-      "scene": "lrrh_full_scene_1",
-      "shot": "lrrh_full_shot_1"
-    },
-    {
-      "id": "lrrh_full_sound_red_internal_promise",
-      "title": "Red Remembers the Promise",
-      "type": "voiceover",
-      "production_status": "in-development",
-      "description": "Red silently rehearses the practical parts of the Woodsman's warning as the forest closes in.",
-      "spoken_text": "Markers ahead, basket closed, two calls if I need the green light.",
-      "start_timecode": "00:00:02:00",
-      "duration": "PT5S",
-      "diegetic": "internal",
-      "production_notes": "Close, dry recording with no theatrical echo; confident rather than anxious.",
-      "scene": "lrrh_full_scene_2",
-      "shot": "lrrh_full_shot_4",
-      "character": "lrrh_full_char_red"
-    },
-    {
-      "id": "lrrh_full_sound_forest_theme",
-      "title": "Stay to the Marked Path",
-      "type": "music",
-      "production_status": "in-development",
-      "description": "A cautious traveling theme whose steady pulse becomes uncertain when the Wolf appears.",
-      "lyrics": "Stay to the markers through shadow and pine.\nCarry your promise and follow the sign.",
-      "start_timecode": "00:00:00:00",
-      "duration": "PT18S",
-      "diegetic": "non_diegetic",
-      "production_notes": "Sparse strings, celesta, and a soft frame drum; leave a midrange pocket for dialogue.",
-      "scene": "lrrh_full_scene_2",
-      "shot": "lrrh_full_shot_4",
-      "asset": "lrrh_full_asset_forest_theme_audio"
-    },
-    {
-      "id": "lrrh_full_sound_forest_ambience",
-      "title": "Old Forest Ambience",
+      "id": "lrrh_sound_01_kitchen",
+      "title": "Morning Kitchen Ambience",
+      "description": "Low hearth crackle, a kettle beginning to simmer, quiet crockery, and distant village birds.",
       "type": "ambience",
-      "production_status": "approved",
-      "description": "Layered wind, distant birds, creek water, and occasional branch movement that thins during the Wolf's approach.",
-      "start_timecode": "00:00:00:00",
-      "duration": "PT45S",
+      "start_timecode": "01:00:00:00",
+      "duration": "PT28S",
       "diegetic": "diegetic",
-      "production_notes": "Maintain a recognizable high bird call until Shot 5, then remove it without an obvious fade.",
-      "scene": "lrrh_full_scene_2"
+      "production_notes": "Keep the room intimate and natural; leave space for dialogue and detailed basket foley.",
+      "scene": "lrrh_scene_01_promise",
+      "shot": "lrrh_shot_01"
     },
     {
-      "id": "lrrh_full_sound_wolf_footfalls",
-      "title": "Wolf Approaches Through Leaves",
-      "type": "foley",
-      "production_status": "draft",
-      "description": "Measured paw falls and leaf crunches synchronized to the Wolf joining Red's pace.",
-      "start_timecode": "00:00:01:12",
-      "duration": "PT6S",
-      "diegetic": "diegetic",
-      "production_notes": "Use damp leaves and soft leather rather than exaggerated claws; the final step lands outside marker light.",
-      "scene": "lrrh_full_scene_2",
-      "shot": "lrrh_full_shot_5"
-    },
-    {
-      "id": "lrrh_full_sound_reveal_sting",
-      "title": "Wolf Reveal Sting",
-      "type": "sound-effect",
-      "production_status": "in-development",
-      "description": "A short designed impact as the cap falls and the Wolf's real silhouette replaces the disguise.",
-      "start_timecode": "00:00:07:00",
-      "duration": "PT2S",
-      "diegetic": "non_diegetic",
-      "production_notes": "Combine bowed metal and low drum; avoid a horror-style jump-scare peak.",
-      "scene": "lrrh_full_scene_3",
-      "shot": "lrrh_full_shot_9"
-    },
-    {
-      "id": "lrrh_full_sound_pre_reveal_silence",
-      "title": "Silence Before the Reveal",
-      "type": "silence",
-      "production_status": "approved",
-      "description": "A deliberate removal of room tone while Red assembles the visual clues.",
-      "start_timecode": "00:00:05:00",
-      "duration": "PT2S",
-      "diegetic": "unspecified",
-      "production_notes": "Retain only Red's breath and one quilt movement so the silence feels subjective rather than like a technical dropout.",
-      "scene": "lrrh_full_scene_3",
-      "shot": "lrrh_full_shot_8"
-    },
-    {
-      "id": "lrrh_full_sound_warden_arrival",
-      "title": "Warden Lantern and Door",
-      "type": "foley",
-      "production_status": "draft",
-      "description": "Lantern handle, firm boots, and the cottage door opening as the Woodsman arrives.",
-      "start_timecode": "00:00:00:12",
-      "duration": "PT4S",
-      "diegetic": "diegetic",
-      "production_notes": "Lead with the small brass handle rattle so the established lantern motif arrives before the heavier door sound.",
-      "scene": "lrrh_full_scene_4",
-      "shot": "lrrh_full_shot_10"
-    },
-    {
-      "id": "lrrh_full_sound_closing_narration",
-      "title": "Closing Narration",
+      "id": "lrrh_sound_02_opening_narration",
+      "title": "Opening Narration",
+      "description": "A brief storybook narration establishes Grandmother's illness and Red's errand without duplicating the Scene dialogue.",
       "type": "narration",
-      "production_status": "draft",
-      "description": "A brief closing thought over the shared meal and evening path.",
-      "spoken_text": "A promise was not a fence around Red's courage. It was a path that let courage find its way home.",
-      "start_timecode": "00:00:03:00",
+      "spoken_text": "Beyond the village and down the forest road, Grandmother was ill. Little Red Riding Hood packed what comfort she could carry and promised herself she would arrive before the shadows grew long.",
+      "start_timecode": "01:00:02:00",
+      "duration": "PT12S",
+      "diegetic": "non_diegetic",
+      "production_notes": "Warm adult storyteller voice, intimate rather than grand, recorded close with very little room tone.",
+      "scene": "lrrh_scene_01_promise"
+    },
+    {
+      "id": "lrrh_sound_03_forest_ambience",
+      "title": "Forest Road Ambience",
+      "description": "Layered wind in pine needles, oak leaves, distant birds, insects, and occasional branch creaks that thin as the wolf approaches.",
+      "type": "ambience",
+      "start_timecode": "01:00:28:00",
+      "duration": "PT42S",
+      "diegetic": "diegetic",
+      "production_notes": "Build from the linked sound-suite asset. Reduce the upper-canopy birds by half during the wolf's questions.",
+      "scene": "lrrh_scene_02_stranger",
+      "shot": "lrrh_shot_04",
+      "asset": "lrrh_asset_audio_suite"
+    },
+    {
+      "id": "lrrh_sound_04_hidden_step",
+      "title": "Hidden Step in the Ferns",
+      "description": "One crisp twig break followed by soft leaves shifting as the wolf steps onto the road.",
+      "type": "sound-effect",
+      "start_timecode": "01:00:34:10",
+      "duration": "PT2S",
+      "diegetic": "diegetic",
+      "production_notes": "Place slightly behind Red in the surround field so her turn feels motivated.",
+      "scene": "lrrh_scene_02_stranger",
+      "shot": "lrrh_shot_05"
+    },
+    {
+      "id": "lrrh_sound_05_shortcut_sting",
+      "title": "The Shortcut Motif",
+      "description": "A restrained three-note low-string motif enters when the wolf drops his friendly expression and chooses the shortcut.",
+      "type": "music",
+      "lyrics": "",
+      "start_timecode": "01:01:02:00",
       "duration": "PT8S",
       "diegetic": "non_diegetic",
-      "production_notes": "Use the opening narrator with slightly brighter presence and let the last word overlap the dissolve.",
-      "scene": "lrrh_full_scene_4",
-      "shot": "lrrh_full_shot_12"
+      "production_notes": "Use dry cello harmonics and a soft frame-drum pulse; resolve into the cottage clock rhythm.",
+      "scene": "lrrh_scene_02_stranger",
+      "shot": "lrrh_shot_06",
+      "asset": "lrrh_asset_audio_suite"
+    },
+    {
+      "id": "lrrh_sound_06_cottage_clock",
+      "title": "Cottage Clock and Quiet Room",
+      "description": "An old clock ticks in a still cottage, with a faint stove draft and fabric movement.",
+      "type": "ambience",
+      "start_timecode": "01:01:10:00",
+      "duration": "PT34S",
+      "diegetic": "diegetic",
+      "production_notes": "Let the clock become subjectively louder after the pantry latch drops.",
+      "scene": "lrrh_scene_03_cottage",
+      "shot": "lrrh_shot_07"
+    },
+    {
+      "id": "lrrh_sound_07_pantry_latch",
+      "title": "Pantry Latch Drop",
+      "description": "A heavy wooden door closes, followed by the decisive metal scrape and knock of the latch settling into place.",
+      "type": "sound-effect",
+      "start_timecode": "01:01:28:12",
+      "duration": "PT3S",
+      "diegetic": "diegetic",
+      "production_notes": "Emphasize weight rather than volume; carry a shortened version into the later unlatching sound.",
+      "scene": "lrrh_scene_03_cottage",
+      "shot": "lrrh_shot_08"
+    },
+    {
+      "id": "lrrh_sound_08_reveal_sting",
+      "title": "The Bonnet Falls",
+      "description": "The shortcut motif returns with bowed bass, scraped wood, and a single drum accent as the wolf throws off the disguise.",
+      "type": "music",
+      "lyrics": "",
+      "start_timecode": "01:02:08:00",
+      "duration": "PT10S",
+      "diegetic": "non_diegetic",
+      "production_notes": "Peak on the reveal, then drop out before the Woodsman's command so his voice lands cleanly.",
+      "scene": "lrrh_scene_04_reveal_rescue",
+      "shot": "lrrh_shot_12",
+      "asset": "lrrh_asset_audio_suite"
+    },
+    {
+      "id": "lrrh_sound_09_rescue_foley",
+      "title": "Stool, Boots, and Open Door",
+      "description": "A stool scrapes across the floor, the Woodsman's boots cross the threshold, the axe handle knocks the doorframe, and the wolf's paws retreat into leaves.",
+      "type": "foley",
+      "start_timecode": "01:02:14:00",
+      "duration": "PT12S",
+      "diegetic": "diegetic",
+      "production_notes": "Keep each source distinct enough to tell the rescue through sound without implying an axe strike.",
+      "scene": "lrrh_scene_04_reveal_rescue",
+      "shot": "lrrh_shot_12"
+    },
+    {
+      "id": "lrrh_sound_10_closing_narration",
+      "title": "Closing Narration",
+      "description": "The final narration frames Red's experience as discernment rather than fear.",
+      "type": "narration",
+      "spoken_text": "Little Red Riding Hood returned home still kind, still brave, and much more careful. She had learned that friendly words can open a conversation, but only honest actions should open the door to trust.",
+      "start_timecode": "01:02:44:00",
+      "duration": "PT13S",
+      "diegetic": "non_diegetic",
+      "production_notes": "Use the opening narrator with a quieter, resolved delivery over the final two shots.",
+      "scene": "lrrh_scene_05_return"
     }
   ],
   "assets": [
     {
-      "id": "lrrh_full_asset_red_character_concept",
-      "title": "Red Character Turnaround",
+      "id": "lrrh_asset_red_concept",
+      "title": "Little Red Riding Hood Character Concept",
       "asset_type": "character",
-      "workflow_name": "storybook-character-concept",
-      "prompt": "Full character turnaround of a thoughtful twelve-year-old traveler in a weathered scarlet wool cloak, cream linen dress, sturdy boots, and a woven provision basket; hand-painted storybook animation design, clean neutral background.",
+      "workflow_name": "character-concept-development",
+      "prompt": "Full-body family-friendly storybook character design for Little Red Riding Hood, about twelve years old, vivid scarlet wool hooded cloak, cream blouse, dark skirt, sturdy walking shoes, woven basket, observant expression, autumn fairy-tale realism, front three-quarter and profile views.",
       "model_name": "provider-neutral-image-model",
-      "seed": 12041,
+      "seed": 10401,
+      "generation_parameters": {
+        "width": 1536,
+        "height": 1536,
+        "steps": 30,
+        "guidance": 6.5,
+        "background": "neutral parchment"
+      },
+      "version": "concept-v1",
+      "status": "pending",
+      "storage_uri": "worldgraph://planned/lrrh/red-character-concept.png",
+      "project": "lrrh_story_project",
+      "character": "lrrh_char_red"
+    },
+    {
+      "id": "lrrh_asset_wolf_concept",
+      "title": "The Wolf Character Concept",
+      "asset_type": "character",
+      "workflow_name": "character-concept-development",
+      "prompt": "Large gray fairy-tale wolf with silver-tipped fur, amber eyes, expressive brows, long ears, powerful paws, capable of polite charm and sudden menace, family-friendly storybook realism, character turnaround with facial expression studies.",
+      "model_name": "provider-neutral-image-model",
+      "seed": 10402,
+      "generation_parameters": {
+        "width": 1536,
+        "height": 1536,
+        "steps": 30,
+        "guidance": 6.5,
+        "background": "neutral parchment"
+      },
+      "version": "concept-v1",
+      "status": "pending",
+      "storage_uri": "worldgraph://planned/lrrh/wolf-character-concept.png",
+      "project": "lrrh_story_project",
+      "character": "lrrh_char_wolf"
+    },
+    {
+      "id": "lrrh_asset_forest_environment",
+      "title": "Dark Forest Road Environment Concept",
+      "asset_type": "environment",
+      "workflow_name": "environment-concept-development",
+      "prompt": "Cinematic storybook forest road in autumn, ancient oaks and tall pines, dense ferns, shafts of cool light, russet leaves, narrow dirt path bending into shadow, beautiful but watchful mood, no characters, 16:9 composition.",
+      "model_name": "provider-neutral-image-model",
+      "seed": 10403,
+      "generation_parameters": {
+        "width": 1920,
+        "height": 1080,
+        "steps": 32,
+        "guidance": 7,
+        "palette": [
+          "deep green",
+          "russet",
+          "cool blue shadow"
+        ]
+      },
+      "version": "environment-v1",
+      "status": "pending",
+      "storage_uri": "worldgraph://planned/lrrh/forest-road-environment.png",
+      "project": "lrrh_story_project",
+      "location": "lrrh_loc_forest_path",
+      "scene": "lrrh_scene_02_stranger"
+    },
+    {
+      "id": "lrrh_asset_cottage_environment",
+      "title": "Grandmother's Cottage Interior Concept",
+      "asset_type": "environment",
+      "workflow_name": "environment-concept-development",
+      "prompt": "Small fairy-tale cottage interior with patchwork bed, iron stove, old clock, herb bundles, heavy-latched pantry, low windows and creaking front door, warm handmade textures made suspenseful by drawn curtains, family-friendly cinematic storybook style, 16:9.",
+      "model_name": "provider-neutral-image-model",
+      "seed": 10404,
+      "generation_parameters": {
+        "width": 1920,
+        "height": 1080,
+        "steps": 32,
+        "guidance": 7,
+        "palette": [
+          "warm ochre",
+          "linen white",
+          "deep brown shadow"
+        ]
+      },
+      "version": "environment-v1",
+      "status": "pending",
+      "storage_uri": "worldgraph://planned/lrrh/grandmother-cottage-environment.png",
+      "project": "lrrh_story_project",
+      "location": "lrrh_loc_grandmother_cottage",
+      "scene": "lrrh_scene_03_cottage"
+    },
+    {
+      "id": "lrrh_asset_basket_concept",
+      "title": "Food Basket Prop Concept",
+      "asset_type": "prop",
+      "workflow_name": "prop-concept-development",
+      "prompt": "Round handwoven willow basket with hinged lid and blue linen lining, neatly packed bread, covered broth jar, soft cheese, red apples and small honey jar, practical fairy-tale film prop, neutral turnaround lighting.",
+      "model_name": "provider-neutral-image-model",
+      "seed": 10405,
       "generation_parameters": {
         "width": 1536,
         "height": 1024,
-        "steps": 32,
-        "cfg_scale": 6.5,
-        "views": [
-          "front",
-          "three-quarter",
-          "profile",
-          "back"
-        ]
-      },
-      "version": "1.0",
-      "status": "pending",
-      "storage_uri": "worldgraph://planned/lrrh/red-character-turnaround.png",
-      "project": "lrrh_full_project_lrrh_full",
-      "character": "lrrh_full_char_red"
-    },
-    {
-      "id": "lrrh_full_asset_woodsman_character_concept",
-      "title": "Woodland Warden Character Study",
-      "asset_type": "character",
-      "workflow_name": "storybook-character-concept",
-      "prompt": "Dependable woodland path warden in a moss-green coat holding a brass storm lantern with green glass panels; practical carpenter's build, calm expression, hand-painted animated fairy-tale character sheet.",
-      "model_name": "provider-neutral-image-model",
-      "seed": 12042,
-      "generation_parameters": {
-        "width": 1536,
-        "height": 1024,
-        "steps": 32,
-        "cfg_scale": 6.5,
-        "views": [
-          "front",
-          "three-quarter",
-          "lantern-detail"
-        ]
-      },
-      "version": "1.0",
-      "status": "pending",
-      "storage_uri": "worldgraph://planned/lrrh/woodsman-character-study.png",
-      "project": "lrrh_full_project_lrrh_full",
-      "character": "lrrh_full_char_woodsman"
-    },
-    {
-      "id": "lrrh_full_asset_village_environment",
-      "title": "Village Cottage Morning Environment",
-      "asset_type": "environment",
-      "workflow_name": "storybook-environment-concept",
-      "prompt": "Whitewashed rural cottage with blue shutters, autumn herb garden, village square, and the first brass woodland path marker in warm morning light; painterly 16:9 animation background, inviting spatial clarity.",
-      "model_name": "provider-neutral-image-model",
-      "seed": 24011,
-      "generation_parameters": {
-        "width": 1920,
-        "height": 1080,
-        "steps": 36,
-        "cfg_scale": 7,
-        "palette": "warm ochre, cream, blue, scarlet accents"
-      },
-      "version": "1.0",
-      "status": "pending",
-      "storage_uri": "worldgraph://planned/lrrh/village-cottage-morning.png",
-      "project": "lrrh_full_project_lrrh_full",
-      "location": "lrrh_full_loc_village",
-      "scene": "lrrh_full_scene_1"
-    },
-    {
-      "id": "lrrh_full_asset_forest_environment",
-      "title": "Old Forest Marked Path Environment",
-      "asset_type": "environment",
-      "workflow_name": "storybook-environment-concept",
-      "prompt": "Ancient pine and beech forest with a narrow marked path, shallow creek, cold green shafts of light, and tiny brass safety markers at each fork; painterly animated fairy-tale background, beautiful but watchful.",
-      "model_name": "provider-neutral-image-model",
-      "seed": 24012,
-      "generation_parameters": {
-        "width": 1920,
-        "height": 1080,
-        "steps": 40,
-        "cfg_scale": 7.2,
-        "depth_layers": 5,
-        "palette": "pine green, slate blue, muted brass"
-      },
-      "version": "1.0",
-      "status": "pending",
-      "storage_uri": "worldgraph://planned/lrrh/old-forest-marked-path.png",
-      "project": "lrrh_full_project_lrrh_full",
-      "location": "lrrh_full_loc_forest",
-      "scene": "lrrh_full_scene_2"
-    },
-    {
-      "id": "lrrh_full_asset_grandmother_house_storyboard",
-      "title": "Grandmother's Room Reveal Keyframe",
-      "asset_type": "storyboard",
-      "workflow_name": "cinematic-storyboard-keyframe",
-      "prompt": "Dim timber cottage bedroom at dusk, carved oak bed with reversed blue quilt corner, disguised wolf revealed, Red in scarlet hood at the window calling for help, first green lantern reflection entering frame; expressive monochrome storyboard with selective color.",
-      "model_name": "provider-neutral-image-model",
-      "seed": 33009,
-      "generation_parameters": {
-        "width": 1920,
-        "height": 1080,
         "steps": 28,
-        "cfg_scale": 6,
-        "camera": "75mm low angle close-up",
-        "selective_color": [
-          "scarlet",
-          "warden green"
+        "guidance": 6,
+        "views": [
+          "closed",
+          "open",
+          "top-down continuity"
         ]
       },
-      "version": "1.0",
+      "version": "prop-v1",
       "status": "pending",
-      "storage_uri": "worldgraph://planned/lrrh/grandmother-room-reveal.png",
-      "project": "lrrh_full_project_lrrh_full",
-      "location": "lrrh_full_loc_grandmother_house",
-      "scene": "lrrh_full_scene_3"
+      "storage_uri": "worldgraph://planned/lrrh/food-basket-prop.png",
+      "project": "lrrh_story_project"
     },
     {
-      "id": "lrrh_full_asset_forest_theme_audio",
-      "title": "Stay to the Marked Path Music Demo",
+      "id": "lrrh_asset_audio_suite",
+      "title": "Forest Ambience and Story Motif Suite",
       "asset_type": "audio",
-      "workflow_name": "storybook-music-demo",
-      "prompt": "Eighteen-second cautious woodland traveling theme for celesta, sparse strings, and soft frame drum; steady opening pulse destabilizes briefly when the Wolf appears, leaving room for dialogue.",
+      "workflow_name": "soundscape-and-score-development",
+      "prompt": "Create separated production stems for an autumn forest ambience and a restrained three-note suspense motif using cello harmonics, soft frame drum, bowed bass, leaves, distant birds and branch creaks. Family-friendly, intimate, naturalistic, and suitable beneath dialogue.",
       "model_name": "provider-neutral-audio-model",
-      "seed": 55018,
+      "seed": 10406,
       "generation_parameters": {
-        "duration_seconds": 18,
-        "tempo_bpm": 72,
-        "key": "D minor",
         "sample_rate": 48000,
-        "instrumentation": [
-          "celesta",
-          "chamber strings",
-          "frame drum"
-        ],
-        "stems": true
+        "bit_depth": 24,
+        "channels": 2,
+        "deliverables": [
+          "forest ambience stem",
+          "shortcut motif stem",
+          "reveal sting stem"
+        ]
       },
-      "version": "1.0",
+      "version": "audio-v1",
       "status": "pending",
-      "storage_uri": "worldgraph://planned/lrrh/stay-to-the-marked-path.wav",
-      "project": "lrrh_full_project_lrrh_full",
-      "scene": "lrrh_full_scene_2"
+      "storage_uri": "worldgraph://planned/lrrh/forest-story-audio-suite.wav",
+      "project": "lrrh_story_project",
+      "scene": "lrrh_scene_02_stranger"
     }
   ],
   "editorial_artifacts": [
     {
-      "id": "lrrh_full_editorial_lrrh_shot_list",
-      "title": "The Woodland Path Editorial Shot List",
+      "id": "lrrh_editorial_shot_list_v1",
+      "title": "Little Red Riding Hood Master Shot List",
       "artifact_type": "shot_list",
-      "export_format": "World Graph Studio JSON shot list v1",
-      "generated_date": "2026-08-21",
-      "source_scene": "lrrh_full_scene_4",
-      "source_shot": "lrrh_full_shot_12",
-      "notes": "Twelve-shot assembly reference for the episode. Preserve the green-lantern match between Shots 3, 9, and 10; maintain the Wolf's nonviolent exit in Shot 11; finish on the basket and lantern tableau in Shot 12.",
-      "project": "lrrh_full_project_lrrh_full"
+      "export_format": "World Graph JSON shot list",
+      "generated_date": "2026-08-25",
+      "source_scene": "lrrh_scene_04_reveal_rescue",
+      "source_shot": "lrrh_shot_12",
+      "notes": "Development shot list covering the full five-scene short. Scene 4, Shot 12 is the key safety and choreography review shot because it contains the reveal, blocked attack, Woodsman's entrance, wolf's retreat, and pantry rescue.",
+      "project": "lrrh_story_project"
     }
   ],
   "sequence": {
-    "id": "lrrh_full_sequence_lrrh_full",
-    "title": "The Woodland Path Main Sequence",
+    "id": "lrrh_sequence_main",
+    "title": "Little Red Riding Hood - Main Story",
     "sequence_order": 1,
     "order": [
-      "lrrh_full_scene_1",
-      "lrrh_full_scene_2",
-      "lrrh_full_scene_3",
-      "lrrh_full_scene_4"
+      "lrrh_scene_01_promise",
+      "lrrh_scene_02_stranger",
+      "lrrh_scene_03_cottage",
+      "lrrh_scene_04_reveal_rescue",
+      "lrrh_scene_05_return"
     ]
   }
 }
