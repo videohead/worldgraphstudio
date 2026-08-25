@@ -451,6 +451,12 @@ class Import {
 			<?php else : ?>
 				<?php self::render_upload_form(); ?>
 			<?php endif; ?>
+						<p>
+				<?php esc_html_e( 'Already have a project in your Story Graph?', 'worldgraph' ); ?>
+				<a class="button" href="<?php echo esc_url( admin_url( 'admin.php?page=worldgraph-export' ) ); ?>">
+					<?php esc_html_e( 'Export a project', 'worldgraph' ); ?>
+				</a>
+			</p>
 		</div>
 		<?php
 	}

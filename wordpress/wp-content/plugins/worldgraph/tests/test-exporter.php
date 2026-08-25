@@ -11,6 +11,17 @@ use PHPUnit\Framework\TestCase;
  * Class Test_WorldGraph_Exporter
  */
 class Test_WorldGraph_Exporter extends TestCase {
+	/**
+	 * The admin export flow should persist generated files through WordPress uploads.
+	 */
+	public function test_admin_export_uses_wordpress_upload_storage() {
+		$path   = dirname( __DIR__ ) . '/plugins/story-import-export/includes/class-export-admin.php';
+		$source = file_get_contents( $path );
+
+		$this->assertNotFalse( $source );
+		$this->assertStringContainsString( 'wp_upload_bits( $filename, null, $content )', $source );
+		$this->assertStringNotContainsString( "header( 'Content-Disposition", $source );
+	}
 
 	/**
 	 * The exporter should work from live World Graph Studio project records rather than import JSON snapshots.

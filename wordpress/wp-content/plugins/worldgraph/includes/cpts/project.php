@@ -29,7 +29,7 @@ class Project {
 		}
 		?>
 		<div class="notice notice-info">
-			<p><?php esc_html_e( 'Have a written project, screenplay, or manuscript? You can import it and turn it into a structured Story Graph before creating a project manually.', 'worldgraph' ); ?> <a href="<?php echo esc_url( admin_url( 'admin.php?page=worldgraph-import' ) ); ?>"><?php esc_html_e( 'Import a written project', 'worldgraph' ); ?></a></p>
+			<p><?php esc_html_e( 'Have a written project, screenplay, or manuscript? You can import it and turn it into a structured Story Graph before creating a project manually.', 'worldgraph' ); ?> <a href="<?php echo esc_url( admin_url( 'admin.php?page=worldgraph-import' ) ); ?>"><?php esc_html_e( 'Import a written project', 'worldgraph' ); ?></a> <span aria-hidden="true">|</span> <a href="<?php echo esc_url( admin_url( 'admin.php?page=worldgraph-export' ) ); ?>"><?php esc_html_e( 'Export a project', 'worldgraph' ); ?></a></p>
 		</div>
 		<?php
 	}

@@ -74,7 +74,6 @@ class Export {
 		if ( 'json' === $format ) {
 			$content   = ( new \WorldGraph\Exporter\WorldGraph_JSON_Exporter() )->export_project_json( $project_id );
 			$filename  = $basename . '.worldgraph.json';
-			$mime_type = 'application/json';
 		} else {
 			$exporter = new \WorldGraph\Exporter\WorldGraph_Exporter();
 			if ( 'storyboard' === $format ) {
@@ -84,7 +83,6 @@ class Export {
 				$content  = $exporter->export_project_markdown( $project_id );
 				$filename = $basename . '-screenplay.md';
 			}
-			$mime_type = 'text/markdown';
 		}
 
 		if ( is_wp_error( $content ) ) {
@@ -92,12 +90,13 @@ class Export {
 			exit;
 		}
 
-		nocache_headers();
-		header( 'Content-Type: ' . $mime_type . '; charset=UTF-8' );
-		header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
-		header( 'Content-Length: ' . strlen( $content ) );
-		// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- This is a generated download, not HTML output.
-		echo $content;
+		$upload = wp_upload_bits( $filename, null, $content );
+		if ( ! empty( $upload['error'] ) || empty( $upload['url'] ) ) {
+			wp_safe_redirect( add_query_arg( [ 'page' => 'worldgraph-export', 'error' => 'upload_failed' ], admin_url( 'admin.php' ) ) );
+			exit;
+		}
+
+		wp_safe_redirect( esc_url_raw( $upload['url'] ) );
 		exit;
 	}
 
@@ -111,6 +110,7 @@ class Export {
 			'invalid_project' => __( 'The selected project could not be found.', 'worldgraph' ),
 			'invalid_format'  => __( 'Choose a supported export format.', 'worldgraph' ),
 			'export_failed'   => __( 'The project export could not be generated.', 'worldgraph' ),
+			'upload_failed'   => __( 'The export was generated but could not be saved to the WordPress uploads directory.', 'worldgraph' ),
 		];
 		$error_message = $error_messages[ $error ] ?? $error;
 		$projects      = get_posts( [

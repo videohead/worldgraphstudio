@@ -26,6 +26,11 @@ class Test_WorldGraph_Import extends TestCase {
 		$this->assertStringContainsString( 'worldgraph_json_file', $source );
 		$this->assertStringNotContainsString( 'textarea name="worldgraph_json"', $source );
 		$this->assertStringContainsString( "'worldgraph_create_preview'", $source );
+		$this->assertStringContainsString( 'admin.php?page=worldgraph-export', $source );
+
+		$project_source = file_get_contents( dirname( __DIR__ ) . '/includes/cpts/project.php' );
+		$this->assertNotFalse( $project_source );
+		$this->assertStringContainsString( 'Export a project', $project_source );
 
 		$script = file_get_contents( $root . 'assets/import.js' );
 		$this->assertNotFalse( $script );
