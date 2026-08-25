@@ -16,6 +16,7 @@ class Scene {
 	 */
 	public static function init(): void {
 		self::register_cpt();
+		add_action( 'acf/validate_save_post', [ __CLASS__, 'validate_scf_request' ], 20 );
 	}
 
 	/**
@@ -156,5 +157,98 @@ class Scene {
 		],
 		$fields
 	);
+	}
+
+	/**
+	 * Prevent an Episode-owned Scene from naming a conflicting standalone Project.
+	 */
+	public static function validate_scf_request(): void {
+		// phpcs:disable WordPress.Security.NonceVerification.Missing -- SCF verifies the enclosing field-group request before this validation hook runs.
+		$submitted = isset( $_POST['acf'] ) && is_array( $_POST['acf'] )
+			? wp_unslash( $_POST['acf'] )
+			: [];
+		$post_id   = isset( $_POST['post_ID'] )
+			? absint( wp_unslash( $_POST['post_ID'] ) )
+			: ( isset( $_POST['_acf_post_id'] ) ? absint( wp_unslash( $_POST['_acf_post_id'] ) ) : 0 );
+		// phpcs:enable WordPress.Security.NonceVerification.Missing
+
+		if ( ! self::is_scene_request( $submitted, $post_id ) ) {
+			return;
+		}
+
+		$episode_id = self::relationship_id( self::scf_request_value( 'episode', $submitted, $post_id ) );
+		$project_id = self::relationship_id( self::scf_request_value( 'project', $submitted, $post_id ) );
+		if ( ! $episode_id || ! $project_id ) {
+			return;
+		}
+
+		$episode_project_id = self::episode_project_id( $episode_id );
+		if ( $episode_project_id && $episode_project_id !== $project_id ) {
+			self::add_scf_error(
+				'project',
+				__( "This Scene's Project must match the selected Episode's Project, or be left empty.", 'worldgraph' )
+			);
+		}
+	}
+
+	/** Whether the current SCF validation request edits a Scene. */
+	private static function is_scene_request( array $submitted, int $post_id ): bool {
+		$prefix = 'field_worldgraph_scene_';
+		foreach ( array_keys( $submitted ) as $field_key ) {
+			if ( 0 === strpos( (string) $field_key, $prefix ) ) {
+				return true;
+			}
+		}
+
+		return $post_id > 0 && 'worldgraph_scene' === get_post_type( $post_id );
+	}
+
+	/** Read one submitted Scene value, with the stored value as its edit fallback. */
+	private static function scf_request_value( string $field_name, array $submitted, int $post_id ) {
+		$field_key = \WorldGraph\Utils\SCF_Fields::field_key( 'worldgraph_scene', $field_name );
+		if ( array_key_exists( $field_key, $submitted ) ) {
+			return $submitted[ $field_key ];
+		}
+
+		return $post_id ? \WorldGraph\Utils\worldgraph_get_field_value( $post_id, $field_name ) : '';
+	}
+
+	/** Normalize an SCF relationship value to one post ID. */
+	private static function relationship_id( $value ): int {
+		if ( is_array( $value ) ) {
+			$value = reset( $value );
+		}
+		if ( $value instanceof \WP_Post ) {
+			$value = $value->ID;
+		}
+
+		return absint( $value );
+	}
+
+	/** Resolve the canonical Project for an Episode from its field or graph edge. */
+	private static function episode_project_id( int $episode_id ): int {
+		$project_id = self::relationship_id( \WorldGraph\Utils\worldgraph_get_field_value( $episode_id, 'project' ) );
+		if ( $project_id ) {
+			return $project_id;
+		}
+
+		foreach ( \WorldGraph\Utils\get_relationships( $episode_id, 'worldgraph_episode', 'outgoing' ) as $relationship ) {
+			if ( 'worldgraph_project' === (string) ( $relationship['to_type'] ?? '' ) ) {
+				return absint( $relationship['to_id'] ?? 0 );
+			}
+		}
+		foreach ( \WorldGraph\Utils\get_relationships( $episode_id, 'worldgraph_episode', 'incoming' ) as $relationship ) {
+			if ( 'worldgraph_project' === (string) ( $relationship['from_type'] ?? '' ) ) {
+				return absint( $relationship['from_id'] ?? 0 );
+			}
+		}
+
+		return 0;
+	}
+
+	/** Add an SCF validation error beside the stable Scene field input. */
+	private static function add_scf_error( string $field_name, string $message ): void {
+		$field_key = \WorldGraph\Utils\SCF_Fields::field_key( 'worldgraph_scene', $field_name );
+		acf_add_validation_error( 'acf[' . $field_key . ']', $message );
 	}
 }
