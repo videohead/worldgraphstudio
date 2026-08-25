@@ -309,6 +309,27 @@ class Test_Generation_Workflows extends TestCase {
 		$this->assertSame( 'A small, alert girl in a vivid red hooded cloak.', $complete->invoke( null, 'A small, alert girl in a vivid red hooded cloak over a cream blouse.', 10 ) );
 	}
 
+	/** Shot 760's representative prompt must retain complete action and appearance phrases. */
+	public function test_shot_representative_copy_does_not_end_mid_phrase(): void {
+		$reflection = new ReflectionClass( Generation_Workflows::class );
+		$complete   = $reflection->getMethod( 'complete_phrase' );
+		$complete->setAccessible( true );
+
+		$this->assertSame(
+			'The wolf throws off the quilt and advances, Red blocks him with the stool.',
+			$complete->invoke( null, 'The wolf throws off the quilt and advances, Red blocks him with the stool, and the Woodsman enters to drive him through the open door before Red frees Grandmother.', 26 )
+		);
+		$this->assertSame(
+			'A large gray humanoid, bi-pedal wolf with silver-tipped fur.',
+			$complete->invoke( null, 'A large gray humanoid, bi-pedal wolf with silver-tipped fur, amber eyes, long ears, powerful paws, and an expressive face that can shift from charming to threatening in an instant.', 10 )
+		);
+
+		$primary    = $this->method_source( 'primary_prompt_text' );
+		$characters = $this->method_source( 'related_character_context' );
+		$this->assertStringContainsString( 'self::complete_phrase( (string) $candidate, $maximum_words )', $primary );
+		$this->assertStringContainsString( "self::complete_phrase( (string) worldgraph_get_field_value( (int) \$character_id, 'appearance' ), 10 )", $characters );
+	}
+
 	/** The prompt filter gains Template context while retaining its original hook contract. */
 	public function test_generated_prompt_filter_passes_template_as_fourth_argument(): void {
 		$generator = (string) file_get_contents( dirname( __DIR__ ) . '/includes/utils/class-asset-generator.php' );

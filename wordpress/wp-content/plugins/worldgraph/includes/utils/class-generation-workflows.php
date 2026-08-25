@@ -524,7 +524,9 @@ class Generation_Workflows {
 			}
 			$candidate = 'worldgraph_location' === $post_type
 				? self::first_sentence( (string) $candidate, $maximum_words )
-				: self::clean_text( (string) $candidate, $maximum_words );
+				: ( 'worldgraph_shot' === $post_type
+					? self::complete_phrase( (string) $candidate, $maximum_words )
+					: self::clean_text( (string) $candidate, $maximum_words ) );
 			if ( '' !== $candidate ) {
 				return $candidate;
 			}
@@ -1055,7 +1057,7 @@ class Generation_Workflows {
 				continue;
 			}
 			$appearance = 'worldgraph_shot' === $post_type
-				? self::clean_text( (string) worldgraph_get_field_value( (int) $character_id, 'appearance' ), 10 )
+				? self::complete_phrase( (string) worldgraph_get_field_value( (int) $character_id, 'appearance' ), 10 )
 				: self::first_sentence( (string) worldgraph_get_field_value( (int) $character_id, 'appearance' ), 18 );
 			$appearance = rtrim( $appearance, '.,; ' );
 			$lines[]    = self::clean_text( (string) $character->post_title, 8 ) . ( '' !== $appearance ? ' — ' . $appearance : '' );
