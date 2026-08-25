@@ -186,4 +186,19 @@
 			return null;
 		}
 	} );
+
+	blocks.registerBlockType( 'worldgraph/storyboard', {
+		apiVersion: 3,
+		title: __( 'Storyboard', 'worldgraph-child' ),
+		description: __( 'Display every published Shot as a visual storyboard panel.', 'worldgraph-child' ),
+		category: 'widgets',
+		icon: 'format-gallery',
+		supports: { align: [ 'wide', 'full' ], html: false },
+		edit: function ( props ) {
+			return el( EditorPreview, { blockName: 'worldgraph/storyboard', attributes: props.attributes } );
+		},
+		save: function () {
+			return null;
+		}
+	} );
 }( window.wp.blocks, window.wp.blockEditor, window.wp.components, window.wp.element, window.wp.i18n, window.wp.serverSideRender ) );

@@ -1447,6 +1447,64 @@ textarea:focus {
 	width: 100%;
 }
 
+.wg-storyboard__header {
+	margin-bottom: 2rem;
+}
+
+.wg-storyboard__grid {
+	display: grid;
+	gap: 2rem;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+
+.wg-storyboard-panel {
+	border: 1px solid var(--wg-espresso);
+	background: var(--wg-ivory);
+}
+
+.wg-storyboard-panel__frame {
+	aspect-ratio: 16 / 9;
+	background: var(--wg-charcoal);
+	overflow: hidden;
+}
+
+.wg-storyboard-panel__frame .wg-story-figure,
+.wg-storyboard-panel__frame .wg-story-empty {
+	height: 100%;
+	margin: 0;
+}
+
+.wg-storyboard-panel__frame img {
+	height: 100%;
+	object-fit: cover;
+	width: 100%;
+}
+
+.wg-storyboard-panel__body {
+	padding: 1rem;
+}
+
+.wg-storyboard-panel__body h2 {
+	font-size: 1.35rem;
+	margin: 0.35rem 0 0.65rem;
+}
+
+.wg-storyboard-panel__body h2 a {
+	text-decoration-thickness: 0.08em;
+	text-underline-offset: 0.18em;
+}
+
+.wg-storyboard-panel__number {
+	font-size: 0.72rem;
+	font-weight: 700;
+	letter-spacing: 0.12em;
+	margin: 0;
+	text-transform: uppercase;
+}
+
 /* World atlas. */
 
 .wg-story-item--world.is-card {
