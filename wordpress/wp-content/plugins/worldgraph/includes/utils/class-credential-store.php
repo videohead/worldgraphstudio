@@ -351,7 +351,24 @@ class Credential_Store {
 			return false;
 		}
 
-		$current_stored = (string) get_post_meta( $post_id, $field_name, true );
+		global $wpdb;
+		if ( ! is_object( $wpdb ) || empty( $wpdb->postmeta ) ) {
+			return false;
+		}
+		$rows = $wpdb->get_results( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Exact-row CAS is required for credential mutation safety.
+			$wpdb->prepare(
+				"SELECT meta_id, meta_value FROM {$wpdb->postmeta} WHERE post_id = %d AND meta_key = %s ORDER BY meta_id ASC LIMIT 2",
+				$post_id,
+				$field_name
+			),
+			ARRAY_A
+		);
+		if ( ! is_array( $rows ) || count( $rows ) > 1 ) {
+			return false;
+		}
+
+		$exists         = 1 === count( $rows );
+		$current_stored = $exists ? (string) ( $rows[0]['meta_value'] ?? '' ) : '';
 		try {
 			$current_plaintext = self::decrypt( $current_stored );
 			$replacement       = '' === $plaintext ? '' : self::encrypt( $plaintext );
@@ -364,18 +381,18 @@ class Credential_Store {
 			return false;
 		}
 
-		$exists = metadata_exists( 'post', $post_id, $field_name );
 		if ( ! $exists ) {
 			$updated = (bool) add_post_meta( $post_id, $field_name, $replacement, true );
 		} else {
-			global $wpdb;
-			if ( ! is_object( $wpdb ) || empty( $wpdb->postmeta ) ) {
+			$meta_id = absint( $rows[0]['meta_id'] ?? 0 );
+			if ( 0 === $meta_id ) {
 				return false;
 			}
 			$updated = 1 === (int) $wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Exact-value CAS is required for credential mutation safety.
 				$wpdb->prepare(
-					"UPDATE {$wpdb->postmeta} SET meta_value = %s WHERE post_id = %d AND meta_key = %s AND BINARY meta_value = BINARY %s",
+					"UPDATE {$wpdb->postmeta} SET meta_value = %s WHERE meta_id = %d AND post_id = %d AND meta_key = %s AND BINARY meta_value = BINARY %s",
 					$replacement,
+					$meta_id,
 					$post_id,
 					$field_name,
 					$current_stored

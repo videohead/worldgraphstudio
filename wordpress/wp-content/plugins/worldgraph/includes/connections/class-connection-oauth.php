@@ -626,12 +626,18 @@ final class Connection_OAuth {
 			return new WP_Error( 'worldgraph_oauth_scopes_invalid', __( 'The provider OAuth scopes are invalid.', 'worldgraph' ) );
 		}
 		$scopes = $unique_scopes;
-		$auth_method = is_scalar( $raw['token_endpoint_auth_method'] ?? null ) ? (string) $raw['token_endpoint_auth_method'] : 'none';
+		if ( array_key_exists( 'token_endpoint_auth_method', $raw ) && ! is_string( $raw['token_endpoint_auth_method'] ) ) {
+			return new WP_Error( 'worldgraph_oauth_auth_method_unsupported', __( 'This OAuth service currently supports public PKCE clients.', 'worldgraph' ) );
+		}
+		$auth_method = is_string( $raw['token_endpoint_auth_method'] ?? null ) ? $raw['token_endpoint_auth_method'] : 'none';
 		if ( 'none' !== $auth_method ) {
 			return new WP_Error( 'worldgraph_oauth_auth_method_unsupported', __( 'This OAuth service currently supports public PKCE clients.', 'worldgraph' ) );
 		}
-		$client_id = is_scalar( $raw['client_id'] ?? null ) ? (string) $raw['client_id'] : '';
-		if ( '' !== $client_id && ! self::valid_client_id( $client_id ) ) {
+		if ( array_key_exists( 'client_id', $raw ) && ! is_string( $raw['client_id'] ) ) {
+			return new WP_Error( 'worldgraph_oauth_client_invalid', __( 'The provider OAuth public client ID is invalid.', 'worldgraph' ) );
+		}
+		$client_id = is_string( $raw['client_id'] ?? null ) ? $raw['client_id'] : '';
+		if ( array_key_exists( 'client_id', $raw ) && ! self::valid_client_id( $client_id ) ) {
 			return new WP_Error( 'worldgraph_oauth_client_invalid', __( 'The provider OAuth public client ID is invalid.', 'worldgraph' ) );
 		}
 		$client_id_from_filter = true === ( $raw['client_id_from_filter'] ?? false );
@@ -799,6 +805,11 @@ final class Connection_OAuth {
 		if ( is_wp_error( $payload ) ) {
 			return $payload;
 		}
+		return self::public_client_id_from_registration( $payload );
+	}
+
+	/** Validate one dynamic-registration response as a public-client contract. */
+	private static function public_client_id_from_registration( array $payload ) {
 		if ( array_key_exists( 'token_endpoint_auth_method', $payload ) && ! is_string( $payload['token_endpoint_auth_method'] ) ) {
 			return new WP_Error( 'worldgraph_oauth_client_not_public', __( 'The provider did not register a public PKCE client.', 'worldgraph' ) );
 		}

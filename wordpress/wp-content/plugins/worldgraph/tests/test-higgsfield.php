@@ -469,6 +469,40 @@ class Test_Higgsfield extends TestCase {
 		$confidential_error = $normalize->invoke( null, 'acme', $confidential, 'mcp' );
 		$this->assertInstanceOf( WP_Error::class, $confidential_error );
 		$this->assertSame( 'worldgraph_oauth_confidential_parameter_forbidden', $confidential_error->get_error_code() );
+
+		foreach ( [ [], 123 ] as $invalid_auth_method ) {
+			$invalid = $manifest;
+			$invalid['oauth']['profiles']['mcp']['token_endpoint_auth_method'] = $invalid_auth_method;
+			$error = $normalize->invoke( null, 'acme', $invalid, 'mcp' );
+			$this->assertInstanceOf( WP_Error::class, $error );
+			$this->assertSame( 'worldgraph_oauth_auth_method_unsupported', $error->get_error_code() );
+		}
+
+		foreach ( [ [], 123, '' ] as $invalid_client_id ) {
+			$invalid = $manifest;
+			$invalid['oauth']['profiles']['mcp']['client_id'] = $invalid_client_id;
+			$error = $normalize->invoke( null, 'acme', $invalid, 'mcp' );
+			$this->assertInstanceOf( WP_Error::class, $error );
+			$this->assertSame( 'worldgraph_oauth_client_invalid', $error->get_error_code() );
+		}
+	}
+
+	/** Dynamic registration accepts only a public client response. */
+	public function test_oauth_dynamic_registration_response_is_strictly_public(): void {
+		$validate = new ReflectionMethod( Connection_OAuth::class, 'public_client_id_from_registration' );
+		$validate->setAccessible( true );
+
+		$this->assertSame( 'public-client', $validate->invoke( null, [ 'client_id' => 'public-client', 'token_endpoint_auth_method' => 'none' ] ) );
+		foreach (
+			[
+				[ 'client_id' => 'public-client', 'client_secret' => '' ],
+				[ 'client_id' => 'public-client', 'token_endpoint_auth_method' => [] ],
+				[ 'client_id' => 'public-client', 'token_endpoint_auth_method' => 'client_secret_post' ],
+				[ 'client_id' => 123, 'token_endpoint_auth_method' => 'none' ],
+			] as $payload
+		) {
+			$this->assertInstanceOf( WP_Error::class, $validate->invoke( null, $payload ) );
+		}
 	}
 
 	/** Token envelopes require an explicit Bearer response and preserve refresh rotation. */
@@ -640,6 +674,9 @@ class Test_Higgsfield extends TestCase {
 		$this->assertStringContainsString( 'Clear both saved credential fields before changing', $connection );
 		$this->assertStringContainsString( 'public static function connection_secret_revision', $store );
 		$this->assertStringContainsString( 'public static function store_connection_secret_if_revision', $store );
+		$this->assertStringContainsString( 'SELECT meta_id, meta_value', $store );
+		$this->assertStringContainsString( 'count( $rows ) > 1', $store );
+		$this->assertStringContainsString( 'WHERE meta_id = %d', $store );
 		$this->assertStringContainsString( 'BINARY meta_value = BINARY %s', $store );
 	}
 
