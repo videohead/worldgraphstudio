@@ -88,9 +88,7 @@ class Asset_Generator {
 	 * @return array<int, string>
 	 */
 	public static function supported_post_types(): array {
-		$cpts = array_keys( worldgraph_get_all_cpts() );
-
-		return array_values( array_diff( $cpts, [ 'worldgraph_template', 'worldgraph_conn' ] ) );
+		return array_keys( Generation_Workflows::definitions() );
 	}
 
 	/**
@@ -224,6 +222,12 @@ class Asset_Generator {
 		$template_modality = Generation_Modality::sanitize( (string) worldgraph_get_field_value( $template_id, 'modality' ) );
 		if ( $type !== Generation_Modality::output_type( $template_modality ) ) {
 			return new WP_Error( 'worldgraph_asset_template_type_mismatch', __( 'The selected Template does not produce the required representative-media type.', 'worldgraph' ), [ 'status' => 400 ] );
+		}
+		if ( 'worldgraph_sound' === $post->post_type && 'audio' === $type ) {
+			$copy_validation = Generation_Workflows::validate_sound_prompt_copy( $post_id, $template_id );
+			if ( is_wp_error( $copy_validation ) ) {
+				return $copy_validation;
+			}
 		}
 		$connection_id = absint( worldgraph_get_field_value( $template_id, 'connection_id' ) );
 		$connection = Connection_Repository::get( $connection_id );
@@ -647,9 +651,43 @@ class Asset_Generator {
 			$profile['frame_rate']   = max( 0.001, (float) ( worldgraph_get_field_value( $project_id, 'frame_rate' ) ?: $profile['frame_rate'] ) );
 		}
 
+		if ( in_array( (string) get_post_type( $post_id ), [ 'worldgraph_shot', 'worldgraph_sound' ], true ) ) {
+			$duration = self::source_duration_seconds( (string) worldgraph_get_field_value( $post_id, 'duration' ) );
+			if ( null !== $duration ) {
+				$profile['duration'] = $duration;
+			}
+		}
+
 		$profile['size'] = $profile['width'] . 'x' . $profile['height'];
 
 		return $profile;
+	}
+
+	/** Convert common authored duration formats into a provider control value. */
+	private static function source_duration_seconds( string $value ): ?float {
+		$value = trim( $value );
+		if ( '' === $value ) {
+			return null;
+		}
+		if ( is_numeric( $value ) ) {
+			$seconds = (float) $value;
+			return $seconds > 0 ? $seconds : null;
+		}
+		if ( 1 === preg_match( '/^PT(?:(\d+(?:\.\d+)?)H)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)S)?$/i', $value, $matches ) ) {
+			$seconds = (float) ( $matches[1] ?? 0 ) * 3600
+				+ (float) ( $matches[2] ?? 0 ) * 60
+				+ (float) ( $matches[3] ?? 0 );
+			return $seconds > 0 ? $seconds : null;
+		}
+		if ( 1 === preg_match( '/^(?:(\d+):)?(\d{1,2}):(\d{2}(?:\.\d+)?)$/', $value, $matches ) ) {
+			$seconds = (float) ( $matches[1] ?? 0 ) * 3600 + (float) $matches[2] * 60 + (float) $matches[3];
+			return $seconds > 0 ? $seconds : null;
+		}
+		if ( 1 === preg_match( '/^(\d+(?:\.\d+)?)\s*(?:s|sec|secs|second|seconds)$/i', $value, $matches ) ) {
+			return (float) $matches[1] > 0 ? (float) $matches[1] : null;
+		}
+
+		return null;
 	}
 
 	/**

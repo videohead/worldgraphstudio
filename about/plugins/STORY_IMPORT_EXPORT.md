@@ -215,9 +215,11 @@ for Scene-wide ambience, music, and sonic palette inherited by linked Sound
 generation. It excludes dialogue, lyrics, and individual cue events. Shots may
 additionally carry `camera_movement`, `motion_direction`, and a
 `generation_prompt` reserved for exceptional generation constraints. Scene-wide
-sound and music direction remains represented by linked `sounds[]` records, not
-a second Scene prose field. These optional fields remain valid in version 1.2,
-so older 1.0–1.2 documents and integrations that omit them continue to import.
+direction belongs in `audio_direction`; dialogue, lyrics, and individual cue
+details remain represented by linked `sounds[]` records rather than overloading
+the visual `generation_prompt`. These optional fields remain valid in version
+1.2, so older 1.0–1.2 documents and integrations that omit them continue to
+import.
 
 See the [JSON Import Specification](../example-workflow/JSON_import_spec.md) for
 the complete field and relationship contract.
@@ -242,8 +244,8 @@ Connections, Templates, generation jobs, WordPress lifecycle status and users,
 the non-existent Storyboard CPT, and fields not in the importer version 1.2
 contract are intentionally excluded. Project visual direction and Shot camera,
 motion, and exceptional generation fields are included, as are Scene-specific
-look and lighting changes, audio direction, lens, and camera defaults. The WordPress download name is
-`<project>.worldgraph.json`.
+look and lighting changes, audio direction, lens, and camera defaults. The
+WordPress download name is `<project>.worldgraph.json`.
 
 ## Markdown export
 

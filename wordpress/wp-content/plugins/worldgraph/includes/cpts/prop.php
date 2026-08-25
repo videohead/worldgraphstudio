@@ -51,6 +51,14 @@ class Prop {
 			'related_cpt'       => 'worldgraph_character',
 			'relationship_type' => 'linked_to',
 		],
+		'story_world'     => [
+			'type'              => 'relationship',
+			'label'             => 'Story World (Shared Prop)',
+			'required'          => false,
+			'related_cpt'       => 'worldgraph_world',
+			'relationship_type' => 'belongs_to',
+			'description'       => 'Use for an unowned or shared Prop so it can inherit its Project visual direction and generation defaults. An Owner Character takes precedence.',
+		],
 		'notes'           => [
 			'type'        => 'wysiwyg',
 			'label'       => 'Notes',

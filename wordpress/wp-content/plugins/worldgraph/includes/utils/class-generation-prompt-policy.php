@@ -23,6 +23,9 @@ class Generation_Prompt_Policy {
 	/** Request-local policy cache keeps composition, enforcement, and preview aligned. */
 	private static array $policy_cache = [];
 
+	/** Request-local omission diagnostics, keyed by the exact rendered prompt. */
+	private static array $render_diagnostics = [];
+
 	/** Version of the normalized policy DTO. */
 	public const VERSION = 1;
 
@@ -87,14 +90,14 @@ class Generation_Prompt_Policy {
 		'characters'          => [ 'characters', 'visible characters', 'age', 'visible character traits' ],
 		'camera'              => [ 'camera', 'framing' ],
 		'motion'              => [ 'motion', 'duration', 'motion and ending' ],
-		'look'                => [ 'look', 'look continuity', 'genre', 'visual style', 'project visual direction', 'scene look and lighting override', 'era and time', 'visible world rules', 'atmosphere', 'mood' ],
+		'look'                => [ 'look', 'look continuity', 'genre', 'visual style', 'project visual direction', 'project look', 'scene look and lighting changes', 'scene changes', 'scene changes override project look', 'era and time', 'visible world rules', 'atmosphere', 'mood' ],
 		'continuity'          => [ 'continuity', 'inherited visual instructions' ],
 		'ancestor_context'    => [ 'visual context', 'inherited story context' ],
 		'dependent_context'   => [ 'dependent context' ],
-		'author_instructions' => [ 'author instructions', 'saved visual instructions', 'additional instructions' ],
+		'author_instructions' => [ 'author instructions', 'saved visual instructions', 'additional instructions', 'shot exceptions override scene changes' ],
 		'constraints'         => [ 'constraints', 'output constraints' ],
 		'verbatim'            => [ 'verbatim', 'dialogue', 'lyrics' ],
-		'other'               => [ 'other' ],
+		'other'               => [ 'other', 'soundtrack role', 'story-world relation', 'scene sound and music direction' ],
 	];
 
 	/**
@@ -294,30 +297,52 @@ class Generation_Prompt_Policy {
 		$selected_words  = 0;
 		$protected_used  = 0;
 
-		// Pick protected sections first in resolved priority order. Reserving the
-		// sum of every protected candidate up front can strand usable capacity when
-		// one large, lower-ranked section does not fit. A second optional pass below
-		// backfills only the capacity the selected protected sections actually use.
-		foreach ( $normalized as $section ) {
+		// Pick protected sections first. Reserve a tiny usable fragment for each
+		// later creative essential so a tight provider ceiling cannot silently drop
+		// the camera, Scene/Project look, or explicit author exception in favor of
+		// one verbose earlier block. Verbatim copy is reserved at full length.
+		$protected_sections = array_values( array_filter( $normalized, static fn( array $section ): bool => ! empty( $section['protected'] ) ) );
+		$essential_ids      = [ 'primary', 'motion', 'camera', 'look', 'author_instructions' ];
+		$minimum_words      = static function ( array $section ) use ( $essential_ids ): int {
+			$words = self::word_count( (string) $section['text'] );
+			if ( 'verbatim' === $section['id'] ) {
+				return $words;
+			}
+			return in_array( $section['id'], $essential_ids, true ) ? min( 3, $words ) : 0;
+		};
+		foreach ( $protected_sections as $index => $section ) {
 			if ( ! $section['protected'] ) {
 				continue;
 			}
 			$words = self::word_count( $section['text'] );
-			if ( 'primary' === $section['id'] && 0 === $protected_used && $words > $maximum ) {
-				$section['text'] = self::trim_words( $section['text'], $maximum );
-				$selected[]      = $section;
-				$protected_used  = $maximum;
-				$selected_words += $maximum;
-				$truncated       = true;
-				continue;
+			$available = max( 0, $maximum - $protected_used );
+			$reserved           = 0;
+			$verbatim_reserved  = 0;
+			foreach ( array_slice( $protected_sections, $index + 1 ) as $remaining ) {
+				$minimum          = $minimum_words( $remaining );
+				$reserved        += $minimum;
+				$verbatim_reserved += 'verbatim' === $remaining['id'] ? $minimum : 0;
 			}
-			if ( $protected_used + $words <= $maximum ) {
+			$full_capacity = max( 0, $available - $reserved );
+			if ( $words <= $full_capacity || ( 0 === $reserved && $words <= $available ) ) {
 				$selected[]      = $section;
 				$protected_used += $words;
 				$selected_words += $words;
-			} else {
-				$omitted[] = $section['id'];
+				continue;
 			}
+
+			$minimum = $minimum_words( $section );
+			if ( $minimum > 0 && $available >= $minimum && ( 0 === $verbatim_reserved || $available - $reserved >= $minimum ) ) {
+				$allocation      = min( $words, $available, max( $minimum, $full_capacity ) );
+				$section['text'] = self::trim_words( $section['text'], $allocation );
+				$selected[]      = $section;
+				$protected_used += $allocation;
+				$selected_words += $allocation;
+				$truncated       = $truncated || $allocation < $words;
+				continue;
+			}
+
+			$omitted[] = $section['id'];
 		}
 
 		$optional_capacity = max( 0, $maximum - $protected_used );
@@ -360,11 +385,17 @@ class Generation_Prompt_Policy {
 		$prompt = self::enforce_hard_limits( $prompt, (array) $policy['limits'] );
 		$truncated = $truncated || $prompt !== $before || ! empty( $omitted );
 
-		return [
+		$result = [
 			'prompt'            => $prompt,
 			'omitted_sections'  => array_values( array_unique( $omitted ) ),
 			'truncated'         => $truncated,
 		];
+		self::$render_diagnostics[ hash( 'sha256', $prompt ) ] = [
+			'omitted_sections' => $result['omitted_sections'],
+			'truncated'        => $result['truncated'],
+		];
+
+		return $result;
 	}
 
 	/** Enforce a Template's hard bounds on a caller-supplied flat prompt. */
@@ -390,6 +421,8 @@ class Generation_Prompt_Policy {
 	/** Return a safe preview DTO without exposing provider schema or configuration. */
 	public static function preview( string $prompt, array $policy, int $template_id = 0 ): array {
 		$policy = self::finalize_policy( $policy );
+		$hash   = hash( 'sha256', $prompt );
+		$diagnostics = self::$render_diagnostics[ $hash ] ?? [ 'omitted_sections' => [], 'truncated' => false ];
 
 		return [
 			'template_id'     => $template_id,
@@ -404,7 +437,9 @@ class Generation_Prompt_Policy {
 				'max_characters' => (int) $policy['limits']['max_characters'],
 				'max_bytes'      => (int) $policy['limits']['max_bytes'],
 			],
-			'prompt_hash'     => hash( 'sha256', $prompt ),
+			'prompt_hash'     => $hash,
+			'truncated'       => ! empty( $diagnostics['truncated'] ),
+			'omitted_sections'=> array_values( (array) ( $diagnostics['omitted_sections'] ?? [] ) ),
 		];
 	}
 
@@ -430,7 +465,7 @@ class Generation_Prompt_Policy {
 			$maximum   = 2400;
 			$max_characters = 50000;
 			$max_bytes = 100000;
-			$preferred = [ 'primary', 'verbatim', 'objective', 'author_instructions', 'subject', 'action', 'constraints', 'other' ];
+			$preferred = [ 'primary', 'verbatim', 'subject', 'motion', 'continuity', 'author_instructions', 'action', 'setting', 'objective', 'constraints', 'other' ];
 			$format    = 'natural_language';
 			$lead      = 'subject';
 		} elseif ( 'text' === $output_type ) {
@@ -446,7 +481,7 @@ class Generation_Prompt_Policy {
 			$maximum = $is_reference_conditioned ? 100 : 200;
 			$max_characters = 6000;
 			$max_bytes = 18000;
-			$preferred = [ 'primary', 'motion', 'camera', 'objective', 'author_instructions', 'setting', 'characters', 'action', 'look', 'continuity', 'constraints', 'identity', 'dependent_context', 'ancestor_context', 'other' ];
+			$preferred = [ 'primary', 'motion', 'camera', 'look', 'author_instructions', 'action', 'setting', 'characters', 'continuity', 'objective', 'constraints', 'identity', 'dependent_context', 'ancestor_context', 'other' ];
 			$format = 'chronological_prose';
 			$lead   = 'action';
 		} else {
@@ -454,18 +489,20 @@ class Generation_Prompt_Policy {
 			$maximum = $is_reference_conditioned ? 90 : 120;
 			$max_characters = 4000;
 			$max_bytes = 12000;
-			$preferred = [ 'primary', 'identity', 'objective', 'author_instructions', 'subject', 'action', 'camera', 'setting', 'characters', 'look', 'continuity', 'dependent_context', 'constraints', 'ancestor_context', 'other' ];
+			$preferred = [ 'primary', 'identity', 'camera', 'look', 'author_instructions', 'subject', 'action', 'setting', 'characters', 'continuity', 'objective', 'dependent_context', 'constraints', 'ancestor_context', 'other' ];
 			$format = 'natural_language';
 			$lead   = 'subject';
 		}
 
 		if ( 'worldgraph_shot' === $post_type ) {
-			$preferred = [ 'primary', 'objective', 'author_instructions', 'camera', 'action', 'motion', 'setting', 'characters', 'look', 'continuity', 'constraints', 'identity', 'ancestor_context', 'other' ];
+			$preferred = 'video' === $output_type
+				? [ 'primary', 'motion', 'camera', 'look', 'author_instructions', 'action', 'setting', 'characters', 'continuity', 'objective', 'constraints', 'identity', 'ancestor_context', 'other' ]
+				: [ 'primary', 'camera', 'look', 'author_instructions', 'action', 'setting', 'characters', 'continuity', 'objective', 'constraints', 'identity', 'ancestor_context', 'other' ];
 			if ( 'image' === $output_type ) {
 				$target = 120;
 			}
 		} elseif ( in_array( $intent, [ 'scene-filmstrip', 'episode-bookend-filmstrip' ], true ) ) {
-			$preferred = [ 'primary', 'objective', 'dependent_context', 'author_instructions', 'setting', 'characters', 'look', 'continuity', 'constraints', 'identity', 'ancestor_context', 'other' ];
+			$preferred = [ 'primary', 'setting', 'camera', 'look', 'characters', 'author_instructions', 'continuity', 'objective', 'constraints', 'identity', 'ancestor_context', 'other' ];
 			$target    = 120;
 		}
 
@@ -501,7 +538,7 @@ class Generation_Prompt_Policy {
 			return self::normalize(
 				[
 					'limits'   => [ 'target_words' => 45, 'max_words' => 80 ],
-					'sections' => [ 'preferred' => [ 'primary', 'motion', 'action', 'camera', 'author_instructions', 'look', 'constraints', 'setting', 'ancestor_context' ] ],
+					'sections' => [ 'preferred' => [ 'primary', 'motion', 'camera', 'look', 'author_instructions', 'action', 'setting', 'constraints', 'ancestor_context' ] ],
 					'hints'    => [ 'profile' => 'scail-motion-refinement', 'lead_with' => 'action', 'format' => 'concise_phrases' ],
 				],
 				'model_family'
@@ -515,7 +552,7 @@ class Generation_Prompt_Policy {
 						'target_words' => $is_reference_conditioned ? 75 : 100,
 						'max_words'    => $is_reference_conditioned ? 100 : 200,
 					],
-					'sections' => [ 'preferred' => [ 'primary', 'motion', 'camera', 'action', 'objective', 'author_instructions', 'setting', 'characters', 'look', 'continuity', 'constraints', 'ancestor_context' ] ],
+					'sections' => [ 'preferred' => [ 'primary', 'motion', 'camera', 'look', 'author_instructions', 'action', 'setting', 'characters', 'continuity', 'objective', 'constraints', 'ancestor_context' ] ],
 					'hints'    => [ 'profile' => 'wan-motion-first', 'lead_with' => 'motion', 'format' => 'chronological_prose' ],
 				],
 				'model_family'
@@ -526,7 +563,7 @@ class Generation_Prompt_Policy {
 			return self::normalize(
 				[
 					'limits'   => [ 'target_words' => 140, 'max_words' => 200 ],
-					'sections' => [ 'preferred' => [ 'primary', 'motion', 'camera', 'action', 'objective', 'author_instructions', 'setting', 'characters', 'look', 'continuity', 'constraints', 'ancestor_context' ] ],
+					'sections' => [ 'preferred' => [ 'primary', 'motion', 'camera', 'look', 'author_instructions', 'action', 'setting', 'characters', 'continuity', 'objective', 'constraints', 'ancestor_context' ] ],
 					'hints'    => [ 'profile' => 'ltx-chronological-action', 'lead_with' => 'action', 'format' => 'chronological_prose' ],
 				],
 				'model_family'
@@ -547,7 +584,7 @@ class Generation_Prompt_Policy {
 			return self::normalize(
 				[
 					'limits'   => [ 'target_words' => 70, 'max_words' => 120 ],
-					'sections' => [ 'preferred' => [ 'primary', 'identity', 'action', 'objective', 'camera', 'setting', 'look', 'characters', 'author_instructions', 'continuity', 'constraints', 'ancestor_context' ] ],
+					'sections' => [ 'preferred' => [ 'primary', 'identity', 'action', 'camera', 'look', 'author_instructions', 'setting', 'characters', 'continuity', 'objective', 'constraints', 'ancestor_context' ] ],
 					'hints'    => [ 'profile' => 'flux-subject-first', 'lead_with' => 'subject', 'format' => 'natural_language' ],
 				],
 				'model_slug'
@@ -559,7 +596,7 @@ class Generation_Prompt_Policy {
 				[
 					'limits'   => [ 'target_words' => 50, 'max_words' => 90 ],
 					'sections' => [
-						'preferred' => [ 'primary', 'identity', 'action', 'setting', 'camera', 'look', 'characters', 'author_instructions', 'constraints' ],
+						'preferred' => [ 'primary', 'identity', 'action', 'camera', 'look', 'author_instructions', 'setting', 'characters', 'constraints' ],
 						'forbidden' => [ 'ancestor_context' ],
 					],
 					'hints'    => [ 'profile' => 'midjourney-concise', 'lead_with' => 'subject', 'format' => 'concise_phrases' ],
@@ -778,6 +815,14 @@ class Generation_Prompt_Policy {
 				continue;
 			}
 			$properties = is_array( $node['properties'] ?? null ) ? $node['properties'] : [];
+			// Catalogs may expose provider_schema directly as a shallow
+			// field => constraints map. Treat the current node as that map only
+			// for the allowlisted prompt keys; arbitrary schema prose remains inert.
+			foreach ( [ 'prompt', 'positive_prompt', 'text_prompt' ] as $key ) {
+				if ( isset( $node[ $key ] ) && is_array( $node[ $key ] ) ) {
+					$properties[ $key ] = $node[ $key ];
+				}
+			}
 			foreach ( [ 'prompt', 'positive_prompt', 'text_prompt' ] as $key ) {
 				$definition = $properties[ $key ] ?? null;
 				if ( is_array( $definition ) && isset( $definition['maxLength'] ) && is_numeric( $definition['maxLength'] ) ) {

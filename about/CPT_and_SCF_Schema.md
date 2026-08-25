@@ -286,8 +286,12 @@ Top-level container for all story assets.
 - scene_number
 - title
 - summary
-- generation_prompt (textarea; **Scene Look & Lighting Changes** only; Project Visual Direction is the baseline and Scene-specific differences take precedence inside the Scene)
-- audio_direction (textarea; **Sound & Music Direction**, concise Scene-wide ambience, music, and sonic palette inherited by linked Sound generation—not dialogue, lyrics, or individual cue events)
+- generation_prompt (textarea; **Scene Look & Lighting Changes** only; Project
+  Visual Direction is the baseline and Scene-specific differences take
+  precedence inside the Scene)
+- audio_direction (textarea; **Sound & Music Direction**, concise Scene-wide
+  ambience, music, and sonic palette inherited by linked Sound generation—not
+  dialogue, lyrics, or individual cue events)
 - script_content
 - dialogue (structured importer-managed entries: speaker, line, description, sequence)
 - location
@@ -523,13 +527,15 @@ Project, Story World, Character, Prop, Location, Shot, Scene, and Episode expose
 an optional `generation_prompt` textarea, but its editorial label is specific to
 its scope. Project stores the production-wide Visual Direction; Scene stores a
 Look & Lighting Changes field for differences from the Project baseline; those
-differences take precedence inside the Scene. Shot stores only exceptional constraints. Scene
-`audio_direction` stores concise Scene-wide sound and music guidance inherited
-by linked Sound generation. Scene `lens` and `camera_movement` provide structured camera defaults, while Shot
-`camera_movement` and `motion_direction` keep camera and visible action separate
-from story prose. These fields augment descriptive content; they do not replace
-synopsis, description, appearance, script, dialogue, or production notes. Their
-stable storage key remains `generation_prompt` for backward compatibility.
+differences take precedence inside the Scene. Shot stores only exceptional
+constraints. Scene `audio_direction` stores concise Scene-wide sound and music
+guidance inherited by linked Sound generation. Scene `lens` and
+`camera_movement` provide structured camera defaults, while Shot
+`camera_movement` and `motion_direction` keep camera and visible action
+separate from story prose. These fields augment descriptive content; they do
+not replace synopsis, description, appearance, script, dialogue, or production
+notes. The visual-direction fields' stable storage key remains
+`generation_prompt` for backward compatibility.
 
 The representative-media registry supplies these default workflows and output
 intents:

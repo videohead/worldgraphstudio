@@ -207,6 +207,13 @@ final class Test_Generation_Prompt_Policy extends TestCase {
 				]
 			)
 		);
+		$this->assertSame(
+			180,
+			$this->invoke_policy_helper(
+				'schema_prompt_limit',
+				[ 'prompt' => [ 'type' => 'string', 'maxLength' => 180 ], 'seed' => [ 'type' => 'integer' ] ]
+			)
+		);
 	}
 
 	/** Wan's reviewed profile places visible motion directly after the primary beat. */
@@ -263,7 +270,59 @@ final class Test_Generation_Prompt_Policy extends TestCase {
 
 		$this->assertLessThanOrEqual( 100, $this->word_count( $result['prompt'] ) );
 		$this->assertStringContainsString( 'Red closes both shutters slowly', $result['prompt'] );
+		$this->assertStringContainsString( 'eye-level medium shot', $result['prompt'] );
+		$this->assertStringContainsString( 'hand-painted storybook animation', $result['prompt'] );
+		$this->assertStringContainsString( 'retain the established costume', $result['prompt'] );
 		$this->assertStringNotContainsString( 'long optional description', $result['prompt'] );
+	}
+
+	/** Tight policies compact creative essentials instead of whole-dropping them. */
+	public function test_tight_ceiling_keeps_camera_look_and_author_exception(): void {
+		$policy = [
+			'limits'   => [ 'target_words' => 20, 'max_words' => 20 ],
+			'sections' => [ 'preferred' => [ 'primary', 'camera', 'look', 'author_instructions', 'constraints' ] ],
+			'hints'    => [ 'format' => 'natural_language' ],
+		];
+		$result = Generation_Prompt_Policy::render(
+			[
+				[ 'id' => 'primary', 'text' => 'Shot description: Red closes the old wooden shutters at dusk.', 'protected' => true ],
+				[ 'id' => 'camera', 'text' => 'Camera: eye-level medium shot through a forty millimeter lens.', 'protected' => true ],
+				[ 'id' => 'look', 'text' => 'Project look: warm hand-painted storybook animation.', 'protected' => true ],
+				[ 'id' => 'author_instructions', 'text' => 'Additional instructions: keep the red cloak unchanged.', 'protected' => true ],
+				[ 'id' => 'constraints', 'text' => 'Constraints: no text or logos.', 'protected' => true ],
+			],
+			$policy
+		);
+
+		$this->assertLessThanOrEqual( 20, $this->word_count( $result['prompt'] ) );
+		$this->assertStringContainsString( 'Shot description:', $result['prompt'] );
+		$this->assertStringContainsString( 'Camera:', $result['prompt'] );
+		$this->assertStringContainsString( 'Project look:', $result['prompt'] );
+		$this->assertStringContainsString( 'Additional instructions:', $result['prompt'] );
+		$this->assertTrue( $result['truncated'] );
+
+		$preview = Generation_Prompt_Policy::preview( $result['prompt'], $policy );
+		$this->assertTrue( $preview['truncated'] );
+		$this->assertSame( $result['omitted_sections'], $preview['omitted_sections'] );
+	}
+
+	/** Exact audio copy is reserved ahead of descriptive prompt overhead. */
+	public function test_verbatim_audio_is_not_omitted_for_prompt_overhead(): void {
+		$result = Generation_Prompt_Policy::render(
+			[
+				[ 'id' => 'primary', 'text' => 'Cue: Closing narration.', 'protected' => true ],
+				[ 'id' => 'subject', 'text' => 'Soundtrack role: voiceover.' ],
+				[ 'id' => 'verbatim', 'text' => 'Speak this text exactly: Trust requires patience and care.', 'protected' => true ],
+			],
+			[
+				'limits'   => [ 'target_words' => 9, 'max_words' => 9 ],
+				'sections' => [ 'preferred' => [ 'primary', 'verbatim', 'subject' ] ],
+				'hints'    => [ 'format' => 'natural_language' ],
+			]
+		);
+
+		$this->assertSame( 'Speak this text exactly: Trust requires patience and care.', $result['prompt'] );
+		$this->assertNotContains( 'verbatim', $result['omitted_sections'] );
 	}
 
 	/** Legacy Shots without a dedicated field retain one concise motion fallback. */

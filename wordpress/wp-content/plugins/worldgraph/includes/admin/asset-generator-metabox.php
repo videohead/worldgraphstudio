@@ -33,13 +33,10 @@ class Asset_Generator_MetaBox {
 		'worldgraph_character',
 		'worldgraph_location',
 		'worldgraph_prop',
-		'worldgraph_org',
 		'worldgraph_episode',
 		'worldgraph_scene',
 		'worldgraph_shot',
 		'worldgraph_sound',
-		'worldgraph_asset',
-		'worldgraph_editorial',
 	];
 
 	/**
@@ -280,7 +277,7 @@ class Asset_Generator_MetaBox {
 		?>
 		<div class="worldgraph-generate-asset" data-post-id="<?php echo esc_attr( $post->ID ); ?>" data-is-project="<?php echo esc_attr( 'worldgraph_project' === $post->post_type ? '1' : '0' ); ?>">
 			<h4><?php esc_html_e( 'Generate representative media', 'worldgraph' ); ?></h4>
-			<p class="description"><?php esc_html_e( 'Every request starts with the saved description and adds only the visual details relevant to the selected output and Template. Save or update this post before queueing so the latest details are included.', 'worldgraph' ); ?></p>
+			<p class="description"><?php esc_html_e( 'Every request starts with the saved description and adds only the image, motion, camera, style, or audio details relevant to the selected output and Template. Save or update this post before queueing so the latest details are included.', 'worldgraph' ); ?></p>
 			<fieldset class="worldgraph-generate-asset__modes">
 				<legend><strong><?php esc_html_e( 'Choose a generation type', 'worldgraph' ); ?></strong></legend>
 				<div class="worldgraph-generate-asset__mode-list">
@@ -342,8 +339,8 @@ class Asset_Generator_MetaBox {
 				<label><input type="checkbox" class="worldgraph-generate-asset__create" checked /> <?php esc_html_e( 'Create a linked Asset record', 'worldgraph' ); ?></label>
 			</fieldset>
 			<label for="worldgraph-generate-asset-prompt-<?php echo esc_attr( $post->ID ); ?>"><?php esc_html_e( 'Additional instructions for this run (optional)', 'worldgraph' ); ?></label>
-			<textarea class="widefat worldgraph-generate-asset__prompt" id="worldgraph-generate-asset-prompt-<?php echo esc_attr( $post->ID ); ?>" rows="4" placeholder="<?php esc_attr_e( 'For example: slow camera push-in; preserve the established wardrobe; clean unbranded frame.', 'worldgraph' ); ?>"></textarea>
-			<p class="description worldgraph-generate-asset__prompt-help"><?php esc_html_e( 'Enter only one-off directions here. They are appended to the saved Story Graph context; they never replace it. Put reusable directions in the Generation Prompt Instructions SCF field.', 'worldgraph' ); ?></p>
+			<textarea class="widefat worldgraph-generate-asset__prompt" id="worldgraph-generate-asset-prompt-<?php echo esc_attr( $post->ID ); ?>" rows="4" placeholder="<?php esc_attr_e( 'For example: emphasize the closing motion; preserve established continuity; keep the result clean and unbranded.', 'worldgraph' ); ?>"></textarea>
+			<p class="description worldgraph-generate-asset__prompt-help"><?php esc_html_e( 'Enter one short, one-off direction (about 20 words). It does not replace saved context. Put reusable style in Project Visual Direction, Scene-wide changes in the Scene continuity fields, Shot-specific changes in Shot exceptions, and cue-specific audio direction on the Sound.', 'worldgraph' ); ?></p>
 			<details class="worldgraph-generate-asset__context">
 				<summary><?php esc_html_e( 'Review the generated prompt or workflow plan', 'worldgraph' ); ?></summary>
 				<pre class="worldgraph-generate-asset__context-preview"></pre>

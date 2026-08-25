@@ -40,4 +40,17 @@ final class Test_Generation_Defaults_Controller extends TestCase {
 		$this->assertSame( 'Default Values JSON (Advanced)', $fields['default_values']['label'] ?? '' );
 		$this->assertStringContainsString( 'validated per-Template defaults editor in Generate Representative Media', (string) ( $fields['default_values']['instructions'] ?? '' ) );
 	}
+
+	/** Canonical Shot/Sound duration sits after Project defaults but before item overrides. */
+	public function test_source_duration_uses_item_layer_precedence(): void {
+		$source = (string) file_get_contents( dirname( __DIR__ ) . '/includes/utils/class-generation-run-defaults.php' );
+
+		$this->assertStringContainsString( 'private static function profile_layers', $source );
+		$this->assertStringContainsString( "'duration' === \$semantic", $source );
+		$this->assertStringContainsString( "\$item['values'] = array_merge( (array) \$profiles['item'], (array) \$item['values'] );", $source );
+		$this->assertLessThan(
+			strpos( $source, "self::overlay( \$effective, \$sources, (array) \$item['values'], 'item' )" ),
+			strpos( $source, "self::overlay( \$effective, \$sources, (array) \$project['values'], 'project' )" )
+		);
+	}
 }

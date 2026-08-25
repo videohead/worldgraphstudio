@@ -137,6 +137,14 @@ class Scene {
 			'required'    => false,
 			'related_cpt' => 'worldgraph_episode',
 		],
+		'project'         => [
+			'type'              => 'relationship',
+			'label'             => 'Project (Standalone Scene)',
+			'required'          => false,
+			'related_cpt'       => 'worldgraph_project',
+			'relationship_type' => 'belongs_to',
+			'description'       => 'Use only when this Scene is not assigned to an Episode. Episode ownership takes precedence when both fields are set.',
+		],
 	];
 
 	\WorldGraph\Utils\register_cpt(

@@ -236,8 +236,15 @@ Represents a fictional universe.
 - Scene Number
 - Title
 - Summary
-- Scene Look & Lighting Changes (only differences from the Project Visual Direction baseline; Scene values take precedence inside the Scene)
-- Sound & Music Direction (Scene-wide ambience, music, and sonic palette inherited by linked Sound generation; not dialogue, lyrics, or individual cue events)
+- Scene Look & Lighting Changes (only differences from the Project Visual
+  Direction baseline; Scene values take precedence inside the Scene)
+- Sound & Music Direction (Scene-wide ambience, music, and sonic palette
+  inherited by linked Sound generation; not dialogue, lyrics, or individual
+  cue events)
+- Default Lens / Lens Family (optional Scene camera-continuity default; a Shot
+  lens takes precedence)
+- Default Camera Movement (optional Scene video-camera default; a Shot movement
+  takes precedence, including explicit Locked Off)
 - Script Content
 - Dialogue (structured speaker, line, description, and sequence entries)
 - Location

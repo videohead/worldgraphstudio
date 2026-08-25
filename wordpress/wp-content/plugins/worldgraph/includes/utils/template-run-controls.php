@@ -376,7 +376,7 @@ class Template_Run_Controls {
 			}
 			$key      = (string) $field['key'];
 			$semantic = self::semantic_key( $key );
-			if ( ! in_array( $semantic, [ 'width', 'height', 'aspect_ratio', 'fps' ], true ) ) {
+			if ( ! in_array( $semantic, [ 'width', 'height', 'aspect_ratio', 'duration', 'fps' ], true ) ) {
 				continue;
 			}
 			// A fixed-frame workflow such as WAN FLF defines playback duration as

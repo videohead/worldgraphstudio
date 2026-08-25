@@ -339,6 +339,30 @@
             "bidirectional_target": []
         },
         {
+            "key": "field_worldgraph_scene_project",
+            "label": "Project (Standalone Scene)",
+            "name": "project",
+            "aria-label": "",
+            "type": "post_object",
+            "instructions": "Use only when this Scene is not assigned to an Episode. Episode ownership takes precedence when both fields are set.",
+            "required": 0,
+            "conditional_logic": 0,
+            "wrapper": {
+                "width": "",
+                "class": "",
+                "id": ""
+            },
+            "post_type": [
+                "worldgraph_project"
+            ],
+            "return_format": "id",
+            "allow_null": 1,
+            "multiple": 0,
+            "ui": 1,
+            "taxonomy": [],
+            "bidirectional_target": []
+        },
+        {
             "key": "field_worldgraph_scene_generation_prompt",
             "label": "Scene Look & Lighting Changes",
             "name": "generation_prompt",

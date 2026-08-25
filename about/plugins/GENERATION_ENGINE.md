@@ -97,8 +97,9 @@ that Project baseline, and those changes take precedence inside the Scene.
 Scene Location, time, and tone define the setting boundary, while Scene lens
 and camera movement are defaults. Scene `audio_direction` is a concise
 Scene-wide ambience, music, and sonic palette inherited by linked Sound
-generation; it excludes dialogue, lyrics, and individual cue events. A nonblank Shot lens or camera movement replaces the matching Scene
-default, and explicit `locked_off` is therefore a meaningful override. Shot
+generation; it excludes dialogue, lyrics, and individual cue events. A
+nonblank Shot lens or camera movement replaces the matching Scene default, and
+explicit `locked_off` is therefore a meaningful override. Shot
 `motion_direction` contains one visible action in temporal order, while Shot
 `generation_prompt` is reserved for exceptional constraints.
 

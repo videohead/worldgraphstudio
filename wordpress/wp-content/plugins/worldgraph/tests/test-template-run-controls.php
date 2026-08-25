@@ -747,6 +747,25 @@ class Test_Template_Run_Controls extends TestCase {
 		$this->assertArrayNotHasKey( 'steps', $defaults );
 	}
 
+	/** Source-authored duration projects only when the Template declares it. */
+	public function test_profile_defaults_project_declared_duration_alias(): void {
+		$description = Template_Run_Controls::describe_configuration(
+			[
+				'provider_schema' => [
+					'properties' => [
+						'duration_seconds' => [ 'type' => 'number', 'minimum' => 0.5, 'maximum' => 30 ],
+						'steps'            => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 50 ],
+					],
+				],
+			]
+		);
+
+		$defaults = Template_Run_Controls::profile_defaults( $description, [ 'duration' => 7.5, 'steps' => 12 ] );
+
+		$this->assertSame( 7.5, $defaults['duration_seconds'] );
+		$this->assertArrayNotHasKey( 'steps', $defaults );
+	}
+
 	/** A Project fps cannot retime a workflow whose frame count is fixed. */
 	public function test_profile_defaults_preserve_fps_for_fixed_frame_workflows(): void {
 		$description = Template_Run_Controls::describe_configuration(

@@ -246,6 +246,12 @@ class Asset_Generation_Controller extends Base_Controller {
 		if ( $template_id <= 0 || $template_id !== Generation_Workflows::resolve_template_id( $task, $template_id ) ) {
 			return new WP_Error( 'worldgraph_generation_preview_template_invalid', __( 'That Template cannot run the selected output.', 'worldgraph' ), [ 'status' => 409 ] );
 		}
+		if ( 'worldgraph_sound' === (string) ( $task['source_type'] ?? '' ) && 'audio' === $type ) {
+			$copy_validation = Generation_Workflows::validate_sound_prompt_copy( $post_id, $template_id );
+			if ( is_wp_error( $copy_validation ) ) {
+				return $copy_validation;
+			}
+		}
 
 		$prompt = Generation_Workflows::finalize_task_prompt( $task, $template_id, (string) $request->get_param( 'prompt' ) );
 		$policy = Generation_Prompt_Policy::for_template(

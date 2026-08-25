@@ -87,6 +87,30 @@
             "bidirectional_target": []
         },
         {
+            "key": "field_worldgraph_prop_story_world",
+            "label": "Story World (Shared Prop)",
+            "name": "story_world",
+            "aria-label": "",
+            "type": "post_object",
+            "instructions": "Use for an unowned or shared Prop so it can inherit its Project visual direction and generation defaults. An Owner Character takes precedence.",
+            "required": 0,
+            "conditional_logic": 0,
+            "wrapper": {
+                "width": "",
+                "class": "",
+                "id": ""
+            },
+            "post_type": [
+                "worldgraph_world"
+            ],
+            "return_format": "id",
+            "allow_null": 1,
+            "multiple": 0,
+            "ui": 1,
+            "taxonomy": [],
+            "bidirectional_target": []
+        },
+        {
             "key": "field_worldgraph_prop_notes",
             "label": "Notes",
             "name": "notes",

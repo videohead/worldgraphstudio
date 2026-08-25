@@ -81,6 +81,20 @@ class Test_Generation_Workflows extends TestCase {
 		$this->assertCount( 2, $definitions['worldgraph_shot']['outputs'] );
 		$this->assertCount( 1, $definitions['worldgraph_scene']['outputs'] );
 		$this->assertCount( 1, $definitions['worldgraph_episode']['outputs'] );
+		$this->assertSame( array_keys( $definitions ), Asset_Generator::supported_post_types() );
+		$this->assertNotContains( 'worldgraph_asset', Asset_Generator::supported_post_types() );
+	}
+
+	/** Authored Shot/Sound timing is normalized before a compatible run control uses it. */
+	public function test_source_duration_formats_normalize_to_seconds(): void {
+		$method = ( new ReflectionClass( Asset_Generator::class ) )->getMethod( 'source_duration_seconds' );
+		$method->setAccessible( true );
+
+		$this->assertSame( 10.0, $method->invoke( null, 'PT10S' ) );
+		$this->assertSame( 90.5, $method->invoke( null, 'PT1M30.5S' ) );
+		$this->assertSame( 62.5, $method->invoke( null, '00:01:02.5' ) );
+		$this->assertSame( 7.0, $method->invoke( null, '7 seconds' ) );
+		$this->assertNull( $method->invoke( null, 'until the cue ends' ) );
 	}
 
 	/** A Shot is the direct authoring surface that deliberately offers video. */
@@ -107,6 +121,7 @@ class Test_Generation_Workflows extends TestCase {
 	public function test_sound_prompt_context_is_bounded_and_audio_copy_is_verbatim(): void {
 		$prompt  = $this->method_source( 'demonstration_sound_prompt' );
 		$context = $this->method_source( 'sound_scene_context' );
+		$direction = $this->method_source( 'scene_audio_direction' );
 
 		$this->assertStringContainsString( 'self::sound_scene_context( $sound )', $prompt );
 		$this->assertStringContainsString( "self::audio_verbatim_text( (string) worldgraph_get_field_value( (int) \$sound->ID, 'spoken_text' ) )", $prompt );
@@ -114,6 +129,10 @@ class Test_Generation_Workflows extends TestCase {
 		$this->assertStringContainsString( 'self::clean_text( (string) ( $sound->post_excerpt ?: $sound->post_content ), 48 )', $prompt );
 		$this->assertStringContainsString( "worldgraph_get_field_value( (int) \$sound->ID, 'production_notes' ), 40", $prompt );
 		$this->assertStringNotContainsString( 'self::clean_text( implode(', $prompt );
+		$this->assertStringContainsString( "worldgraph_get_field_value( (int) \$sound->ID, 'duration' )", $prompt );
+		$this->assertStringContainsString( "worldgraph_get_field_value( (int) \$sound->ID, 'diegetic' )", $prompt );
+		$this->assertStringContainsString( 'Generation_Prompt_Policy::for_template(', $prompt );
+		$this->assertStringContainsString( 'Generation_Prompt_Policy::render( $sections, $policy )', $prompt );
 
 		$this->assertStringContainsString( "'worldgraph_sound', 'scene', 'worldgraph_scene'", $context );
 		$this->assertStringContainsString( 'self::demonstration_scene_location( $scene )', $context );
@@ -121,6 +140,13 @@ class Test_Generation_Workflows extends TestCase {
 		$this->assertStringContainsString( "worldgraph_get_field_value( \$scene_id, 'emotional_tone' )", $context );
 		$this->assertStringNotContainsString( 'generation_prompt', $context );
 		$this->assertStringNotContainsString( 'summary', $context );
+		$this->assertStringContainsString( "worldgraph_get_field_value( \$scene_id, 'audio_direction' )", $direction );
+		$workflow   = (string) file_get_contents( dirname( __DIR__ ) . '/includes/utils/class-generation-workflows.php' );
+		$generator  = (string) file_get_contents( dirname( __DIR__ ) . '/includes/utils/class-asset-generator.php' );
+		$controller = (string) file_get_contents( dirname( __DIR__ ) . '/includes/rest-api/asset-generation-controller.php' );
+		$this->assertGreaterThanOrEqual( 2, substr_count( $workflow, 'validate_sound_prompt_copy(' ) );
+		$this->assertStringContainsString( 'Generation_Workflows::validate_sound_prompt_copy( $post_id, $template_id )', $generator );
+		$this->assertStringContainsString( 'Generation_Workflows::validate_sound_prompt_copy( $post_id, $template_id )', $controller );
 
 		$verbatim = ( new ReflectionClass( Generation_Workflows::class ) )->getMethod( 'audio_verbatim_text' );
 		$verbatim->setAccessible( true );
@@ -156,14 +182,15 @@ class Test_Generation_Workflows extends TestCase {
 	/** Current one-off instructions must consume a tight prompt budget before saved defaults. */
 	public function test_current_run_prompt_precedes_saved_visual_instructions(): void {
 		$compose = $this->method_source( 'compose_prompt' );
-		$one_off = strpos( $compose, '$base_prompt = self::clean_text( $base_prompt, 20 );' );
+		$one_off = strpos( $compose, '$base_prompt = self::complete_phrase( $base_prompt, 24 );' );
 		$saved   = strpos( $compose, "worldgraph_get_field_value( \$post_id, 'generation_prompt' )" );
 
 		$this->assertNotFalse( $one_off );
 		$this->assertNotFalse( $saved );
 		$this->assertLessThan( $saved, $one_off );
 		$this->assertStringContainsString( "prompt_section( 'author_instructions', __( 'Additional instructions'", $compose );
-		$this->assertStringContainsString( "prompt_section( 'author_instructions', __( 'Saved visual instructions'", $compose );
+		$this->assertStringContainsString( "__( 'Shot exceptions override Scene changes', 'worldgraph' )", $compose );
+		$this->assertStringContainsString( "__( 'Saved visual instructions', 'worldgraph' )", $compose );
 	}
 
 	/** Project style and Shot movement use distinct, compact authoring controls. */
@@ -181,7 +208,10 @@ class Test_Generation_Workflows extends TestCase {
 		$this->assertSame( 'Project Visual Direction', $project_fields['generation_prompt']['label'] );
 		$this->assertStringContainsString( 'about 20 words', $project_fields['generation_prompt']['instructions'] );
 		$this->assertStringContainsString( 'medium or rendering style, lighting, palette, contrast, and texture', $project_fields['generation_prompt']['instructions'] );
-		$this->assertSame( 'Scene Look & Lighting Override', $scene_fields['generation_prompt']['label'] );
+		$this->assertSame( 'Scene Look & Lighting Changes', $scene_fields['generation_prompt']['label'] );
+		$this->assertSame( 'Sound & Music Direction', $scene_fields['audio_direction']['label'] );
+		$this->assertSame( 'Project (Standalone Scene)', $scene_fields['project']['label'] );
+		$this->assertStringContainsString( 'Episode ownership takes precedence', $scene_fields['project']['instructions'] );
 		$this->assertSame( 'text', $scene_fields['lens']['type'] );
 		$this->assertSame( 'select', $scene_fields['camera_movement']['type'] );
 		$this->assertSame( $shot_fields['camera_movement']['choices'], $scene_fields['camera_movement']['choices'] );
@@ -207,10 +237,10 @@ class Test_Generation_Workflows extends TestCase {
 		$this->assertStringContainsString( "prompt_section( 'look', \$visual_direction, true )", $compose );
 		$this->assertStringContainsString( "[ 'worldgraph_project', 'worldgraph_scene' ]", $compose );
 		$this->assertStringContainsString( "worldgraph_get_field_value( (int) \$project->ID, 'generation_prompt' )", $style );
-		$this->assertStringContainsString( "__( 'Project visual direction', 'worldgraph' )", $style );
+		$this->assertStringContainsString( "__( 'Project look', 'worldgraph' )", $style );
 		$this->assertStringContainsString( "worldgraph_get_field_value( (int) \$scene->ID, 'generation_prompt' )", $scene_style );
-		$this->assertStringContainsString( "__( 'Scene look and lighting override', 'worldgraph' )", $scene_style );
-		$this->assertStringContainsString( "reference frame's established Project and Scene look", $direction );
+		$this->assertStringContainsString( "__( 'Scene changes override Project look', 'worldgraph' )", $scene_style );
+		$this->assertStringContainsString( "__( 'Match reference continuity.', 'worldgraph' )", $direction );
 		$this->assertStringContainsString( "field_prompt_value( \$post_id, 'camera_movement'", $shot );
 		$this->assertStringContainsString( "field_prompt_value( \$post_id, 'motion_direction'", $shot );
 		$this->assertStringContainsString( "scene_default_prompt_value( \$post_id, 'lens'", $shot );
@@ -219,7 +249,21 @@ class Test_Generation_Workflows extends TestCase {
 		$this->assertStringContainsString( "prompt_section( 'motion', __( 'Motion', 'worldgraph' ) . ': ' . \$motion, true )", $shot );
 		$this->assertStringContainsString( "__( 'Perform only the described Shot action as one continuous take', 'worldgraph' )", $shot );
 		$this->assertStringContainsString( "prompt_section( 'motion', __( 'Motion', 'worldgraph' ) . ': ' . \$fallback, true )", $shot );
-		$this->assertStringContainsString( "[ 'worldgraph_project', 'worldgraph_scene' ]", $inherited );
+		$this->assertStringContainsString( "[ 'worldgraph_project', 'worldgraph_episode', 'worldgraph_scene' ]", $inherited );
+	}
+
+	/** Scene/Prop structural fallbacks keep Project style and defaults reachable. */
+	public function test_scene_and_shared_prop_have_explicit_project_ancestry_fields(): void {
+		$this->assertSame( [ 'project' ], Generation_Workflows::PARENT_RULES['worldgraph_scene']['fallback_fields'] );
+		$this->assertSame( [ 'story_world' ], Generation_Workflows::PARENT_RULES['worldgraph_prop']['fallback_fields'] );
+		$this->assertContains( 'worldgraph_project', Generation_Workflows::PARENT_RULES['worldgraph_scene']['types'] );
+		$this->assertContains( 'worldgraph_world', Generation_Workflows::PARENT_RULES['worldgraph_prop']['types'] );
+
+		$prop_group = json_decode( (string) file_get_contents( dirname( __DIR__ ) . '/acf-json/group_worldgraph_prop.json' ), true );
+		$this->assertIsArray( $prop_group );
+		$prop_fields = array_column( (array) ( $prop_group['fields'] ?? [] ), null, 'name' );
+		$this->assertSame( 'Story World (Shared Prop)', $prop_fields['story_world']['label'] );
+		$this->assertStringContainsString( 'inherit its Project visual direction', $prop_fields['story_world']['instructions'] );
 	}
 
 	/** Filmstrip commands must not look like removable labels to concise renderers. */
@@ -230,6 +274,18 @@ class Test_Generation_Workflows extends TestCase {
 		$this->assertStringContainsString( "__( 'One two-panel horizontal filmstrip showing', 'worldgraph' ) . \"\\n\"", $dependent );
 		$this->assertStringNotContainsString( "__( 'One horizontal filmstrip', 'worldgraph' ) . \"\\n", $dependent );
 		$this->assertStringNotContainsString( "__( 'One two-panel horizontal filmstrip', 'worldgraph' ) . \":\\n\"", $dependent );
+		$this->assertStringContainsString( 'self::shot_panel_framing( $shot )', $dependent );
+		$this->assertStringContainsString( 'self::scene_bookend_action( $scene, $closing )', $dependent );
+		$this->assertStringNotContainsString( "worldgraph_get_field_value( \$scene->ID, 'summary' )", $dependent );
+	}
+
+	/** Compact phrase clipping must not leave directional prepositions dangling. */
+	public function test_compact_panel_phrases_remove_dangling_direction_words(): void {
+		$method = ( new ReflectionClass( Generation_Workflows::class ) )->getMethod( 'complete_phrase' );
+		$method->setAccessible( true );
+
+		$this->assertSame( 'Red turns.', $method->invoke( null, 'Red turns toward the open cottage door', 3 ) );
+		$this->assertSame( 'Space remains.', $method->invoke( null, 'Space remains between Red and the Woodsman', 3 ) );
 	}
 
 	/** The prompt filter gains Template context while retaining its original hook contract. */

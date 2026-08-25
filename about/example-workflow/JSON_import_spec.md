@@ -186,10 +186,11 @@ stable.
 Ordering is deterministic: Episodes use `episode_number`; Scenes use Sequence
 order and then `scene_number`; Shots and Sounds are grouped by Scene; remaining
 entity collections use external ID order. Project visual direction, Scene look
-and lighting changes, Scene camera and audio direction, and Shot camera movement, motion
-direction, and exceptional generation constraints are portable. Connections,
-Templates, generation jobs, WordPress users/status, the non-existent Storyboard
-CPT, and other fields outside the actual importer contract are excluded.
+and lighting changes, Scene camera and audio direction, and Shot camera
+movement, motion direction, and exceptional generation constraints are
+portable. Connections, Templates, generation jobs, WordPress users/status, the
+non-existent Storyboard CPT, and other fields outside the actual importer
+contract are excluded.
 
 ## Top-Level Document
 

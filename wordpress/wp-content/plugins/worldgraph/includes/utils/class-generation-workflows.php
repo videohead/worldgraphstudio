@@ -128,9 +128,13 @@ class Generation_Workflows {
 		'worldgraph_world'     => [ 'field' => 'project', 'types' => [ 'worldgraph_project' ] ],
 		'worldgraph_character' => [ 'field' => 'story_world', 'types' => [ 'worldgraph_world' ] ],
 		'worldgraph_location'  => [ 'field' => 'story_world', 'types' => [ 'worldgraph_world' ] ],
-		'worldgraph_prop'      => [ 'field' => 'owner_character', 'types' => [ 'worldgraph_character' ] ],
+		// Props may inherit through an owner, their containing World, or a direct
+		// Project relationship. The explicit owner field remains preferred.
+		'worldgraph_prop'      => [ 'field' => 'owner_character', 'fallback_fields' => [ 'story_world' ], 'types' => [ 'worldgraph_character', 'worldgraph_world', 'worldgraph_project' ] ],
 		'worldgraph_episode'   => [ 'field' => 'project', 'types' => [ 'worldgraph_project' ] ],
-		'worldgraph_scene'     => [ 'field' => 'episode', 'types' => [ 'worldgraph_episode' ] ],
+		// Standalone Scenes may belong directly to a Project; an explicit Episode
+		// remains the canonical preferred parent when both relationships exist.
+		'worldgraph_scene'     => [ 'field' => 'episode', 'fallback_fields' => [ 'project' ], 'types' => [ 'worldgraph_episode', 'worldgraph_project' ] ],
 		'worldgraph_shot'      => [ 'field' => 'scene', 'types' => [ 'worldgraph_scene' ] ],
 		'worldgraph_sound'     => [ 'field' => 'scene', 'types' => [ 'worldgraph_scene' ] ],
 	];
@@ -322,15 +326,20 @@ class Generation_Workflows {
 			$intent     = (string) ( $output['intent'] ?? '' );
 		}
 		if ( 'worldgraph_sound' === $post_type && 'audio' === (string) ( $output['type'] ?? '' ) ) {
-			return self::demonstration_sound_prompt( $post, self::demonstration_sound_role( $post_id ), $base_prompt );
+			return self::demonstration_sound_prompt( $post, self::demonstration_sound_role( $post_id ), $base_prompt, $template_id, $intent );
 		}
 
 		$labels               = worldgraph_get_all_cpts();
 		$video                = 'video' === (string) ( $output['type'] ?? '' );
 		$modality             = $template_id ? Generation_Modality::sanitize( (string) worldgraph_get_field_value( $template_id, 'modality' ) ) : '';
-		$reference_conditioned = $video && in_array(
+		$reference_conditioned = in_array(
 			$modality,
-			[ Generation_Modality::TEXT_IMAGE_TO_VIDEO, Generation_Modality::VIDEO_TO_VIDEO ],
+			[
+				Generation_Modality::IMAGE_TO_IMAGE,
+				Generation_Modality::IMAGE_TEXT_TO_IMAGE,
+				Generation_Modality::TEXT_IMAGE_TO_VIDEO,
+				Generation_Modality::VIDEO_TO_VIDEO,
+			],
 			true
 		);
 		$strip_completed_beat = 'worldgraph_shot' === $post_type;
@@ -362,7 +371,13 @@ class Generation_Workflows {
 				$identity_is_required
 			);
 		}
-		$sections = array_merge( $sections, self::prompt_field_sections( $post_id, $post_type, $fields, $seen, $video ) );
+		$field_sections = self::prompt_field_sections( $post_id, $post_type, $fields, $seen, $video );
+		if ( 'scene-filmstrip' === $intent ) {
+			// The composite primary already carries effective panel framing and one
+			// shared Scene location/time/tone boundary. Do not repeat those fields.
+			$field_sections = array_values( array_filter( $field_sections, static fn( array $section ): bool => ! in_array( $section['id'], [ 'setting', 'camera', 'look' ], true ) ) );
+		}
+		$sections = array_merge( $sections, $field_sections );
 		$visual_direction = self::visual_direction_context( $post_id, $reference_conditioned );
 		if ( '' !== $visual_direction ) {
 			$sections[] = self::prompt_section( 'look', $visual_direction, true );
@@ -372,7 +387,9 @@ class Generation_Workflows {
 		if ( '' !== $inherited_context ) {
 			$sections[] = self::prompt_section( 'worldgraph_shot' === $post_type ? 'setting' : 'ancestor_context', $inherited_context );
 		}
-		$character_context = self::related_character_context( $post_id, $post_type, $strip_completed_beat );
+		$character_context = 'scene-filmstrip' === $intent
+			? ''
+			: self::related_character_context( $post_id, $post_type, $strip_completed_beat );
 		if ( '' !== $character_context ) {
 			$sections[] = self::prompt_section( 'characters', $character_context );
 		}
@@ -389,15 +406,16 @@ class Generation_Workflows {
 			);
 		}
 
-		$base_prompt = self::clean_text( $base_prompt, 20 );
+		$base_prompt = self::complete_phrase( $base_prompt, 24 );
 		if ( '' !== $base_prompt ) {
 			$sections[] = self::prompt_section( 'author_instructions', __( 'Additional instructions', 'worldgraph' ) . ': ' . $base_prompt, true );
 		}
 		$instructions = in_array( $post_type, [ 'worldgraph_project', 'worldgraph_scene' ], true )
 			? ''
-			: self::clean_text( (string) worldgraph_get_field_value( $post_id, 'generation_prompt' ), 20 );
+			: self::complete_phrase( (string) worldgraph_get_field_value( $post_id, 'generation_prompt' ), 24 );
 		if ( '' !== $instructions ) {
-			$sections[] = self::prompt_section( 'author_instructions', __( 'Saved visual instructions', 'worldgraph' ) . ': ' . $instructions, true );
+			$label      = 'worldgraph_shot' === $post_type ? __( 'Shot exceptions override Scene changes', 'worldgraph' ) : __( 'Saved visual instructions', 'worldgraph' );
+			$sections[] = self::prompt_section( 'author_instructions', $label . ': ' . $instructions, true );
 		}
 		$sections[] = self::prompt_section( 'constraints', self::output_requirements( $post_type, $intent, $video ), true );
 
@@ -413,6 +431,55 @@ class Generation_Workflows {
 		$rendered = Generation_Prompt_Policy::render( $sections, $policy );
 
 		return (string) $rendered['prompt'];
+	}
+
+	/** Reject Sound copy that the selected Template cannot carry verbatim. */
+	public static function validate_sound_prompt_copy( int $post_id, int $template_id ) {
+		$post = get_post( $post_id );
+		if ( ! $post instanceof \WP_Post || 'worldgraph_sound' !== $post->post_type ) {
+			return true;
+		}
+		$parts  = [];
+		$spoken = self::audio_verbatim_text( (string) worldgraph_get_field_value( $post_id, 'spoken_text' ) );
+		$lyrics = self::audio_verbatim_text( (string) worldgraph_get_field_value( $post_id, 'lyrics' ) );
+		if ( '' !== $spoken ) {
+			$parts[] = __( 'Speak this text exactly', 'worldgraph' ) . ': ' . $spoken;
+		}
+		if ( '' !== $lyrics ) {
+			$parts[] = __( 'Lyrics', 'worldgraph' ) . ': ' . $lyrics;
+		}
+		if ( empty( $parts ) ) {
+			return true;
+		}
+
+		$copy   = implode( "\n\n", $parts );
+		$policy = Generation_Prompt_Policy::for_template(
+			$template_id,
+			[
+				'output_type' => 'audio',
+				'post_type'   => 'worldgraph_sound',
+				'intent'      => 'sound-cue',
+			]
+		);
+		$limits = (array) ( $policy['limits'] ?? [] );
+		$words  = preg_split( '/\s+/u', trim( $copy ), -1, PREG_SPLIT_NO_EMPTY );
+		$counts = [
+			'words'      => is_array( $words ) ? count( $words ) : 0,
+			'characters' => function_exists( 'mb_strlen' ) ? mb_strlen( $copy, 'UTF-8' ) : strlen( $copy ),
+			'bytes'      => strlen( $copy ),
+		];
+		$exceeded = (int) ( $limits['max_words'] ?? 0 ) > 0 && $counts['words'] > (int) $limits['max_words'];
+		$exceeded = $exceeded || ( (int) ( $limits['max_characters'] ?? 0 ) > 0 && $counts['characters'] > (int) $limits['max_characters'] );
+		$exceeded = $exceeded || ( (int) ( $limits['max_bytes'] ?? 0 ) > 0 && $counts['bytes'] > (int) $limits['max_bytes'] );
+		if ( ! $exceeded ) {
+			return true;
+		}
+
+		return new WP_Error(
+			'worldgraph_sound_copy_exceeds_prompt_limit',
+			__( 'The supplied spoken text or lyrics exceed this Template’s prompt limit and cannot be sent verbatim. Shorten the copy or choose a Template with a larger prompt limit.', 'worldgraph' ),
+			[ 'status' => 400, 'counts' => $counts, 'limits' => $limits ]
+		);
 	}
 
 	/** Build one semantic prompt section without exposing metadata to providers. */
@@ -448,7 +515,9 @@ class Generation_Workflows {
 		$candidates[] = (string) $post->post_excerpt;
 		$candidates[] = (string) $post->post_content;
 
-		$maximum_words = in_array( $post_type, [ 'worldgraph_shot', 'worldgraph_location', 'worldgraph_character', 'worldgraph_prop' ], true ) ? 38 : 32;
+		$maximum_words = 'worldgraph_shot' === $post_type
+			? 26
+			: ( in_array( $post_type, [ 'worldgraph_location', 'worldgraph_character', 'worldgraph_prop' ], true ) ? 38 : 32 );
 		foreach ( $candidates as $candidate ) {
 			if ( 'worldgraph_shot' === $post_type && $strip_completed_beat ) {
 				$candidate = self::strip_completed_leading_beat( (string) $candidate );
@@ -513,17 +582,13 @@ class Generation_Workflows {
 		$framing = [];
 		$type    = self::clean_text( self::field_prompt_value( $post_id, 'shot_type', (array) ( $fields['shot_type'] ?? [] ) ), 8 );
 		$angle   = self::clean_text( self::field_prompt_value( $post_id, 'camera_angle', (array) ( $fields['camera_angle'] ?? [] ) ), 8 );
-		$lens             = self::clean_text( self::field_prompt_value( $post_id, 'lens', (array) ( $fields['lens'] ?? [] ) ), 8 );
-		$lens_from_scene  = false;
-		$movement         = $video ? self::clean_text( self::field_prompt_value( $post_id, 'camera_movement', (array) ( $fields['camera_movement'] ?? [] ) ), 8 ) : '';
-		$movement_from_scene = false;
+		$lens     = self::clean_text( self::field_prompt_value( $post_id, 'lens', (array) ( $fields['lens'] ?? [] ) ), 8 );
+		$movement = $video ? self::clean_text( self::field_prompt_value( $post_id, 'camera_movement', (array) ( $fields['camera_movement'] ?? [] ) ), 8 ) : '';
 		if ( '' === $lens ) {
-			$lens            = self::scene_default_prompt_value( $post_id, 'lens', 8 );
-			$lens_from_scene = '' !== $lens;
+			$lens = self::scene_default_prompt_value( $post_id, 'lens', 8 );
 		}
 		if ( $video && '' === $movement ) {
-			$movement            = self::scene_default_prompt_value( $post_id, 'camera_movement', 8 );
-			$movement_from_scene = '' !== $movement;
+			$movement = self::scene_default_prompt_value( $post_id, 'camera_movement', 8 );
 		}
 		if ( '' !== $type ) {
 			$framing[] = preg_match( '/\bshot$/i', $type ) ? $type : $type . ' ' . __( 'shot', 'worldgraph' );
@@ -533,19 +598,19 @@ class Generation_Workflows {
 		}
 		if ( '' !== $lens ) {
 			$lens_text = preg_match( '/\blens(?:es)?$/i', $lens ) ? $lens : $lens . ' ' . __( 'lens', 'worldgraph' );
-			$framing[] = $lens_text . ( $lens_from_scene ? ' ' . __( '(Scene default)', 'worldgraph' ) : '' );
+			$framing[] = $lens_text;
 		}
 
 		$parts = [];
 		if ( $framing || '' !== $movement ) {
 			$camera = $framing ? __( 'Framing', 'worldgraph' ) . ': ' . implode( ', ', $framing ) . '.' : '';
 			if ( '' !== $movement ) {
-				$camera .= ( '' !== $camera ? ' ' : '' ) . __( 'Camera movement', 'worldgraph' ) . ': ' . $movement . ( $movement_from_scene ? ' ' . __( '(Scene default)', 'worldgraph' ) : '' ) . '.';
+				$camera .= ( '' !== $camera ? ' ' : '' ) . __( 'Camera movement', 'worldgraph' ) . ': ' . $movement . '.';
 			}
 			$parts[] = self::prompt_section( 'camera', $camera, true );
 		}
 		if ( $video ) {
-			$motion   = self::complete_phrase( self::field_prompt_value( $post_id, 'motion_direction', (array) ( $fields['motion_direction'] ?? [] ) ), 28 );
+			$motion   = self::complete_phrase( self::field_prompt_value( $post_id, 'motion_direction', (array) ( $fields['motion_direction'] ?? [] ) ), 20 );
 			$duration = self::prompt_duration( self::field_prompt_value( $post_id, 'duration', (array) ( $fields['duration'] ?? [] ) ) );
 			$notes    = self::video_motion_note( self::field_prompt_value( $post_id, 'editorial_notes', (array) ( $fields['editorial_notes'] ?? [] ) ) );
 			if ( '' !== $motion ) {
@@ -688,13 +753,21 @@ class Generation_Workflows {
 			$rule       = self::PARENT_RULES[ $current_type ];
 			$candidates = [];
 			$preferred  = [];
-			$value      = worldgraph_get_field_value( $current_id, (string) $rule['field'] );
-			foreach ( is_array( $value ) ? $value : [ $value ] as $candidate ) {
-				$candidate_id = $candidate instanceof \WP_Post ? (int) $candidate->ID : absint( $candidate );
-				$candidate_type = $candidate_id ? (string) get_post_type( $candidate_id ) : '';
-				if ( $candidate_id && in_array( $candidate_type, $rule['types'], true ) ) {
-					$preferred[ $candidate_id ] = $candidate_type;
-					$candidates[ $candidate_id ] = $candidate_type;
+			$field_names = array_merge( [ (string) $rule['field'] ], (array) ( $rule['fallback_fields'] ?? [] ) );
+			foreach ( $field_names as $field_name ) {
+				$field_preferred = [];
+				$value           = worldgraph_get_field_value( $current_id, (string) $field_name );
+				foreach ( is_array( $value ) ? $value : [ $value ] as $candidate ) {
+					$candidate_id   = $candidate instanceof \WP_Post ? (int) $candidate->ID : absint( $candidate );
+					$candidate_type = $candidate_id ? (string) get_post_type( $candidate_id ) : '';
+					if ( $candidate_id && in_array( $candidate_type, $rule['types'], true ) ) {
+						$field_preferred[ $candidate_id ] = $candidate_type;
+						$candidates[ $candidate_id ]      = $candidate_type;
+					}
+				}
+				if ( $field_preferred ) {
+					$preferred = $field_preferred;
+					break;
 				}
 			}
 			foreach ( get_relationships( $current_id, $current_type, 'incoming' ) as $relationship ) {
@@ -803,7 +876,9 @@ class Generation_Workflows {
 		$location    = $location_id ? get_post( $location_id ) : null;
 		if ( $location instanceof \WP_Post && 'worldgraph_location' === $location->post_type ) {
 			$title       = self::clean_text( (string) $location->post_title, 10 );
-			$description = rtrim( self::first_sentence( (string) worldgraph_get_field_value( $location_id, 'description' ), $description_words ), '.; ' );
+			$description = $description_words > 0
+				? rtrim( self::first_sentence( (string) worldgraph_get_field_value( $location_id, 'description' ), $description_words ), '.; ' )
+				: '';
 			return trim( $title . ( '' !== $description ? ' — ' . $description : '' ) );
 		}
 
@@ -859,7 +934,7 @@ class Generation_Workflows {
 	 * treating it as a distinct look section keeps medium, lighting, palette, and
 	 * texture separate from story action and Shot motion.
 	 */
-	private static function project_visual_direction( int $post_id ): string {
+	private static function project_visual_direction( int $post_id, int $maximum_words = 10 ): string {
 		$project = 'worldgraph_project' === get_post_type( $post_id ) ? get_post( $post_id ) : null;
 		if ( ! $project instanceof \WP_Post ) {
 			foreach ( self::ancestors( $post_id ) as $ancestor ) {
@@ -873,37 +948,39 @@ class Generation_Workflows {
 			return '';
 		}
 
-		$direction = self::complete_phrase( (string) worldgraph_get_field_value( (int) $project->ID, 'generation_prompt' ), 20 );
+		$direction = self::complete_phrase( (string) worldgraph_get_field_value( (int) $project->ID, 'generation_prompt' ), $maximum_words );
 		return '' !== $direction
-			? __( 'Project visual direction', 'worldgraph' ) . ': ' . $direction
+			? __( 'Project look', 'worldgraph' ) . ': ' . $direction
 			: '';
 	}
 
-	/** Return the Scene-only look and lighting refinement without story prose. */
-	private static function scene_visual_direction( int $post_id ): string {
+	/** Return Scene-specific look changes without story prose. */
+	private static function scene_visual_direction( int $post_id, int $maximum_words = 8 ): string {
 		$scene = self::scene_for_source( $post_id );
 		if ( ! $scene instanceof \WP_Post ) {
 			return '';
 		}
 
-		$direction = self::complete_phrase( (string) worldgraph_get_field_value( (int) $scene->ID, 'generation_prompt' ), 16 );
+		$direction = self::complete_phrase( (string) worldgraph_get_field_value( (int) $scene->ID, 'generation_prompt' ), $maximum_words );
 		return '' !== $direction
-			? __( 'Scene look and lighting override', 'worldgraph' ) . ': ' . $direction
+			? __( 'Scene changes override Project look', 'worldgraph' ) . ': ' . $direction
 			: '';
 	}
 
 	/** Combine broad Project style with the closest Scene refinement exactly once. */
 	private static function visual_direction_context( int $post_id, bool $reference_conditioned ): string {
-		$project = self::project_visual_direction( $post_id );
-		$scene   = self::scene_visual_direction( $post_id );
+		$project = self::project_visual_direction( $post_id, $reference_conditioned ? 6 : 10 );
+		$scene   = self::scene_visual_direction( $post_id, $reference_conditioned ? 6 : 8 );
 		if ( '' === $project && '' === $scene ) {
 			return '';
 		}
+
+		$parts = array_filter( [ $project, $scene ] );
 		if ( $reference_conditioned ) {
-			return __( "Look continuity: Preserve the reference frame's established Project and Scene look and lighting.", 'worldgraph' );
+			array_unshift( $parts, __( 'Match reference continuity.', 'worldgraph' ) );
 		}
 
-		return trim( implode( ' ', array_filter( [ $project, $scene ] ) ) );
+		return trim( implode( ' ', $parts ) );
 	}
 
 	/** Preserve explicit parent visual instructions without inheriting parent narrative. */
@@ -911,7 +988,7 @@ class Generation_Workflows {
 		$instructions = [];
 		$labels       = worldgraph_get_all_cpts();
 		foreach ( self::ancestors( $post_id ) as $ancestor ) {
-			if ( in_array( $ancestor->post_type, [ 'worldgraph_project', 'worldgraph_scene' ], true ) ) {
+			if ( in_array( $ancestor->post_type, [ 'worldgraph_project', 'worldgraph_episode', 'worldgraph_scene' ], true ) ) {
 				continue;
 			}
 			$value = self::clean_text( (string) worldgraph_get_field_value( (int) $ancestor->ID, 'generation_prompt' ), 16 );
@@ -1090,7 +1167,7 @@ class Generation_Workflows {
 
 		$phrase = $selected ? implode( ', ', $selected ) : self::clean_text( $value, $maximum_words );
 		$phrase = rtrim( trim( $phrase ), " \t\n\r\0\x0B,;:-" );
-		while ( preg_match( '/\s+(?:a|an|the|and|or|but|with|without|on|in|at|to|from|of|for|by|over|under|into|onto|beside|near|as)$/iu', $phrase ) ) {
+		while ( preg_match( '/\s+(?:a|an|the|and|or|but|with|without|on|in|at|to|from|of|for|by|over|under|into|onto|beside|near|toward|towards|between|across|through|as)$/iu', $phrase ) ) {
 			$phrase = trim( (string) preg_replace( '/\s+\S+$/u', '', $phrase ) );
 		}
 		return '' === $phrase || preg_match( '/[.!?]$/u', $phrase ) ? $phrase : $phrase . '.';
@@ -1153,16 +1230,23 @@ class Generation_Workflows {
 			} ) );
 			$frames = [];
 			foreach ( self::representative_items( $shots, 3 ) as $index => $shot ) {
-				$description = worldgraph_get_field_value( $shot->ID, 'shot_description' );
-				$frames[]    = sprintf(
+				$description = self::panel_description( (string) worldgraph_get_field_value( $shot->ID, 'shot_description' ), 8 );
+				$details     = array_filter( [ self::shot_panel_framing( $shot ), self::panel_character_context( $shot, 1, 3 ) ] );
+				$line        = sprintf(
 					/* translators: 1: panel number, 2: Shot title, 3: Shot description. */
 					__( 'Panel %1$d: %2$s — %3$s', 'worldgraph' ),
 					$index + 1,
-					self::clean_text( (string) $shot->post_title, 4 ),
-					self::panel_description( (string) $description, 12 )
+					self::clean_text( (string) $shot->post_title, 2 ),
+					$description
 				);
+				$frames[] = $line . ( $details ? ' (' . implode( '; ', $details ) . ')' : '' );
 			}
-			return empty( $frames ) ? '' : __( 'One horizontal filmstrip showing these panels', 'worldgraph' ) . "\n- " . implode( "\n- ", $frames );
+			if ( empty( $frames ) ) {
+				return '';
+			}
+			$boundary = self::scene_panel_boundary( get_post( $post_id ), false );
+			return __( 'One horizontal filmstrip showing these panels', 'worldgraph' ) . "\n- " . implode( "\n- ", $frames )
+				. ( '' !== $boundary ? "\n" . __( 'Shared Scene continuity', 'worldgraph' ) . ': ' . $boundary : '' );
 		}
 
 		if ( 'episode-bookend-filmstrip' === $intent && 'worldgraph_episode' === $post_type ) {
@@ -1178,12 +1262,114 @@ class Generation_Workflows {
 			}
 			$parts = [];
 			foreach ( $bookends as $index => $scene ) {
-				$parts[] = ( 0 === $index ? __( 'Left panel', 'worldgraph' ) : __( 'Right panel', 'worldgraph' ) ) . ': ' . self::clean_text( (string) $scene->post_title, 6 ) . ' — ' . self::complete_phrase( (string) worldgraph_get_field_value( $scene->ID, 'summary' ), 20 );
+				$closing  = count( $bookends ) > 1 && $index === count( $bookends ) - 1;
+				$action   = self::scene_bookend_action( $scene, $closing );
+				$boundary = self::scene_panel_boundary( $scene, true );
+				$parts[]  = ( 0 === $index ? __( 'Left panel', 'worldgraph' ) : __( 'Right panel', 'worldgraph' ) ) . ': '
+					. self::clean_text( (string) $scene->post_title, 3 ) . ' — ' . $action
+					. ( '' !== $boundary ? ' ' . $boundary : '' );
 			}
 			return __( 'One two-panel horizontal filmstrip showing', 'worldgraph' ) . "\n" . implode( "\n", $parts );
 		}
 
 		return '';
+	}
+
+	/** Resolve compact, effective Shot framing for one filmstrip panel. */
+	private static function shot_panel_framing( \WP_Post $shot ): string {
+		$fields = worldgraph_get_fields( 'worldgraph_shot' );
+		$type   = self::clean_text( self::field_prompt_value( (int) $shot->ID, 'shot_type', (array) ( $fields['shot_type'] ?? [] ) ), 3 );
+		$angle  = self::clean_text( self::field_prompt_value( (int) $shot->ID, 'camera_angle', (array) ( $fields['camera_angle'] ?? [] ) ), 3 );
+		$lens   = self::clean_text( self::field_prompt_value( (int) $shot->ID, 'lens', (array) ( $fields['lens'] ?? [] ) ), 3 );
+		if ( '' === $lens ) {
+			$lens = self::scene_default_prompt_value( (int) $shot->ID, 'lens', 3 );
+		}
+		if ( '' !== $type && ! preg_match( '/\bshot$/i', $type ) ) {
+			$type .= ' ' . __( 'shot', 'worldgraph' );
+		}
+		if ( '' !== $lens && ! preg_match( '/\blens(?:es)?$/i', $lens ) ) {
+			$lens .= ' ' . __( 'lens', 'worldgraph' );
+		}
+
+		return implode( ', ', array_filter( [ $type, $angle, $lens ] ) );
+	}
+
+	/** Add only characters visibly named or directly attached to a panel Shot. */
+	private static function panel_character_context( \WP_Post $shot, int $maximum_characters = 1, int $appearance_words = 3 ): string {
+		$ids = self::related_character_ids( (int) $shot->ID, 'worldgraph_shot' );
+		if ( empty( $ids ) ) {
+			$scene = self::scene_for_source( (int) $shot->ID );
+			if ( $scene instanceof \WP_Post ) {
+				$haystack = (string) worldgraph_get_field_value( (int) $shot->ID, 'shot_description' );
+				$mentioned = [];
+				foreach ( self::related_character_ids( (int) $scene->ID, 'worldgraph_scene' ) as $character_id ) {
+					$character = get_post( $character_id );
+					$position  = $character instanceof \WP_Post ? self::character_mention_position( $character, $haystack, true ) : null;
+					if ( null !== $position ) {
+						$mentioned[ $character_id ] = $position;
+					}
+				}
+				asort( $mentioned, SORT_NUMERIC );
+				$ids = array_map( 'intval', array_keys( $mentioned ) );
+			}
+		}
+
+		$parts = [];
+		foreach ( array_slice( $ids, 0, max( 1, $maximum_characters ) ) as $character_id ) {
+			$character = get_post( (int) $character_id );
+			if ( ! $character instanceof \WP_Post ) {
+				continue;
+			}
+			$appearance = $appearance_words > 0
+				? self::clean_text( (string) worldgraph_get_field_value( (int) $character_id, 'appearance' ), $appearance_words )
+				: '';
+			$parts[] = self::clean_text( (string) $character->post_title, 4 ) . ( '' !== $appearance ? ' — ' . $appearance : '' );
+		}
+
+		return $parts ? __( 'characters', 'worldgraph' ) . ': ' . implode( ', ', $parts ) : '';
+	}
+
+	/** Use a Scene's first/last Shot beat instead of broad synopsis prose. */
+	private static function scene_bookend_action( \WP_Post $scene, bool $closing ): string {
+		$shots = array_values( array_filter( self::ownership_children( (int) $scene->ID, 'worldgraph_scene' ), static function ( \WP_Post $post ): bool {
+			return 'worldgraph_shot' === $post->post_type;
+		} ) );
+		$shot  = $shots ? ( $closing ? $shots[ count( $shots ) - 1 ] : $shots[0] ) : null;
+		if ( $shot instanceof \WP_Post ) {
+			$action  = self::panel_description( (string) worldgraph_get_field_value( (int) $shot->ID, 'shot_description' ), 8 );
+			$details = array_filter( [ self::shot_panel_framing( $shot ), self::panel_character_context( $shot, 1, 3 ) ] );
+			return trim( $action . ( $details ? ' (' . implode( '; ', $details ) . ')' : '' ) );
+		}
+
+		return self::panel_description( (string) worldgraph_get_field_value( (int) $scene->ID, 'summary' ), 8 );
+	}
+
+	/** Describe the location/time/tone boundary, plus per-Scene style for bookends. */
+	private static function scene_panel_boundary( $scene, bool $include_style ): string {
+		if ( ! $scene instanceof \WP_Post || 'worldgraph_scene' !== $scene->post_type ) {
+			return '';
+		}
+		$parts    = [];
+		$location = self::clean_text( self::scene_location_prompt_value( (int) $scene->ID, 0 ), 8 );
+		$time     = self::clean_text( (string) worldgraph_get_field_value( (int) $scene->ID, 'time_of_day' ), 2 );
+		$tone     = rtrim( self::complete_phrase( (string) worldgraph_get_field_value( (int) $scene->ID, 'emotional_tone' ), 4 ), '.; ' );
+		if ( '' !== $location ) {
+			$parts[] = __( 'Location', 'worldgraph' ) . ': ' . $location;
+		}
+		if ( '' !== $time ) {
+			$parts[] = __( 'Time', 'worldgraph' ) . ': ' . $time;
+		}
+		if ( '' !== $tone ) {
+			$parts[] = __( 'Mood', 'worldgraph' ) . ': ' . $tone;
+		}
+		if ( $include_style ) {
+			$style = self::scene_visual_direction( (int) $scene->ID, 4 );
+			if ( '' !== $style ) {
+				$parts[] = $style;
+			}
+		}
+
+		return implode( '; ', $parts ) . ( $parts ? '.' : '' );
 	}
 
 	/** Prefer the panel's visible main action over a completed leading beat. */
@@ -1552,7 +1738,7 @@ class Generation_Workflows {
 					'audio',
 					'audio',
 					false,
-					self::demonstration_sound_prompt( $sound, $role, $base_prompt ),
+					self::demonstration_sound_prompt( $sound, $role, $base_prompt, 0, 'sound-cue' ),
 					[
 						'scene_id'            => (int) $scene->ID,
 						'shot_id'             => $shot_id,
@@ -2162,16 +2348,20 @@ class Generation_Workflows {
 		return [ 'text_to_sound_effect' ];
 	}
 
-	/** Compose one bounded prompt from the canonical Sound fields. */
-	private static function demonstration_sound_prompt( \WP_Post $sound, string $role, string $base_prompt ): string {
-		$role  = self::clean_text( $role ?: 'sound-effect', 4 );
-		$parts = [
-			__( 'Soundtrack role', 'worldgraph' ) . ': ' . $role,
-			__( 'Cue', 'worldgraph' ) . ': ' . self::clean_text( (string) $sound->post_title, 20 ),
+	/** Compose one bounded semantic prompt from the canonical Sound fields. */
+	private static function demonstration_sound_prompt( \WP_Post $sound, string $role, string $base_prompt, int $template_id = 0, string $intent = 'sound-cue' ): string {
+		$role     = self::clean_text( $role ?: 'sound-effect', 4 );
+		$sections = [
+			self::prompt_section( 'primary', __( 'Cue', 'worldgraph' ) . ': ' . self::clean_text( (string) $sound->post_title, 20 ), true ),
+			self::prompt_section( 'subject', __( 'Soundtrack role', 'worldgraph' ) . ': ' . $role ),
 		];
 		$scene_context = self::sound_scene_context( $sound );
 		if ( '' !== $scene_context ) {
-			$parts[] = $scene_context;
+			$sections[] = self::prompt_section( 'setting', $scene_context );
+		}
+		$audio_direction = self::scene_audio_direction( $sound );
+		if ( '' !== $audio_direction ) {
+			$sections[] = self::prompt_section( 'continuity', $audio_direction, true );
 		}
 
 		// Supplied performance copy is protected. Bounds apply to the surrounding
@@ -2180,35 +2370,80 @@ class Generation_Workflows {
 		$lyrics = self::audio_verbatim_text( (string) worldgraph_get_field_value( (int) $sound->ID, 'lyrics' ) );
 		$notes  = self::clean_text( (string) worldgraph_get_field_value( (int) $sound->ID, 'production_notes' ), 40 );
 		if ( '' !== $spoken ) {
-			$parts[] = __( 'Speak this text exactly', 'worldgraph' ) . ': ' . $spoken;
+			$sections[] = self::prompt_section( 'verbatim', __( 'Speak this text exactly', 'worldgraph' ) . ': ' . $spoken, true );
 		}
 		if ( '' !== $lyrics ) {
-			$parts[] = __( 'Lyrics', 'worldgraph' ) . ': ' . $lyrics;
+			$sections[] = self::prompt_section( 'verbatim', __( 'Lyrics', 'worldgraph' ) . ': ' . $lyrics, true );
+		}
+		$duration = self::prompt_duration( (string) worldgraph_get_field_value( (int) $sound->ID, 'duration' ) );
+		if ( '' !== $duration ) {
+			$sections[] = self::prompt_section( 'motion', __( 'Target duration', 'worldgraph' ) . ': ' . $duration . '.', true );
+		}
+		$relation = self::sound_story_relation( (string) worldgraph_get_field_value( (int) $sound->ID, 'diegetic' ) );
+		if ( '' !== $relation ) {
+			$sections[] = self::prompt_section( 'subject', __( 'Story-world relation', 'worldgraph' ) . ': ' . $relation );
 		}
 		$description = self::clean_text( (string) ( $sound->post_excerpt ?: $sound->post_content ), 48 );
 		if ( '' !== $description ) {
-			$parts[] = __( 'Description', 'worldgraph' ) . ': ' . $description;
+			$sections[] = self::prompt_section( 'action', __( 'Description', 'worldgraph' ) . ': ' . $description );
 		}
 		if ( '' !== $notes ) {
-			$parts[] = __( 'Production notes', 'worldgraph' ) . ': ' . $notes;
+			$sections[] = self::prompt_section( 'author_instructions', __( 'Production notes', 'worldgraph' ) . ': ' . $notes, true );
 		}
 		$instructions = self::clean_text( (string) worldgraph_get_field_value( (int) $sound->ID, 'generation_prompt' ), 40 );
 		if ( '' !== $instructions ) {
-			$parts[] = __( 'Generation instructions', 'worldgraph' ) . ': ' . $instructions;
+			$sections[] = self::prompt_section( 'author_instructions', __( 'Generation instructions', 'worldgraph' ) . ': ' . $instructions, true );
 		}
 		$base_prompt = self::clean_text( $base_prompt, 40 );
 		if ( '' !== $base_prompt ) {
-			$parts[] = __( 'Additional request instructions', 'worldgraph' ) . ': ' . $base_prompt;
+			$sections[] = self::prompt_section( 'author_instructions', __( 'Additional request instructions', 'worldgraph' ) . ': ' . $base_prompt, true );
 		}
 		if ( in_array( $role, [ 'narration', 'voiceover', 'adr' ], true ) ) {
-			$parts[] = __( 'Output constraints: speak only the supplied copy, preserve its wording, and produce clean intelligible audio without unrelated music or effects unless requested.', 'worldgraph' );
+			$constraints = __( 'Output constraints: speak only the supplied copy, preserve its wording, and produce clean intelligible audio without unrelated music or effects unless requested.', 'worldgraph' );
 		} elseif ( 'music' === $role ) {
-			$parts[] = __( 'Output constraints: produce only the requested music cue, preserve supplied lyrics and mood, and avoid unrelated speech or sound effects.', 'worldgraph' );
+			$constraints = __( 'Output constraints: produce only the requested music cue, preserve supplied lyrics and mood, and avoid unrelated speech or sound effects.', 'worldgraph' );
 		} else {
-			$parts[] = __( 'Output constraints: render only the described sound source with a clean beginning and ending, and add no unrelated speech or music.', 'worldgraph' );
+			$constraints = __( 'Output constraints: render only the described sound source with a clean beginning and ending, and add no unrelated speech or music.', 'worldgraph' );
 		}
+		$sections[] = self::prompt_section( 'constraints', $constraints, true );
 
-		return implode( "\n\n", $parts );
+		$modality = $template_id ? Generation_Modality::sanitize( (string) worldgraph_get_field_value( $template_id, 'modality' ) ) : '';
+		$policy   = Generation_Prompt_Policy::for_template(
+			$template_id,
+			[
+				'output_type' => 'audio',
+				'modality'    => $modality,
+				'post_type'   => 'worldgraph_sound',
+				'intent'      => $intent,
+			]
+		);
+
+		$rendered = Generation_Prompt_Policy::render( $sections, $policy );
+		return (string) $rendered['prompt'];
+	}
+
+	/** Explain a Sound's diegetic value in plain production language. */
+	private static function sound_story_relation( string $value ): string {
+		$relations = [
+			'diegetic'     => __( 'Diegetic; characters hear it inside the story world.', 'worldgraph' ),
+			'non_diegetic' => __( 'Non-diegetic; only the audience hears it.', 'worldgraph' ),
+			'internal'     => __( 'Internal or subjective; present it from a character’s auditory perspective.', 'worldgraph' ),
+			'mixed'        => __( 'Mixed or ambiguous; move deliberately between story-world and audience-only sound.', 'worldgraph' ),
+		];
+
+		return (string) ( $relations[ sanitize_key( $value ) ] ?? '' );
+	}
+
+	/** Return the concise sonic continuity inherited from a Sound's Scene. */
+	private static function scene_audio_direction( \WP_Post $sound ): string {
+		$scene_id = self::related_field_id( (int) $sound->ID, 'worldgraph_sound', 'scene', 'worldgraph_scene' );
+		$direction = $scene_id
+			? self::complete_phrase( (string) worldgraph_get_field_value( $scene_id, 'audio_direction' ), 16 )
+			: '';
+
+		return '' !== $direction
+			? __( 'Scene sound and music direction', 'worldgraph' ) . ': ' . $direction
+			: '';
 	}
 
 	/** Give a Sound only compact, non-visual context from its owning Scene. */
@@ -2546,6 +2781,9 @@ class Generation_Workflows {
 		$source_type = (string) ( $task['source_type'] ?? get_post_type( $source_id ) );
 		$intent      = sanitize_key( (string) ( $task['intent'] ?? '' ) );
 		$output      = self::intent( $source_type, $intent );
+		if ( $source_id && 'worldgraph_sound' === $source_type && 'audio' === (string) ( $task['type'] ?? '' ) ) {
+			return Asset_Generator::build_prompt( $source_id, 'sound-cue', $base_prompt, $template_id );
+		}
 		if ( $source_id && ! empty( $output ) && (string) ( $output['type'] ?? '' ) === (string) ( $task['type'] ?? '' ) ) {
 			return Asset_Generator::build_prompt( $source_id, $intent, $base_prompt, $template_id );
 		}
@@ -2681,6 +2919,12 @@ class Generation_Workflows {
 				continue;
 			}
 			$task['template_id'] = $template_id;
+			if ( 'worldgraph_sound' === (string) $task['source_type'] && 'audio' === (string) $task['type'] ) {
+				$copy_validation = self::validate_sound_prompt_copy( (int) $task['source_id'], $template_id );
+				if ( is_wp_error( $copy_validation ) ) {
+					return $copy_validation;
+				}
+			}
 			$task['prompt']      = self::finalize_task_prompt(
 				$task,
 				$template_id,

@@ -57,15 +57,17 @@ class Generation_Run_Defaults {
 		$project_id     = Generation_Workflows::project_id_for_source( $source_id );
 		$template       = Template_Run_Controls::description_defaults( $description );
 		$template_layer = self::template_layer( $template_id, $description, $template );
-		$profile        = 'template' !== $scope
-			? Template_Run_Controls::profile_defaults( $description, Asset_Generator::project_media_profile( $source_id ) )
-			: [];
+		$profiles       = 'template' !== $scope
+			? self::profile_layers( $source_id, $description )
+			: [ 'project' => [], 'item' => [] ];
+		$profile        = (array) $profiles['project'];
 		$project        = 'template' !== $scope && $project_id
 			? self::read_layer( $project_id, $connection_id, $template_id, $description )
 			: self::empty_layer( 0 );
 		$item           = 'item' === $scope && $source_id !== $project_id
 			? self::read_layer( $source_id, $connection_id, $template_id, $description )
 			: self::empty_layer( $source_id );
+		$item['values'] = array_merge( (array) $profiles['item'], (array) $item['values'] );
 
 		$effective = [];
 		$sources   = [];
@@ -295,9 +297,10 @@ class Generation_Run_Defaults {
 
 	/** Build the inherited values beneath the layer being saved. */
 	private static function baseline_for_scope( int $source_id, int $template_id, string $scope, array $description ): array {
+		$profiles = self::profile_layers( $source_id, $description );
 		$baseline = array_merge(
 			Template_Run_Controls::description_defaults( $description ),
-			Template_Run_Controls::profile_defaults( $description, Asset_Generator::project_media_profile( $source_id ) )
+			(array) $profiles['project']
 		);
 		if ( 'item' === $scope ) {
 			$project_id = Generation_Workflows::project_id_for_source( $source_id );
@@ -305,9 +308,31 @@ class Generation_Run_Defaults {
 				$project = self::read_layer( $project_id, self::connection_id( $template_id ), $template_id, $description );
 				$baseline = array_merge( $baseline, (array) $project['values'] );
 			}
+			$baseline = array_merge( $baseline, (array) $profiles['item'] );
 		}
 
 		return $baseline;
+	}
+
+	/** Split broad Project framing from source-authored timing defaults. */
+	private static function profile_layers( int $source_id, array $description ): array {
+		$values  = Template_Run_Controls::profile_defaults( $description, Asset_Generator::project_media_profile( $source_id ) );
+		$item    = [];
+		$fields  = [];
+		foreach ( (array) ( $description['fields'] ?? [] ) as $field ) {
+			if ( is_array( $field ) && isset( $field['key'] ) ) {
+				$fields[ (string) $field['key'] ] = (string) ( $field['semantic'] ?? '' );
+			}
+		}
+		foreach ( $values as $key => $value ) {
+			$semantic = $fields[ (string) $key ] ?? '';
+			if ( 'duration' === $semantic || in_array( (string) $key, [ 'duration', 'duration_seconds' ], true ) ) {
+				$item[ (string) $key ] = $value;
+				unset( $values[ $key ] );
+			}
+		}
+
+		return [ 'project' => $values, 'item' => $item ];
 	}
 
 	/** Read and atomically revalidate one exact stored layer. */
