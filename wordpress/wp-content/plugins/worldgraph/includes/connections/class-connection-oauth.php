@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  *
  * Providers declare trusted endpoint and presentation metadata under the
  * adapter manifest's `oauth` key. The service owns admin routing, one-time
- * state, DCR, token exchange, refresh locking, and encrypted-at-rest storage.
+ * state, DCR, token exchange, mutation locking, and encrypted-at-rest storage.
  */
 final class Connection_OAuth {
 
@@ -799,12 +799,15 @@ final class Connection_OAuth {
 		if ( is_wp_error( $payload ) ) {
 			return $payload;
 		}
-		$auth_method = is_scalar( $payload['token_endpoint_auth_method'] ?? null ) ? (string) $payload['token_endpoint_auth_method'] : 'none';
-		if ( ! empty( $payload['client_secret'] ) || 'none' !== $auth_method ) {
+		if ( array_key_exists( 'token_endpoint_auth_method', $payload ) && ! is_string( $payload['token_endpoint_auth_method'] ) ) {
+			return new WP_Error( 'worldgraph_oauth_client_not_public', __( 'The provider did not register a public PKCE client.', 'worldgraph' ) );
+		}
+		$auth_method = is_string( $payload['token_endpoint_auth_method'] ?? null ) ? $payload['token_endpoint_auth_method'] : 'none';
+		if ( array_key_exists( 'client_secret', $payload ) || 'none' !== $auth_method ) {
 			return new WP_Error( 'worldgraph_oauth_client_not_public', __( 'The provider did not register a public PKCE client.', 'worldgraph' ) );
 		}
 
-		$client_id = is_scalar( $payload['client_id'] ?? null ) ? (string) $payload['client_id'] : '';
+		$client_id = is_string( $payload['client_id'] ?? null ) ? $payload['client_id'] : '';
 		return self::valid_client_id( $client_id )
 			? $client_id
 			: new WP_Error( 'worldgraph_oauth_client_invalid', __( 'The provider returned an invalid OAuth client registration.', 'worldgraph' ) );
@@ -852,12 +855,12 @@ final class Connection_OAuth {
 
 	/** Build one versioned, provider-bound credential envelope. */
 	private static function envelope_from_response( array $tokens, string $provider, string $profile, string $client_id, array $config, string $fallback_refresh_token = '' ) {
-		$access_token = is_scalar( $tokens['access_token'] ?? null ) ? (string) $tokens['access_token'] : '';
-		$token_type   = is_scalar( $tokens['token_type'] ?? null ) ? strtolower( (string) $tokens['token_type'] ) : '';
-		if ( array_key_exists( 'refresh_token', $tokens ) && ! is_scalar( $tokens['refresh_token'] ) ) {
+		$access_token = is_string( $tokens['access_token'] ?? null ) ? $tokens['access_token'] : '';
+		$token_type   = is_string( $tokens['token_type'] ?? null ) ? strtolower( $tokens['token_type'] ) : '';
+		if ( array_key_exists( 'refresh_token', $tokens ) && ! is_string( $tokens['refresh_token'] ) ) {
 			return new WP_Error( 'worldgraph_oauth_token_invalid', __( 'The provider returned an invalid OAuth token.', 'worldgraph' ) );
 		}
-		$refresh_token = is_scalar( $tokens['refresh_token'] ?? null ) ? (string) $tokens['refresh_token'] : '';
+		$refresh_token = is_string( $tokens['refresh_token'] ?? null ) ? $tokens['refresh_token'] : '';
 		if ( '' === $refresh_token ) {
 			$refresh_token = $fallback_refresh_token;
 		}
@@ -879,12 +882,20 @@ final class Connection_OAuth {
 			? max( 0, min( DAY_IN_SECONDS * 365, (int) $tokens['expires_in'] ) )
 			: 0;
 
-		if ( array_key_exists( 'scope', $tokens ) && ! is_scalar( $tokens['scope'] ) ) {
+		if ( array_key_exists( 'scope', $tokens ) && ! is_string( $tokens['scope'] ) ) {
 			return new WP_Error( 'worldgraph_oauth_token_invalid', __( 'The provider returned an invalid OAuth scope.', 'worldgraph' ) );
 		}
-		$scope_value = is_scalar( $tokens['scope'] ?? null ) ? (string) $tokens['scope'] : implode( ' ', (array) $config['scopes'] );
+		$scope_value = is_string( $tokens['scope'] ?? null ) ? $tokens['scope'] : implode( ' ', (array) $config['scopes'] );
 		$scope = preg_split( '/\s+/', trim( sanitize_text_field( $scope_value ) ) );
-		$scope = is_array( $scope ) ? array_slice( array_values( array_filter( $scope ) ), 0, 30 ) : (array) $config['scopes'];
+		$scope = is_array( $scope ) ? array_values( array_filter( $scope ) ) : (array) $config['scopes'];
+		if ( count( $scope ) > 30 ) {
+			return new WP_Error( 'worldgraph_oauth_token_invalid', __( 'The provider returned invalid OAuth scopes.', 'worldgraph' ) );
+		}
+		foreach ( $scope as $scope_item ) {
+			if ( ! is_string( $scope_item ) || strlen( $scope_item ) > 200 || ! preg_match( '#^[A-Za-z0-9._~:/-]+$#', $scope_item ) ) {
+				return new WP_Error( 'worldgraph_oauth_token_invalid', __( 'The provider returned invalid OAuth scopes.', 'worldgraph' ) );
+			}
+		}
 		return [
 			'kind'               => 'worldgraph-oauth',
 			'version'            => 1,

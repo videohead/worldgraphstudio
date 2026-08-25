@@ -551,7 +551,7 @@ class Higgsfield_MCP {
 	/** Decide whether a current-era 400 is eligible for legacy negotiation. */
 	private static function should_fallback_to_legacy( $message ): bool {
 		if ( is_wp_error( $message ) ) {
-			return false;
+			return true;
 		}
 		$error_code = is_array( $message ) && is_int( $message['error']['code'] ?? null )
 			? $message['error']['code']

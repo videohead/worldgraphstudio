@@ -316,7 +316,7 @@ external loader's signature even if the first version does not use them.
 
 Use `WorldGraph\Connections\Connection_OAuth` when a provider supports a
 public OAuth 2.0 authorization-code client with S256 PKCE. Do not duplicate
-admin-post routes, callback state, token exchange, refresh locking, or token
+admin-post routes, callback state, token exchange, credential mutation locking, or token
 storage in a provider class. The broker is initialized once by core and reads
 only trusted adapter manifest metadata.
 

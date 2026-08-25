@@ -343,6 +343,7 @@ class Test_Higgsfield extends TestCase {
 		foreach ( [ '', '{malformed', '{"jsonrpc":"2.0","error":{"code":-32002,"message":"Not initialized"}}', '{"jsonrpc":"2.0","error":{"code":-32600,"message":"Unknown"}}' ] as $body ) {
 			$this->assertTrue( $fallback->invoke( null, $decode->invoke( null, $body ) ) );
 		}
+		$this->assertTrue( $fallback->invoke( null, new WP_Error( 'worldgraph_higgsfield_mcp_response_invalid', 'Malformed modern response.' ) ) );
 		foreach ( [ -32020, -32021, -32022 ] as $code ) {
 			$body = wp_json_encode( [ 'jsonrpc' => '2.0', 'error' => [ 'code' => $code, 'message' => 'Initialize is mentioned but the code is authoritative.' ] ] );
 			$this->assertFalse( $fallback->invoke( null, $decode->invoke( null, $body ) ) );
@@ -510,16 +511,21 @@ class Test_Higgsfield extends TestCase {
 		foreach (
 			[
 				[ 'access_token' => 'access-token', 'expires_in' => 3600 ],
+				[ 'access_token' => 123, 'token_type' => 'Bearer' ],
+				[ 'access_token' => 'access-token', 'token_type' => 123 ],
 				[ 'access_token' => 'access-token', 'token_type' => 'Bearer', 'expires_in' => 'invalid' ],
 				[ 'access_token' => 'access-token', 'token_type' => 'Bearer', 'expires_in' => -1 ],
 				[ 'access_token' => 'access-token', 'token_type' => 'Bearer', 'refresh_token' => [] ],
+				[ 'access_token' => 'access-token', 'token_type' => 'Bearer', 'scope' => [] ],
+				[ 'access_token' => 'access-token', 'token_type' => 'Bearer', 'scope' => 'openid invalid,scope' ],
+				[ 'access_token' => 'access-token', 'token_type' => 'Bearer', 'scope' => implode( ' ', array_fill( 0, 31, 'scope' ) ) ],
 			] as $tokens
 		) {
 			$this->assertInstanceOf( WP_Error::class, $envelope->invoke( null, $tokens, 'acme', 'mcp', 'public-client', $config ) );
 		}
 	}
 
-	/** OAuth lifecycle is global, manifest-driven, replay-safe, and refresh-serialized. */
+	/** OAuth lifecycle is global, manifest-driven, replay-safe, and mutation-serialized. */
 	public function test_reusable_oauth_source_contracts(): void {
 		$oauth     = $this->source( 'includes/connections/class-connection-oauth.php' );
 		$bootstrap = $this->source( 'worldgraph.php' );
