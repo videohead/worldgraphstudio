@@ -404,6 +404,170 @@ function worldgraph_get_all_cpts(): array {
 }
 
 /**
+ * Return required-field hydration rules keyed by CPT.
+ *
+ * @return array<string, array<string, string>>
+ */
+function worldgraph_required_field_hydration_map(): array {
+	return [
+		'worldgraph_project'   => [
+			'project_name' => 'post_title',
+			'project_slug' => 'post_name',
+			'owner'        => 'post_author',
+		],
+		'worldgraph_world'     => [ 'world_name' => 'post_title' ],
+		'worldgraph_character' => [ 'display_name' => 'post_title' ],
+		'worldgraph_location'  => [ 'location_name' => 'post_title' ],
+		'worldgraph_prop'      => [ 'prop_name' => 'post_title' ],
+		'worldgraph_org'       => [ 'organization_name' => 'post_title' ],
+		'worldgraph_episode'   => [ 'title' => 'post_title' ],
+		'worldgraph_scene'     => [ 'title' => 'post_title' ],
+		'worldgraph_asset'     => [ 'asset_title' => 'post_title' ],
+		'worldgraph_template'  => [ 'template_name' => 'post_title' ],
+		'worldgraph_conn'      => [ 'connection_name' => 'post_title' ],
+	];
+}
+
+/**
+ * Backfill required World Graph fields from canonical WordPress post values.
+ *
+ * @param int      $post_id Post ID.
+ * @param \WP_Post $post Post object.
+ * @param bool     $update Whether this is an update.
+ */
+function worldgraph_hydrate_required_fields_on_save( int $post_id, \WP_Post $post, bool $update ): void {
+	unset( $update );
+
+	if ( wp_is_post_revision( $post_id ) || wp_is_post_autosave( $post_id ) ) {
+		return;
+	}
+
+	$cpt = $post->post_type;
+	$map = worldgraph_required_field_hydration_map();
+	if ( empty( $map[ $cpt ] ) ) {
+		return;
+	}
+
+	foreach ( $map[ $cpt ] as $field_name => $source ) {
+		$current = worldgraph_get_field_value( $post_id, $field_name );
+		if ( ! worldgraph_required_field_value_is_empty( $current ) ) {
+			continue;
+		}
+
+		if ( 'post_title' === $source ) {
+			$incoming = trim( (string) $post->post_title );
+			if ( '' !== $incoming ) {
+				worldgraph_update_field_value( $post_id, $field_name, sanitize_text_field( $incoming ) );
+			}
+			continue;
+		}
+
+		if ( 'post_name' === $source ) {
+			$incoming = trim( (string) $post->post_name );
+			if ( '' === $incoming && '' !== trim( (string) $post->post_title ) ) {
+				$incoming = sanitize_title( (string) $post->post_title );
+			}
+			if ( '' !== $incoming ) {
+				worldgraph_update_field_value( $post_id, $field_name, sanitize_title( $incoming ) );
+			}
+			continue;
+		}
+
+		if ( 'post_author' === $source && ! empty( $post->post_author ) ) {
+			worldgraph_update_field_value( $post_id, $field_name, (int) $post->post_author );
+		}
+	}
+}
+
+/**
+ * Show a missing-required-fields warning on World Graph edit screens.
+ */
+function worldgraph_render_required_fields_notice(): void {
+	if ( ! is_admin() || ! current_user_can( 'edit_posts' ) ) {
+		return;
+	}
+
+	$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+	if ( ! $screen || 'post' !== (string) $screen->base ) {
+		return;
+	}
+
+	$cpt = (string) ( $screen->post_type ?? '' );
+	$all = worldgraph_get_all_cpts();
+	if ( ! isset( $all[ $cpt ] ) ) {
+		return;
+	}
+
+	$post_id = isset( $_GET['post'] ) ? absint( wp_unslash( $_GET['post'] ) ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin context.
+	if ( $post_id <= 0 ) {
+		return;
+	}
+
+	$missing = worldgraph_missing_required_field_labels( $post_id, $cpt );
+	if ( empty( $missing ) ) {
+		return;
+	}
+
+	echo '<div class="notice notice-warning"><p><strong>'
+		. esc_html__( 'This item cannot be published yet.', 'worldgraph' )
+		. '</strong> '
+		. esc_html__( 'Fill these required fields:', 'worldgraph' )
+		. ' '
+		. esc_html( implode( ', ', $missing ) )
+		. '.</p></div>';
+}
+
+/**
+ * Return labels for required fields that are currently empty.
+ *
+ * @param int    $post_id Post ID.
+ * @param string $cpt CPT slug.
+ * @return array<int, string>
+ */
+function worldgraph_missing_required_field_labels( int $post_id, string $cpt ): array {
+	$fields = worldgraph_get_fields( $cpt );
+	if ( empty( $fields ) ) {
+		return [];
+	}
+
+	$missing = [];
+	foreach ( $fields as $field_name => $field ) {
+		if ( empty( $field['required'] ) ) {
+			continue;
+		}
+
+		$value = worldgraph_get_field_value( $post_id, (string) $field_name );
+		if ( worldgraph_required_field_value_is_empty( $value ) ) {
+			$missing[] = (string) ( $field['label'] ?? $field_name );
+		}
+	}
+
+	return $missing;
+}
+
+/**
+ * Whether a field value should be treated as empty for required-field checks.
+ *
+ * @param mixed $value Field value.
+ */
+function worldgraph_required_field_value_is_empty( $value ): bool {
+	if ( is_array( $value ) ) {
+		return 0 === count( array_filter( $value, static function( $item ): bool {
+			if ( is_numeric( $item ) ) {
+				return (int) $item > 0;
+			}
+			return '' !== trim( (string) $item );
+		} ) );
+	}
+
+	if ( is_numeric( $value ) ) {
+		return (int) $value <= 0;
+	}
+
+	return '' === trim( (string) $value );
+}
+
+/**
  * Get Schema.org base type for each World Graph Studio CPT.
  *
  * This is a non-destructive semantic alignment layer used for interoperability.

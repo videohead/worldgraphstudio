@@ -303,6 +303,8 @@ function init(): void {
 	// SCF JSON archives seed editable persisted groups; the database copies are
 	// runtime-authoritative and managed in Secure Custom Fields.
 	Utils\SCF_Fields::boot( Utils\worldgraph_get_all_field_defaults() );
+	add_action( 'save_post', 'WorldGraph\\Utils\\worldgraph_hydrate_required_fields_on_save', 20, 3 );
+	add_action( 'admin_notices', 'WorldGraph\\Utils\\worldgraph_render_required_fields_notice' );
 
 	// Canonical story interchange is owned by a bundled, independently gated
 	// feature plugin. Load it before any connector that consumes the legacy
