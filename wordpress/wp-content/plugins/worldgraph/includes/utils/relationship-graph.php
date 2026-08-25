@@ -28,7 +28,16 @@ function fetch_relationship_graph( array $params = [] ) {
 	foreach ( get_posts( [ 'post_type' => array_keys( worldgraph_get_all_cpts() ), 'post_status' => 'any', 'posts_per_page' => -1 ] ) as $post ) {
 		$nodes[] = [ 'id' => $post->ID, 'type' => $post->post_type, 'title' => $post->post_title ];
 		foreach ( get_relationships( $post->ID, $post->post_type ) as $relationship ) {
-			$edges[] = [ 'source' => $post->ID, 'target' => absint( $relationship['to_id'] ), 'type' => $relationship['type'] ?? 'related_to' ];
+			$edge = [
+				'source' => $post->ID,
+				'target' => absint( $relationship['to_id'] ),
+				'type'   => $relationship['type'] ?? 'related_to',
+			];
+			$field = sanitize_key( (string) ( $relationship['metadata']['field'] ?? '' ) );
+			if ( '' !== $field ) {
+				$edge['field'] = $field;
+			}
+			$edges[] = $edge;
 		}
 	}
 	$graph = [ 'nodes' => $nodes, 'edges' => $edges ];
@@ -198,7 +207,383 @@ function analyze_relationship_graph( array $graph ): array {
 		'isolated_entities'       => array_values( array_filter( $entities, static function( array $entity ): bool { return 0 === $entity['connection_count']; } ) ),
 		'entity_counts'           => array_count_values( array_column( $nodes, 'type' ) ),
 		'relationship_distribution' => get_relationship_type_distribution( [ 'edges' => $edges ] ),
+		'development'              => build_graph_development_compass( [ 'nodes' => $nodes, 'edges' => $edges ] ),
 	];
+}
+
+/**
+ * Build deterministic story-development prompts from graph structure.
+ *
+ * The compass reports only explicit graph facts and canonical ownership paths.
+ * It does not score the story, infer narrative intent, or alter any entity or
+ * relationship.
+ *
+ * @param array $graph Graph containing nodes and edges.
+ * @return array Development phase, opportunities, and existing elements to develop.
+ */
+function build_graph_development_compass( array $graph ): array {
+	$opportunity_limit = 12;
+	$foundation_types  = [
+		'worldgraph_character' => [
+			'id'       => 'character',
+			'singular' => __( 'Character', 'worldgraph' ),
+			'plural'   => __( 'Characters', 'worldgraph' ),
+			'question' => __( 'Who could appear in this story?', 'worldgraph' ),
+		],
+		'worldgraph_location'  => [
+			'id'       => 'location',
+			'singular' => __( 'Location', 'worldgraph' ),
+			'plural'   => __( 'Locations', 'worldgraph' ),
+			'question' => __( 'Where could this story take place?', 'worldgraph' ),
+		],
+		'worldgraph_scene'     => [
+			'id'       => 'scene',
+			'singular' => __( 'Scene', 'worldgraph' ),
+			'plural'   => __( 'Scenes', 'worldgraph' ),
+			'question' => __( 'What event or change could be represented as a Scene?', 'worldgraph' ),
+		],
+	];
+	$element_types     = [
+		'worldgraph_character' => [ 'singular' => __( 'Character', 'worldgraph' ) ],
+		'worldgraph_location'  => [ 'singular' => __( 'Location', 'worldgraph' ) ],
+		'worldgraph_prop'      => [ 'singular' => __( 'Prop', 'worldgraph' ) ],
+	];
+	$supporting_types  = [
+		'worldgraph_shot' => [ 'singular' => __( 'Shot', 'worldgraph' ) ],
+	];
+	$recognized_types = $foundation_types + $element_types + $supporting_types;
+	$nodes_by_type     = [];
+	$nodes_by_id       = [];
+
+	foreach ( array_filter( $graph['nodes'] ?? [], 'is_array' ) as $node ) {
+		$id   = max( 0, (int) ( $node['id'] ?? 0 ) );
+		$type = (string) ( $node['type'] ?? '' );
+		if ( ! $id || ! isset( $recognized_types[ $type ] ) ) {
+			continue;
+		}
+
+		$singular = $recognized_types[ $type ]['singular'];
+		$name     = trim( (string) ( $node['name'] ?? $node['title'] ?? '' ) );
+		$entity = [
+			'id'   => $id,
+			'type' => $type,
+			/* translators: 1: Story Graph entity type, 2: entity post ID. */
+			'name' => '' !== $name ? $name : sprintf( __( '%1$s #%2$d', 'worldgraph' ), $singular, $id ),
+		];
+
+		$nodes_by_id[ $id ]       = $entity;
+		$nodes_by_type[ $type ][] = $entity;
+	}
+
+	foreach ( $nodes_by_type as &$typed_nodes ) {
+		usort(
+			$typed_nodes,
+			static function ( array $left, array $right ): int {
+				$id_comparison = $left['id'] <=> $right['id'];
+				return 0 !== $id_comparison ? $id_comparison : strcmp( $left['name'], $right['name'] );
+			}
+		);
+	}
+	unset( $typed_nodes );
+
+	$scene_context_connections      = [];
+	$entities_with_scene_connection = [];
+	$named_child_owned_shot_scenes  = [];
+	$child_owned_shot_scenes        = [];
+	$parent_owned_shot_scenes       = [];
+	$shot_scene_connections         = [];
+	$graph_edges                    = array_values( array_filter( $graph['edges'] ?? [], 'is_array' ) );
+	foreach ( $nodes_by_type['worldgraph_scene'] ?? [] as $scene ) {
+		$scene_context_connections[ $scene['id'] ] = [];
+	}
+
+	// Resolve Shot ownership first so later element-to-Shot edges can inherit
+	// the Scene context regardless of the input edge order or direction.
+	foreach ( $graph_edges as $edge ) {
+		$source = max( 0, (int) ( $edge['source'] ?? 0 ) );
+		$target = max( 0, (int) ( $edge['target'] ?? 0 ) );
+		if ( ! isset( $nodes_by_id[ $source ], $nodes_by_id[ $target ] ) ) {
+			continue;
+		}
+
+		$source_type = $nodes_by_id[ $source ]['type'];
+		$target_type = $nodes_by_id[ $target ]['type'];
+		$edge_type   = (string) ( $edge['type'] ?? '' );
+		if ( 'worldgraph_shot' === $source_type && 'worldgraph_scene' === $target_type && 'belongs_to' === $edge_type ) {
+			$child_owned_shot_scenes[ $source ][ $target ] = true;
+			if ( 'scene' === sanitize_key( (string) ( $edge['field'] ?? '' ) ) ) {
+				$named_child_owned_shot_scenes[ $source ][ $target ] = true;
+			}
+		} elseif ( 'worldgraph_scene' === $source_type && 'worldgraph_shot' === $target_type && in_array( $edge_type, [ 'contains', 'belongs_to' ], true ) ) {
+			$parent_owned_shot_scenes[ $target ][ $source ] = true;
+		}
+	}
+	foreach ( $nodes_by_type['worldgraph_shot'] ?? [] as $shot ) {
+		$scene_ids = array_keys(
+			$named_child_owned_shot_scenes[ $shot['id'] ]
+				?? $child_owned_shot_scenes[ $shot['id'] ]
+				?? $parent_owned_shot_scenes[ $shot['id'] ]
+				?? []
+		);
+		sort( $scene_ids, SORT_NUMERIC );
+		if ( ! empty( $scene_ids ) ) {
+			$shot_scene_connections[ $shot['id'] ] = (int) $scene_ids[0];
+		}
+	}
+
+	foreach ( $graph_edges as $edge ) {
+		$source = max( 0, (int) ( $edge['source'] ?? 0 ) );
+		$target = max( 0, (int) ( $edge['target'] ?? 0 ) );
+		if ( ! isset( $nodes_by_id[ $source ], $nodes_by_id[ $target ] ) ) {
+			continue;
+		}
+
+		$source_type = $nodes_by_id[ $source ]['type'];
+		$target_type = $nodes_by_id[ $target ]['type'];
+		if ( 'worldgraph_scene' === $source_type && isset( $element_types[ $target_type ] ) ) {
+			$entities_with_scene_connection[ $target ] = true;
+			if ( in_array( $target_type, [ 'worldgraph_character', 'worldgraph_location' ], true ) ) {
+				$scene_context_connections[ $source ][ $target_type ][ $target ] = true;
+			}
+		} elseif ( 'worldgraph_scene' === $target_type && isset( $element_types[ $source_type ] ) ) {
+			$entities_with_scene_connection[ $source ] = true;
+			if ( in_array( $source_type, [ 'worldgraph_character', 'worldgraph_location' ], true ) ) {
+				$scene_context_connections[ $target ][ $source_type ][ $source ] = true;
+			}
+		}
+
+		$shot_id      = 'worldgraph_shot' === $source_type ? $source : ( 'worldgraph_shot' === $target_type ? $target : 0 );
+		$element_id   = $shot_id === $source ? $target : $source;
+		$element_type = $nodes_by_id[ $element_id ]['type'] ?? '';
+		if ( ! $shot_id || ! isset( $element_types[ $element_type ] ) ) {
+			continue;
+		}
+
+		$scene_id = (int) ( $shot_scene_connections[ $shot_id ] ?? 0 );
+		if ( $scene_id ) {
+			$entities_with_scene_connection[ $element_id ] = true;
+			if ( 'worldgraph_character' === $element_type ) {
+				$scene_context_connections[ $scene_id ][ $element_type ][ $element_id ] = true;
+			}
+		}
+	}
+
+	$opportunities           = [];
+	$missing_foundation      = 0;
+	$elements_without_scenes = 0;
+	$scene_context_gaps      = 0;
+	$has_characters          = ! empty( $nodes_by_type['worldgraph_character'] );
+	$has_locations           = ! empty( $nodes_by_type['worldgraph_location'] );
+	$has_scenes              = ! empty( $nodes_by_type['worldgraph_scene'] );
+	$total_opportunities     = 0;
+	$add_opportunity         = static function ( array $opportunity ) use ( &$opportunities, &$total_opportunities, $opportunity_limit ): void {
+		++$total_opportunities;
+		if ( count( $opportunities ) < $opportunity_limit ) {
+			$opportunities[] = $opportunity;
+		}
+	};
+
+	foreach ( $foundation_types as $type => $definition ) {
+		$count = count( $nodes_by_type[ $type ] ?? [] );
+		if ( 0 < $count ) {
+			continue;
+		}
+
+		++$missing_foundation;
+		$add_opportunity(
+			[
+				'id'                    => 'missing-foundation-' . $definition['id'],
+				'type'                  => 'missing_foundation',
+				'priority'              => 'high',
+				/* translators: %s: Story Graph entity type. */
+				'title'                 => sprintf( __( 'Create a %s', 'worldgraph' ), $definition['singular'] ),
+				/* translators: %s: plural Story Graph entity type. */
+				'evidence'              => sprintf( __( 'This graph contains 0 %s.', 'worldgraph' ), $definition['plural'] ),
+				'question'              => $definition['question'],
+				'suggested_entity_type' => $type,
+				'entity'                => null,
+			]
+		);
+	}
+
+	foreach ( $has_scenes ? $element_types : [] as $type => $definition ) {
+		foreach ( $nodes_by_type[ $type ] ?? [] as $entity ) {
+			if ( isset( $entities_with_scene_connection[ $entity['id'] ] ) ) {
+				continue;
+			}
+
+			++$elements_without_scenes;
+			$add_opportunity(
+				[
+					'id'                    => 'element-without-scene-' . $entity['id'],
+					'type'                  => 'element_without_scene',
+					'priority'              => 'medium',
+					/* translators: %s: Story Graph entity name. */
+					'title'                 => sprintf( __( 'Bring %s into a Scene', 'worldgraph' ), $entity['name'] ),
+					'evidence'              => sprintf(
+						/* translators: 1: entity name, 2: entity type, 3: entity post ID. */
+						__( '%1$s (%2$s #%3$d) is represented in 0 Scenes, directly or through a Scene-owned Shot.', 'worldgraph' ),
+						$entity['name'],
+						$definition['singular'],
+						$entity['id']
+					),
+					'question'              => graph_element_scene_question( $entity ),
+					'suggested_entity_type' => 'worldgraph_scene',
+					'entity'                => $entity,
+				]
+			);
+		}
+	}
+
+	foreach ( $nodes_by_type['worldgraph_scene'] ?? [] as $scene ) {
+		$connections = $scene_context_connections[ $scene['id'] ] ?? [];
+		if ( $has_characters && empty( $connections['worldgraph_character'] ) ) {
+			++$scene_context_gaps;
+			$add_opportunity(
+				[
+					'id'                    => 'scene-missing-character-' . $scene['id'],
+					'type'                  => 'scene_missing_character',
+					'priority'              => 'medium',
+					/* translators: %s: Scene name. */
+					'title'                 => sprintf( __( 'Add Character context to %s', 'worldgraph' ), $scene['name'] ),
+					'evidence'              => sprintf(
+						/* translators: 1: Scene name, 2: Scene post ID. */
+						__( '%1$s (Scene #%2$d) includes 0 Characters directly or through its Shots.', 'worldgraph' ),
+						$scene['name'],
+						$scene['id']
+					),
+					/* translators: %s: Scene name. */
+					'question'              => sprintf( __( 'Who acts, reacts, learns something, or is affected in %s?', 'worldgraph' ), $scene['name'] ),
+					'suggested_entity_type' => 'worldgraph_character',
+					'entity'                => $scene,
+				]
+			);
+		}
+
+		if ( $has_locations && empty( $connections['worldgraph_location'] ) ) {
+			++$scene_context_gaps;
+			$add_opportunity(
+				[
+					'id'                    => 'scene-missing-location-' . $scene['id'],
+					'type'                  => 'scene_missing_location',
+					'priority'              => 'medium',
+					/* translators: %s: Scene name. */
+					'title'                 => sprintf( __( 'Add Location context to %s', 'worldgraph' ), $scene['name'] ),
+					'evidence'              => sprintf(
+						/* translators: 1: Scene name, 2: Scene post ID. */
+						__( '%1$s (Scene #%2$d) is connected to 0 Locations.', 'worldgraph' ),
+						$scene['name'],
+						$scene['id']
+					),
+					/* translators: %s: Scene name. */
+					'question'              => sprintf( __( 'Where does %s take place?', 'worldgraph' ), $scene['name'] ),
+					'suggested_entity_type' => 'worldgraph_location',
+					'entity'                => $scene,
+				]
+			);
+		}
+	}
+
+	if ( 0 === $missing_foundation && 0 === $elements_without_scenes && 0 === $scene_context_gaps ) {
+		$add_opportunity(
+			[
+				'id'                    => 'explore-next-story-event',
+				'type'                  => 'next_story_event',
+				'priority'              => 'medium',
+				'title'                 => __( 'Imagine the next change', 'worldgraph' ),
+				'evidence'              => __( 'The current foundation and Scene-coverage checks found no structural gaps.', 'worldgraph' ),
+				'question'              => __( 'What changes next, who experiences it, and which new Scene or story element would make that change visible?', 'worldgraph' ),
+				'suggested_entity_type' => 'worldgraph_scene',
+				'entity'                => null,
+			]
+		);
+	}
+
+	if ( 0 < $missing_foundation ) {
+		$phase = [
+			'key'     => 'foundation',
+			'label'   => __( 'Build the foundation', 'worldgraph' ),
+			'summary' => sprintf(
+				/* translators: 1: Character count, 2: Location count, 3: Scene count. */
+				__( 'This graph contains %1$d Characters, %2$d Locations, and %3$d Scenes.', 'worldgraph' ),
+				count( $nodes_by_type['worldgraph_character'] ?? [] ),
+				count( $nodes_by_type['worldgraph_location'] ?? [] ),
+				count( $nodes_by_type['worldgraph_scene'] ?? [] )
+			),
+		];
+	} elseif ( 0 < $elements_without_scenes || 0 < $scene_context_gaps ) {
+		$phase = [
+			'key'     => 'connections',
+			'label'   => __( 'Connect story elements', 'worldgraph' ),
+			'summary' => sprintf(
+				/* translators: 1: unrepresented element count, 2: Scene context gap count. */
+				__( 'These checks found %1$d elements not represented in a Scene and %2$d Scene context gaps.', 'worldgraph' ),
+				$elements_without_scenes,
+				$scene_context_gaps
+			),
+		];
+	} else {
+		$phase = [
+			'key'     => 'review',
+			'label'   => __( 'Explore the next change', 'worldgraph' ),
+			'summary' => __( 'The structural coverage checks are clear. Use the next-event question to explore what the story could change or reveal.', 'worldgraph' ),
+		];
+	}
+
+	$elements_by_id      = [];
+	$elements_to_develop = [];
+	foreach ( $opportunities as $opportunity ) {
+		$entity = $opportunity['entity'];
+		if ( ! is_array( $entity ) ) {
+			continue;
+		}
+
+		$element_key = $entity['type'] . ':' . $entity['id'];
+		if ( ! isset( $elements_by_id[ $element_key ] ) ) {
+			$elements_by_id[ $element_key ] = count( $elements_to_develop );
+			$elements_to_develop[] = [
+				'id'              => $entity['id'],
+				'type'            => $entity['type'],
+				'name'            => $entity['name'],
+				'priority'        => $opportunity['priority'],
+				'opportunity_ids' => [],
+			];
+		}
+
+		$element_index = $elements_by_id[ $element_key ];
+		$elements_to_develop[ $element_index ]['opportunity_ids'][] = $opportunity['id'];
+	}
+
+	return [
+		'phase'                 => $phase,
+		'total_opportunities'   => $total_opportunities,
+		'has_more'              => $total_opportunities > count( $opportunities ),
+		'opportunities'         => $opportunities,
+		'elements_to_develop'   => array_slice( $elements_to_develop, 0, $opportunity_limit ),
+	];
+}
+
+/**
+ * Build an explicit Scene-connection question for an existing story element.
+ *
+ * @param array $entity Normalized graph entity.
+ * @return string Development question.
+ */
+function graph_element_scene_question( array $entity ): string {
+	switch ( $entity['type'] ) {
+		case 'worldgraph_character':
+			/* translators: %s: Character name. */
+			return sprintf( __( 'In which Scene could %s act, learn something, or change?', 'worldgraph' ), $entity['name'] );
+		case 'worldgraph_location':
+			/* translators: %s: Location name. */
+			return sprintf( __( 'Which Scene could take place at or refer to %s, and what changes there?', 'worldgraph' ), $entity['name'] );
+		case 'worldgraph_prop':
+			/* translators: %s: Prop name. */
+			return sprintf( __( 'Which Scene could introduce, use, transfer, or transform %s?', 'worldgraph' ), $entity['name'] );
+		default:
+			/* translators: %s: Story Graph entity name. */
+			return sprintf( __( 'Which Scene could connect to %s?', 'worldgraph' ), $entity['name'] );
+	}
 }
 
 /**
@@ -521,7 +906,7 @@ function relationship_type_label( string $type ): string {
  * @return bool
  */
 function cache_graph_analytics( array $analytics, int $ttl = 3600, int $project_id = 0 ): bool {
-	return set_transient( 'worldgraph_graph_analytics_' . $project_id, $analytics, $ttl );
+	return set_transient( graph_analytics_cache_key( 'worldgraph_graph_analytics_', $project_id ), $analytics, $ttl );
 }
 
 /**
@@ -531,7 +916,7 @@ function cache_graph_analytics( array $analytics, int $ttl = 3600, int $project_
  * @return array|false The cached analytics or false.
  */
 function get_cached_graph_analytics( int $project_id = 0 ) {
-	return get_transient( 'worldgraph_graph_analytics_' . $project_id );
+	return get_transient( graph_analytics_cache_key( 'worldgraph_graph_analytics_', $project_id ) );
 }
 
 /**
@@ -541,7 +926,9 @@ function get_cached_graph_analytics( int $project_id = 0 ) {
  * @return bool
  */
 function clear_cached_graph_analytics( int $project_id = 0 ): bool {
-	return delete_transient( 'worldgraph_graph_analytics_' . $project_id );
+	$cleared_current = delete_transient( graph_analytics_cache_key( 'worldgraph_graph_analytics_', $project_id ) );
+	$cleared_legacy  = delete_transient( 'worldgraph_graph_analytics_' . $project_id );
+	return $cleared_current || $cleared_legacy;
 }
 
 /**
@@ -553,7 +940,7 @@ function clear_cached_graph_analytics( int $project_id = 0 ): bool {
  * @return bool
  */
 function cache_character_network( array $network, int $ttl = 3600, int $project_id = 0 ): bool {
-	return set_transient( 'worldgraph_character_network_' . $project_id, $network, $ttl );
+	return set_transient( graph_analytics_cache_key( 'worldgraph_character_network_', $project_id ), $network, $ttl );
 }
 
 /**
@@ -563,7 +950,7 @@ function cache_character_network( array $network, int $ttl = 3600, int $project_
  * @return array|false The cached network or false.
  */
 function get_cached_character_network( int $project_id = 0 ) {
-	return get_transient( 'worldgraph_character_network_' . $project_id );
+	return get_transient( graph_analytics_cache_key( 'worldgraph_character_network_', $project_id ) );
 }
 
 /**
@@ -573,5 +960,63 @@ function get_cached_character_network( int $project_id = 0 ) {
  * @return bool
  */
 function clear_cached_character_network( int $project_id = 0 ): bool {
-	return delete_transient( 'worldgraph_character_network_' . $project_id );
+	$cleared_current = delete_transient( graph_analytics_cache_key( 'worldgraph_character_network_', $project_id ) );
+	$cleared_legacy  = delete_transient( 'worldgraph_character_network_' . $project_id );
+	return $cleared_current || $cleared_legacy;
+}
+
+/**
+ * Build a versioned analytics transient key.
+ *
+ * A shared version makes all project aggregates unreachable as soon as any
+ * canonical Story Graph post or relationship changes. Old transients then
+ * expire naturally without requiring an unbounded project-key scan.
+ *
+ * @param string $prefix     Cache namespace.
+ * @param int    $project_id Project post ID.
+ * @return string Transient key.
+ */
+function graph_analytics_cache_key( string $prefix, int $project_id ): string {
+	$version = max( 1, (int) get_option( 'worldgraph_graph_analytics_cache_version', 1 ) );
+	return $prefix . $version . '_' . max( 0, $project_id );
+}
+
+/**
+ * Invalidate cached analytics after a Story Graph post changes.
+ *
+ * @param int $post_id Optional post ID supplied by a WordPress hook.
+ */
+function invalidate_story_graph_analytics_cache( int $post_id = 0 ): void {
+	if ( $post_id ) {
+		$post_type = get_post_type( $post_id );
+		if ( ! $post_type || ! isset( worldgraph_get_all_cpts()[ $post_type ] ) ) {
+			return;
+		}
+	}
+
+	$version = max( 1, (int) get_option( 'worldgraph_graph_analytics_cache_version', 1 ) );
+	update_option( 'worldgraph_graph_analytics_cache_version', $version + 1, false );
+}
+
+/**
+ * Invalidate analytics when the canonical relationship meta changes.
+ *
+ * @param int|array<int, int> $meta_id Metadata row ID, or IDs after deletion.
+ * @param int                 $post_id Post ID.
+ * @param string              $meta_key Metadata key.
+ */
+function maybe_invalidate_story_graph_analytics_meta_cache( int|array $meta_id, int $post_id, string $meta_key ): void {
+	unset( $meta_id );
+	if ( WORLDGRAPH_CPT_PREFIX . 'relationships' === $meta_key ) {
+		invalidate_story_graph_analytics_cache( $post_id );
+	}
+}
+
+/** Register cache invalidation hooks for local Story Graph analytics. */
+function relationship_graph_cache_init(): void {
+	add_action( 'save_post', __NAMESPACE__ . '\\invalidate_story_graph_analytics_cache' );
+	add_action( 'before_delete_post', __NAMESPACE__ . '\\invalidate_story_graph_analytics_cache' );
+	add_action( 'added_post_meta', __NAMESPACE__ . '\\maybe_invalidate_story_graph_analytics_meta_cache', 10, 3 );
+	add_action( 'updated_post_meta', __NAMESPACE__ . '\\maybe_invalidate_story_graph_analytics_meta_cache', 10, 3 );
+	add_action( 'deleted_post_meta', __NAMESPACE__ . '\\maybe_invalidate_story_graph_analytics_meta_cache', 10, 3 );
 }

@@ -565,7 +565,7 @@ function worldgraph_get_project_display_analytics( int $project_id, bool $includ
 	$cache_key = '';
 	if ( ! $include_private ) {
 		$version   = max( 1, (int) get_option( 'worldgraph_story_display_cache_version', 1 ) );
-		$cache_key = 'worldgraph_display_' . $version . '_' . $project_id;
+		$cache_key = 'worldgraph_display_v2_' . $version . '_' . $project_id;
 		$cached    = get_transient( $cache_key );
 		if ( is_array( $cached ) ) {
 			return $cached;
@@ -609,6 +609,7 @@ function worldgraph_get_project_display_analytics( int $project_id, bool $includ
 		'isolated_count'      => count( (array) ( $analytics['isolated_entities'] ?? [] ) ),
 		'entity_counts'       => (array) ( $analytics['entity_counts'] ?? [] ),
 		'most_connected'      => array_slice( (array) ( $analytics['most_connected'] ?? [] ), 0, 5 ),
+		'development'         => (array) ( $analytics['development'] ?? [] ),
 	];
 	if ( $cache_key ) {
 		set_transient( $cache_key, $summary, 5 * MINUTE_IN_SECONDS );

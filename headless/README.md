@@ -23,7 +23,7 @@ actions.
 - `lib/worldgraph.ts` — server-only public Story display adapter over native `wp/v2`, SCF, and the read-only `worldgraph_display` projection
 - `lib/worldgraph-admin.ts` — server-only admin wrapper for protected World Graph endpoints (`/wp-json/worldgraph/v1`)
 - `app/` — homepage, posts list/detail, published Story collection/detail routes, and a `/api/revalidate` webhook route
-- `app/story` — public Projects, Worlds, Characters, Scenes, Props, and Sounds/Songs with galleries and native media players
+- `app/story` — public Projects, Worlds, Characters, Scenes, Props, and Sounds/Songs with galleries and native media players; Project details include the visibility-filtered Development Compass
 - `app/connections` — headless ComfyUI catalog manager (sync, prepare, materialize, download)
 - `site.config.ts` / `menu.config.ts` — site metadata and nav links
 

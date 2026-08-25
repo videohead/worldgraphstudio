@@ -9,6 +9,38 @@ use PHPUnit\Framework\TestCase;
 
 class Test_Story_Display_UI extends TestCase {
 
+	/** Development guidance must expose safe, working creator handoffs. */
+	public function test_analytics_panel_renders_development_compass_actions(): void {
+		$panel  = file_get_contents( dirname( __DIR__ ) . '/includes/admin/analytics-panel.php' );
+		$script = file_get_contents( dirname( __DIR__ ) . '/assets/js/analytics-panel.js' );
+		$graph  = file_get_contents( dirname( __DIR__ ) . '/includes/utils/relationship-graph.php' );
+		$plugin = file_get_contents( dirname( __DIR__ ) . '/worldgraph.php' );
+
+		$this->assertNotFalse( $panel );
+		$this->assertNotFalse( $script );
+		$this->assertNotFalse( $graph );
+		$this->assertNotFalse( $plugin );
+		$this->assertStringContainsString( 'Development Compass', $panel );
+		$this->assertStringContainsString( "'createUrls'", $panel );
+		$this->assertStringContainsString( "\$cached['development']", $panel );
+		$this->assertStringContainsString( '! $force_refresh', $panel );
+		$this->assertStringContainsString( '&& is_array( $cached )', $panel );
+		$this->assertStringContainsString( 'self.renderDevelopment(response.data)', $script );
+		$this->assertStringContainsString( 'fetchAnalytics(true)', $script );
+		$this->assertStringContainsString( 'requestId !== self.analyticsRequestId || projectId !== self.getProjectId()', $script );
+		$this->assertStringContainsString( 'requestId !== self.networkRequestId || projectId !== self.getProjectId()', $script );
+		$this->assertStringContainsString( 'requestId !== self.cacheRequestId || projectId !== self.getProjectId()', $script );
+		$this->assertStringContainsString( 'aria-live="polite"', $panel );
+		$this->assertStringContainsString( 'aria-busy="false"', $panel );
+		$this->assertStringContainsString( 'never creates or changes relationships automatically', $panel );
+		$this->assertStringContainsString( "'draftEntity'", $panel );
+		$this->assertStringContainsString( 'document.createTextNode(opportunity.evidence', $script );
+		$this->assertStringContainsString( "replace('__POST_ID__', String(id))", $script );
+		$this->assertStringContainsString( 'worldgraph_graph_analytics_cache_version', $graph );
+		$this->assertStringContainsString( "WORLDGRAPH_CPT_PREFIX . 'relationships'", $graph );
+		$this->assertStringContainsString( 'Utils\\relationship_graph_cache_init();', $plugin );
+	}
+
 	/** The public projection must stay read-only and visibility-aware. */
 	public function test_story_display_projection_is_read_only_and_permission_scoped(): void {
 		$source = file_get_contents( dirname( __DIR__ ) . '/includes/utils/story-display.php' );
@@ -22,6 +54,8 @@ class Test_Story_Display_UI extends TestCase {
 		$this->assertStringContainsString( 'worldgraph_story_display_graph_post_types()', $source );
 		$this->assertStringContainsString( 'fetch_relationship_graph();', $source );
 		$this->assertStringContainsString( 'filter_relationship_graph_by_project( $graph, $project_id )', $source );
+		$this->assertStringContainsString( "'development'         => (array) ( \$analytics['development'] ?? [] )", $source );
+		$this->assertStringContainsString( "'worldgraph_display_v2_'", $source );
 		$this->assertStringNotContainsString( "\t\t'worldgraph_conn',", $source );
 		$this->assertStringContainsString( 'post_password_required( $post )', $source );
 		$this->assertStringContainsString( "'' === (string) \$node_post->post_password", $source );

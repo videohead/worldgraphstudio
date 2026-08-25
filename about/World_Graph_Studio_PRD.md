@@ -114,8 +114,13 @@ Detailed fields and relationships are defined in the
 
 The current release provides keyword and optional semantic assistance,
 continuity checks, relationship analytics, Story Graph summaries, and
-permission-aware admin and API surfaces. Deterministic WordPress data remains
-authoritative when an optional model contributes an explanation or analysis.
+permission-aware admin and API surfaces. Relationship analytics also provide a
+Development Compass: evidence-based questions for missing foundations,
+elements not yet exposed through Scenes, and Scenes missing Character or
+Location context. When those checks are clear, it asks what changes next and
+which new Scene or element could reveal that change. Deterministic WordPress
+data remains authoritative when an optional model contributes an explanation
+or analysis.
 
 ### AI-assisted editing
 
@@ -195,11 +200,15 @@ See the [REST API Specification](REST_API_Specification.md) and
 
 1. Create a project and story world.
 2. Add characters, locations, props, scenes, shots, and relationships.
-3. Use search, summaries, analytics, and continuity checks to inspect the
+3. Use the Development Compass to find an element that has not reached a Scene
+   or a Scene that needs Character or Location context.
+4. Open the existing element or start a normal Story Graph draft from the
+   evidence-backed question.
+5. Use search, summaries, analytics, and continuity checks to inspect the
    connected story.
-4. Ask a specialist advisor to analyze the current entity with approved Story
+6. Ask a specialist advisor to analyze the current entity with approved Story
    Graph context.
-5. Accept, revise, or discard the advisor's suggestions.
+7. Accept, revise, or discard the advisor's suggestions.
 
 ### Generate and retain an asset
 

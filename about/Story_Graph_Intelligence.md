@@ -14,7 +14,7 @@ and its WordPress data and API surfaces.
 ## Objective
 
 Make the Story Graph useful as a queryable narrative model rather than only a
-collection of WordPress posts. The delivered feature provides three related
+collection of WordPress posts. The delivered feature provides four related
 capabilities:
 
 1. **Story search** - Find characters, scenes, locations, shots, props, assets,
@@ -24,9 +24,14 @@ capabilities:
    scene membership, references, and asset lineage.
 3. **Relationship analytics** - Summarize the network of Story Graph entities,
    including co-occurrence, density, relationship types, and isolated entities.
+4. **Development guidance** - Translate bounded graph facts into creative
+   questions about missing foundations, elements without Scene exposure, and
+   Scenes without Character or Location context.
 
-These capabilities are presented through WordPress search, admin panels,
-WordPress REST resources, and the WordPress Abilities API.
+These capabilities are distributed across WordPress search, admin panels,
+WordPress REST resources, and the WordPress Abilities API. The Development
+Compass specifically ships in the WordPress Analytics panel and the read-only
+Project display projection; it is not registered as a search mode or Ability.
 
 ## Architecture
 
@@ -40,6 +45,7 @@ World Graph Studio WordPress plugin
         +--> Story search and entity filters
         +--> Continuity rules and persisted issues
         +--> Relationship analytics and admin panels
+        +--> Deterministic Development Compass prompts
         +--> WordPress REST API
         +--> WordPress Abilities API
         |
@@ -214,6 +220,40 @@ based only on textual similarity. Any inferred relationship must be labeled as
 inferred and must not be persisted as canonical graph data without editorial
 confirmation.
 
+### Development Compass
+
+The relationship analyzer also produces a nested `development` result from the
+same canonical graph. It assigns a descriptive phase, reports the complete
+opportunity count, returns at most twelve ordered opportunities, and indexes
+the existing entities named by those opportunities. Initial rules cover:
+
+- A graph with no Character, Location, or Scene foundation.
+- A Character, Location, or Prop not represented in a Scene, either directly
+  or through a Shot owned by that Scene.
+- A Scene with no Character connection directly or through one of its Shots.
+- A Scene with no direct Location connection.
+- When those coverage checks are clear, a next-event prompt asks what changes,
+  who experiences it, and which new Scene or element would make it visible.
+
+Every opportunity contains a stable ID, rule type, priority, factual evidence,
+an open creative question, an optional existing entity reference, and the type
+of Story Graph element that could be created next. These are development
+prompts, not continuity errors or measures of story quality. Analysis never
+creates an entity, adds an inferred edge, or requires an LLM.
+
+The next-event framing borrows only the general narrative-design insight in
+[`storygraph/story-graph`](https://github.com/storygraph/story-graph) that story
+progress can be considered as events changing a prior state. World Graph Studio
+does not vendor, call, depend on, or adopt the repository's Go implementation,
+service, or separate state schema. The Compass remains a loose guide over the
+existing WordPress Story Graph.
+
+The WordPress Analytics panel renders edit and normal draft-creation links from
+these descriptors; those links never create graph relationships automatically.
+The public headless Project detail renders the same guidance from the
+visibility-filtered `worldgraph_display` projection; private and draft nodes
+are removed before the rules run.
+
 ### Analytics Admin Panel
 
 Implementation:
@@ -338,6 +378,9 @@ another application or a remote intelligence service.
 - Isolated entities are identified correctly.
 - Empty graphs return valid zero-value summaries.
 - Analytics do not create or mutate canonical relationships.
+- Development opportunities have stable ordering and identifiers.
+- Missing foundations and unexposed elements produce factual, question-led
+  prompts without graph mutation.
 
 ### Abilities and REST Tests
 
@@ -354,6 +397,8 @@ another application or a remote intelligence service.
 - [x] Keyword fallback works without an external model service.
 - [x] Continuity findings are computed and stored in WordPress.
 - [x] Relationship analytics are calculated from canonical graph data.
+- [x] Relationship analytics provide deterministic next-step development
+      questions in WordPress and published headless Project views.
 - [x] Admin panels display continuity and relationship results.
 - [x] Story Graph context is available through WordPress abilities.
 - [x] REST and admin surfaces enforce WordPress permissions.

@@ -147,7 +147,16 @@ otherwise `sound`). A by-ID resource request adds detail aggregates:
   receive `shot_order_revision` for compare-and-swap reorder requests.
 - Project responses include a published/readable-node summary from the shared
   relationship analytics engine: entity and relationship totals, density,
-  isolated count, entity counts, and the five most-connected visible records.
+  isolated count, entity counts, the five most-connected visible records, and
+  a deterministic `development` compass. The compass contains `phase`,
+  `total_opportunities`, `has_more`, at most twelve `opportunities`, and a
+  deduplicated `elements_to_develop` index. Each opportunity has a stable `id`,
+  `type`, `priority`, `title`, factual `evidence`, an open `question`, a
+  `suggested_entity_type`, and an optional visible `entity` reference.
+  Scene exposure includes an explicit element-to-Scene edge or an explicit
+  element-to-Shot edge where that Shot is canonically owned by the Scene.
+  When no foundation, exposure, or Scene-context gap is present, the analyzer
+  returns one `next_story_event` opportunity instead of an empty list.
 - Story World responses include visible related-entity counts.
 
 Resolved media entries have this shape:

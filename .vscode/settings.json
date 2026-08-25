@@ -3,6 +3,10 @@
         "/^lando exec appserver -- php /app/vendor/bin/phpunit --filter FDX /app/wordpress/wp-content/plugins/worldgraph/tests$/": {
             "approve": true,
             "matchCommandLine": true
+        },
+        "/^vendor/bin/phpunit wordpress/wp-content/plugins/worldgraph/tests/test-ai-metabox-chat\\.php$/": {
+            "approve": true,
+            "matchCommandLine": true
         }
     }
 }

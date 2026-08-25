@@ -313,6 +313,18 @@ counts, density, relationship-type distribution, connected and isolated
 entities, character networks, scene presence, and co-occurrence. Project-scoped
 admin views expose these results and cache them for responsive exploration.
 
+The same analyzer supplies a deterministic Development Compass. It identifies
+missing Character, Location, or Scene foundations; Characters, Locations, and
+Props not represented in a Scene directly or through a Scene-owned Shot; and
+Scenes without Character context directly or through their Shots, or without a
+direct Location connection. When those checks are clear, it returns a
+next-event question about what changes and which Scene or element could expose
+that change, so the result remains generative rather than becoming an empty
+scorecard. Findings report graph evidence and an open development question.
+They are advisory projections, not canonical nodes, inferred edges, continuity
+errors, or story-quality scores. WordPress exposes non-mutating creator links,
+while the headless Project view uses the visibility-filtered published result.
+
 ## Story Intelligence
 
 Continuity findings, graph traversal, summaries, dramaturgy assistance,

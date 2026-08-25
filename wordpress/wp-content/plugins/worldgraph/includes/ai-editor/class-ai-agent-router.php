@@ -22,6 +22,43 @@ class AI_Agent_Router {
 	 * @var array
 	 */
 	private $keyword_mappings = [
+		'story_search' => [
+			'keywords' => [
+				'story graph search', 'find in the graph', 'graph search',
+				'entity search', 'connected to', 'entities connected', 'related entity',
+				'story entity', 'in the story graph',
+			],
+			'agents' => [ 'StoryGraphAnalyst' ],
+		],
+		'continuity' => [
+			'keywords' => [
+				'continuity', 'continuity issue', 'continuity error', 'continuity check',
+				'continuity problem', 'relationship conflict', 'orphaned asset',
+			],
+			'agents' => [ 'ContinuityAnalyst' ],
+		],
+		'notes_intake' => [
+			'keywords' => [
+				'organize my notes', 'story notes', 'random notes', 'scattered notes',
+				'turn my notes into', 'brainstorm into', 'notes into a story graph',
+				'new to world graph', 'where do i start', 'import my outline',
+			],
+			'agents' => [ 'StoryNotesOrganizer' ],
+		],
+		'relationships' => [
+			'keywords' => [
+				'relationship analytics', 'relationship analysis', 'graph density',
+				'co-occurrence', 'connected entities', 'isolated entity',
+			],
+			'agents' => [ 'RelationshipAnalyst' ],
+		],
+		'development' => [
+			'keywords' => [
+				'development compass', 'develop next', 'story development',
+				'missing foundation', 'scene exposure', 'next story graph element',
+			],
+			'agents' => [ 'DevelopmentAdvisor' ],
+		],
 		'comfyui' => [
 			'keywords' => [
 				'comfyui', 'comfy ui', 'workflow', 'checkpoint', 'sampler',

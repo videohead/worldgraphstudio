@@ -116,6 +116,189 @@
 	border-bottom: 1px solid #f0f0f1;
 }
 
+/* Development Compass */
+.worldgraph-development-compass {
+	border-top: 4px solid #3858e9;
+}
+
+.worldgraph-development-header {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 24px;
+}
+
+.worldgraph-development-header h2 {
+	border: 0;
+	margin-bottom: 4px;
+	padding: 0;
+}
+
+.worldgraph-section-kicker,
+.worldgraph-element-type {
+	color: #3858e9;
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	margin: 0 0 4px;
+	text-transform: uppercase;
+}
+
+.worldgraph-development-phase {
+	background: #eff2ff;
+	border: 1px solid #a7b5f9;
+	border-radius: 999px;
+	color: #21368f;
+	font-weight: 600;
+	padding: 7px 12px;
+	white-space: nowrap;
+}
+
+.worldgraph-development-summary {
+	font-size: 16px;
+	margin: 20px 0 4px;
+}
+
+.worldgraph-development-result-count {
+	color: #646970;
+	font-size: 12px;
+	margin: 0 0 16px;
+}
+
+.worldgraph-opportunity-grid {
+	display: grid;
+	gap: 16px;
+	grid-template-columns: repeat( auto-fit, minmax( 280px, 1fr ) );
+}
+
+.worldgraph-opportunity-card {
+	background: #f6f7f7;
+	border: 1px solid #c3c4c7;
+	border-left: 4px solid #dba617;
+	border-radius: 4px;
+	display: flex;
+	flex-direction: column;
+	padding: 18px;
+}
+
+.worldgraph-opportunity-card.worldgraph-priority-high {
+	border-left-color: #d63638;
+}
+
+.worldgraph-opportunity-card h3 {
+	font-size: 17px;
+	margin: 12px 0 8px;
+}
+
+.worldgraph-opportunity-meta {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.worldgraph-opportunity-meta span {
+	background: #fff;
+	border: 1px solid #c3c4c7;
+	border-radius: 999px;
+	font-size: 11px;
+	font-weight: 600;
+	padding: 3px 8px;
+	text-transform: uppercase;
+}
+
+.worldgraph-opportunity-evidence {
+	color: #50575e;
+	margin: 0 0 12px;
+}
+
+.worldgraph-opportunity-card blockquote {
+	border-left: 3px solid #3858e9;
+	color: #1d2327;
+	font-size: 15px;
+	font-style: normal;
+	margin: 0 0 18px;
+	padding-left: 12px;
+}
+
+.worldgraph-opportunity-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin-top: auto;
+}
+
+.worldgraph-development-empty {
+	background: #edfaef;
+	border: 1px solid #8acb94;
+	border-radius: 4px;
+	grid-column: 1 / -1;
+	padding: 18px;
+}
+
+.worldgraph-development-empty p {
+	margin-bottom: 0;
+}
+
+.worldgraph-elements-to-develop,
+.worldgraph-quick-starts {
+	border-top: 1px solid #dcdcde;
+	margin-top: 24px;
+	padding-top: 20px;
+}
+
+.worldgraph-elements-to-develop h3,
+.worldgraph-quick-starts h3 {
+	margin: 0 0 4px;
+}
+
+.worldgraph-element-list {
+	display: grid;
+	gap: 10px;
+	grid-template-columns: repeat( auto-fit, minmax( 240px, 1fr ) );
+	margin-top: 14px;
+}
+
+.worldgraph-element-card {
+	align-items: center;
+	background: #fff;
+	border: 1px solid #c3c4c7;
+	border-radius: 4px;
+	display: flex;
+	gap: 16px;
+	justify-content: space-between;
+	padding: 14px;
+}
+
+.worldgraph-element-card h4,
+.worldgraph-element-card p {
+	margin: 0;
+}
+
+.worldgraph-element-card p {
+	color: #646970;
+	font-size: 12px;
+	margin-top: 3px;
+}
+
+.worldgraph-element-empty {
+	color: #646970;
+	font-style: italic;
+}
+
+.worldgraph-quick-starts {
+	align-items: center;
+	display: flex;
+	gap: 24px;
+	justify-content: space-between;
+}
+
+.worldgraph-quick-start-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	justify-content: flex-end;
+}
+
 .worldgraph-subsection {
 	margin: 20px 0;
 }
@@ -209,10 +392,48 @@
 	.worldgraph-distribution {
 		flex-direction: column;
 	}
+
+	.worldgraph-development-header,
+	.worldgraph-quick-starts {
+		align-items: stretch;
+		flex-direction: column;
+	}
+
+	.worldgraph-development-phase {
+		align-self: flex-start;
+	}
+
+	.worldgraph-quick-start-actions {
+		justify-content: flex-start;
+	}
 }
 
 @media ( max-width: 480px ) {
 	.worldgraph-summary-cards {
 		grid-template-columns: 1fr;
+	}
+
+	.worldgraph-section {
+		padding: 14px;
+	}
+
+	.worldgraph-opportunity-grid,
+	.worldgraph-element-list {
+		grid-template-columns: minmax( 0, 1fr );
+	}
+
+	.worldgraph-opportunity-card {
+		min-width: 0;
+		overflow-wrap: anywhere;
+		padding: 14px;
+	}
+
+	.worldgraph-element-card {
+		align-items: stretch;
+		flex-direction: column;
+	}
+
+	.worldgraph-element-card .button {
+		text-align: center;
 	}
 }

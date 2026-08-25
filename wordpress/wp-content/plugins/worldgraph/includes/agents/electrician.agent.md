@@ -19,12 +19,8 @@ As an Electrician (often called a "Spark"), you are the hands that implement the
 
 ## Your Responsibilities
 - Set up and position lighting fixtures as directed
-- Run electrical cable and power distribution
 - Change bulbs, gels, and modifiers on lights
 - Adjust light direction, intensity, and quality
-- Strike lighting setups when scenes are complete
-- Maintain all electrical equipment
-- Ensure all cable runs are safe and code-compliant
 - Assist the Gaffer with lighting adjustments
 
 ## Your Knowledge

@@ -93,6 +93,40 @@ export interface StoryConnectedEntity {
   connectionCount: number;
 }
 
+export interface StoryDevelopmentEntity {
+  id: number;
+  type: string;
+  name: string;
+}
+
+export interface StoryDevelopmentOpportunity {
+  id: string;
+  type: string;
+  priority: "high" | "medium";
+  title: string;
+  evidence: string;
+  question: string;
+  suggestedEntityType: string;
+  entity?: StoryDevelopmentEntity;
+}
+
+export interface StoryDevelopmentElement extends StoryDevelopmentEntity {
+  priority: "high" | "medium";
+  opportunityIds: string[];
+}
+
+export interface StoryDevelopment {
+  phase: {
+    key: string;
+    label: string;
+    summary: string;
+  };
+  totalOpportunities: number;
+  hasMore: boolean;
+  opportunities: StoryDevelopmentOpportunity[];
+  elementsToDevelop: StoryDevelopmentElement[];
+}
+
 export interface StoryProjectDisplay {
   id?: number;
   slug?: string;
@@ -102,6 +136,7 @@ export interface StoryProjectDisplay {
   metrics: StoryMetric[];
   entityCounts: StoryMetric[];
   mostConnected: StoryConnectedEntity[];
+  development?: StoryDevelopment;
 }
 
 export interface StoryDisplay {
@@ -200,6 +235,24 @@ function numberValue(value: unknown): number | undefined {
 
   const number = typeof value === "number" ? value : Number(value);
   return Number.isFinite(number) ? number : undefined;
+}
+
+function positiveIntegerValue(value: unknown): number | undefined {
+  const number = numberValue(value);
+  return number !== undefined && Number.isSafeInteger(number) && number > 0
+    ? number
+    : undefined;
+}
+
+function nonNegativeIntegerValue(value: unknown): number | undefined {
+  const number = numberValue(value);
+  return number !== undefined && Number.isSafeInteger(number) && number >= 0
+    ? number
+    : undefined;
+}
+
+function developmentPriority(value: unknown): "high" | "medium" {
+  return stringValue(value) === "high" ? "high" : "medium";
 }
 
 function renderedValue(value: unknown): string {
@@ -342,9 +395,9 @@ function normalizeConnectedEntities(value: unknown): StoryConnectedEntity[] {
       return entities;
     }
 
-    const id = numberValue(candidate.id);
+    const id = positiveIntegerValue(candidate.id);
     const name = stringValue(candidate.name);
-    const connectionCount = numberValue(
+    const connectionCount = nonNegativeIntegerValue(
       firstPresent(candidate.connection_count, candidate.connectionCount)
     );
     if (id === undefined || !name || connectionCount === undefined) {
@@ -359,6 +412,119 @@ function normalizeConnectedEntities(value: unknown): StoryConnectedEntity[] {
     });
     return entities;
   }, []);
+}
+
+function normalizeDevelopmentEntity(value: unknown): StoryDevelopmentEntity | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const id = positiveIntegerValue(value.id);
+  const type = stringValue(value.type);
+  const name = stringValue(value.name);
+  if (id === undefined || !type || !name) {
+    return undefined;
+  }
+
+  return { id, type, name };
+}
+
+function normalizeDevelopment(value: unknown): StoryDevelopment | undefined {
+  if (!isRecord(value) || !isRecord(value.phase)) {
+    return undefined;
+  }
+
+  const phase = {
+    key: stringValue(value.phase.key),
+    label: stringValue(value.phase.label),
+    summary: stringValue(value.phase.summary),
+  };
+  if (!phase.key || !phase.label || !phase.summary) {
+    return undefined;
+  }
+
+  const seenOpportunityIds = new Set<string>();
+  const opportunities = Array.isArray(value.opportunities)
+    ? value.opportunities.slice(0, 12).reduce<StoryDevelopmentOpportunity[]>((items, candidate) => {
+        if (!isRecord(candidate)) {
+          return items;
+        }
+
+        const id = stringValue(candidate.id);
+        const type = stringValue(candidate.type);
+        const title = stringValue(candidate.title);
+        const evidence = stringValue(candidate.evidence);
+        const question = stringValue(candidate.question);
+        const suggestedEntityType = stringValue(candidate.suggested_entity_type);
+        if (
+          !id ||
+          seenOpportunityIds.has(id) ||
+          !type ||
+          !title ||
+          !evidence ||
+          !question ||
+          !suggestedEntityType
+        ) {
+          return items;
+        }
+
+        seenOpportunityIds.add(id);
+        const entity = normalizeDevelopmentEntity(candidate.entity);
+        items.push({
+          id,
+          type,
+          priority: developmentPriority(candidate.priority),
+          title,
+          evidence,
+          question,
+          suggestedEntityType,
+          ...(entity ? { entity } : {}),
+        });
+        return items;
+      }, [])
+    : [];
+
+  const seenElementIds = new Set<string>();
+  const elementsToDevelop = Array.isArray(value.elements_to_develop)
+    ? value.elements_to_develop.slice(0, 12).reduce<StoryDevelopmentElement[]>((items, candidate) => {
+        const entity = normalizeDevelopmentEntity(candidate);
+        const entityKey = entity ? `${entity.type}:${entity.id}` : "";
+        if (!entity || !isRecord(candidate) || seenElementIds.has(entityKey)) {
+          return items;
+        }
+
+        const opportunityIds = Array.isArray(candidate.opportunity_ids)
+          ? Array.from(
+              new Set(
+                candidate.opportunity_ids
+                  .map((opportunityId) => stringValue(opportunityId))
+                  .filter(Boolean)
+              )
+            ).slice(0, 12)
+          : [];
+        seenElementIds.add(entityKey);
+        items.push({
+          ...entity,
+          priority: developmentPriority(candidate.priority),
+          opportunityIds,
+        });
+        return items;
+      }, [])
+    : [];
+
+  const reportedTotal = nonNegativeIntegerValue(value.total_opportunities);
+  const totalOpportunities = Math.max(
+    opportunities.length,
+    reportedTotal ?? opportunities.length
+  );
+
+  return {
+    phase,
+    totalOpportunities,
+    hasMore: value.has_more === true && totalOpportunities > opportunities.length,
+    opportunities,
+    elementsToDevelop,
+  };
 }
 
 function normalizeMetrics(value: unknown): StoryMetric[] {
@@ -421,6 +587,7 @@ function normalizeProject(value: unknown): StoryProjectDisplay | undefined {
     metrics,
     entityCounts: normalizeMetrics(analytics.entity_counts),
     mostConnected: normalizeConnectedEntities(analytics.most_connected),
+    development: normalizeDevelopment(analytics.development),
   };
 }
 

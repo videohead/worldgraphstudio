@@ -2,6 +2,7 @@ import Link from "next/link";
 import { MediaGallery } from "@/components/story/media-gallery";
 import type {
   StoryConnectedEntity,
+  StoryDevelopment,
   StoryItem,
   StoryMetric,
   StoryShot,
@@ -168,6 +169,96 @@ function ConnectedEntities({ entities }: { entities: StoryConnectedEntity[] }) {
   );
 }
 
+function DevelopmentCompass({ development }: { development?: StoryDevelopment }) {
+  if (!development) {
+    return null;
+  }
+
+  return (
+    <section
+      aria-labelledby="development-compass-heading"
+      className="space-y-5 rounded-wg border-2 border-wg-espresso bg-white/45 p-6 shadow-wg"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="max-w-3xl">
+          <p className="font-headline text-xs font-bold uppercase tracking-[0.2em] text-wg-sepia">
+            Where the story could open next
+          </p>
+          <h2 id="development-compass-heading" className="mt-1 text-3xl text-wg-espresso">
+            Development Compass
+          </h2>
+          <p className="mt-2 text-sm leading-relaxed text-wg-charcoal/75">
+            These questions come from published Story Graph connections. They invite
+            exploration; they do not score the story or prescribe a plot.
+          </p>
+        </div>
+        <span className="rounded-full border border-wg-sepia/50 bg-wg-sepia/10 px-3 py-1 font-headline text-xs font-bold uppercase tracking-wider text-wg-espresso">
+          {development.phase.label}
+        </span>
+      </div>
+
+      <p className="text-base leading-relaxed text-wg-charcoal/80">
+        {development.phase.summary}
+      </p>
+      {development.hasMore && (
+        <p className="text-xs font-semibold text-wg-charcoal/75">
+          Showing {development.opportunities.length} of {development.totalOpportunities} prompts
+          from the published graph.
+        </p>
+      )}
+
+      {development.opportunities.length ? (
+        <ol className="grid gap-4 lg:grid-cols-2">
+          {development.opportunities.map((opportunity) => (
+            <li
+              key={opportunity.id}
+              className="flex flex-col rounded-wg border border-wg-sepia/45 bg-wg-ivory p-5"
+            >
+              <div className="flex flex-wrap gap-2 font-headline text-[0.65rem] font-bold uppercase tracking-[0.14em] text-wg-charcoal/75">
+                <span>{formatValue(opportunity.type)}</span>
+                <span aria-hidden="true">·</span>
+                <span>{opportunity.priority} priority</span>
+              </div>
+              <h3 className="mt-2 text-xl text-wg-espresso">{opportunity.title}</h3>
+              <p className="mt-3 text-sm leading-relaxed text-wg-charcoal/75">
+                <span className="font-semibold text-wg-charcoal/80">Graph evidence: </span>
+                {opportunity.evidence}
+              </p>
+              <blockquote className="mt-4 border-l-4 border-wg-sepia pl-4 text-base leading-relaxed text-wg-espresso">
+                {opportunity.question}
+              </blockquote>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <div className="rounded-wg border border-wg-sepia/40 bg-wg-sepia/10 px-5 py-4 text-sm text-wg-charcoal/70">
+          No structural prompts surfaced from the published graph. A closer creative
+          reading may still reveal other directions.
+        </div>
+      )}
+
+      {development.elementsToDevelop.length > 0 && (
+        <div className="space-y-3 border-t border-wg-sepia/40 pt-5">
+          <h3 className="text-xl text-wg-espresso">Elements to bring forward</h3>
+          <ul className="flex flex-wrap gap-2" aria-label="Story elements to develop">
+            {development.elementsToDevelop.map((element) => (
+              <li
+                key={`${element.type}:${element.id}`}
+                className="rounded-full border border-wg-sepia/45 bg-white/55 px-3 py-1.5 text-sm text-wg-espresso"
+              >
+                <span className="font-semibold">{element.name}</span>
+                <span className="ml-1 capitalize text-wg-charcoal/75">
+                  · {formatValue(element.type.replace(/^worldgraph_/, ""))}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function ProjectDetail({ item }: { item: StoryItem }) {
   const project = item.display.project;
   const status = project?.status || storyTermNames(item, "worldgraph_status").join(", ");
@@ -201,6 +292,7 @@ function ProjectDetail({ item }: { item: StoryItem }) {
         ]}
       />
       <HtmlSection title="Project overview" html={field(item, "description")} />
+      <DevelopmentCompass development={project?.development} />
       <Metrics metrics={project?.metrics ?? []} />
       <Metrics metrics={project?.entityCounts ?? []} title="Published entity mix" />
       <ConnectedEntities entities={project?.mostConnected ?? []} />

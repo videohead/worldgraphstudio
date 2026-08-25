@@ -94,16 +94,64 @@ class Analytics_Panel {
 			[
 				'ajaxUrl'      => admin_url( 'admin-ajax.php' ),
 				'nonce'        => wp_create_nonce( 'worldgraph_analytics_nonce' ),
+				'createUrls'   => [
+					'worldgraph_world'     => admin_url( 'post-new.php?post_type=worldgraph_world' ),
+					'worldgraph_character' => admin_url( 'post-new.php?post_type=worldgraph_character' ),
+					'worldgraph_location'  => admin_url( 'post-new.php?post_type=worldgraph_location' ),
+					'worldgraph_scene'     => admin_url( 'post-new.php?post_type=worldgraph_scene' ),
+					'worldgraph_prop'      => admin_url( 'post-new.php?post_type=worldgraph_prop' ),
+					'worldgraph_episode'   => admin_url( 'post-new.php?post_type=worldgraph_episode' ),
+				],
+				'editUrl'      => admin_url( 'post.php?action=edit&post=__POST_ID__' ),
+				'entityLabels' => [
+					'worldgraph_world'     => __( 'Story World', 'worldgraph' ),
+					'worldgraph_character' => __( 'Character', 'worldgraph' ),
+					'worldgraph_location'  => __( 'Location', 'worldgraph' ),
+					'worldgraph_scene'     => __( 'Scene', 'worldgraph' ),
+					'worldgraph_prop'      => __( 'Prop', 'worldgraph' ),
+					'worldgraph_episode'   => __( 'Episode', 'worldgraph' ),
+				],
 				'strings'      => [
-					'loading'       => 'Loading analytics...',
-					'error'         => 'Error loading analytics.',
-					'fetching'      => 'Analyzing Story Graph...',
-					'noData'        => 'No analytics data available.',
-					'clearCache'    => 'Clear Cache',
-					'cacheCleared'  => 'Cache cleared.',
-					'fetchError'    => 'Failed to fetch analytics.',
-					'networkError'  => 'Failed to fetch network data.',
-					'graphError'    => 'Failed to fetch graph data.',
+					'loading'                 => __( 'Loading analytics...', 'worldgraph' ),
+					'error'                   => __( 'Error loading analytics.', 'worldgraph' ),
+					'fetching'                => __( 'Analyzing Story Graph...', 'worldgraph' ),
+					'noData'                  => __( 'No analytics data available.', 'worldgraph' ),
+					'clearCache'              => __( 'Clear Cache', 'worldgraph' ),
+					'cacheCleared'            => __( 'Cache cleared.', 'worldgraph' ),
+					'fetchError'              => __( 'Failed to fetch analytics.', 'worldgraph' ),
+					'networkError'            => __( 'Failed to fetch network data.', 'worldgraph' ),
+					'graphError'              => __( 'Failed to fetch graph data.', 'worldgraph' ),
+					'reviewCoverage'          => __( 'Review graph coverage', 'worldgraph' ),
+					'reviewSummary'           => __( 'Review the graph and choose the question that feels useful now.', 'worldgraph' ),
+					'analysisEmpty'           => __( 'Analysis complete. No structural prompts surfaced.', 'worldgraph' ),
+					/* translators: 1: displayed prompt count, 2: total prompt count. */
+					'analysisTruncated'       => __( 'Analysis complete. Showing %1$d of %2$d prompts. Refine the graph, then analyze again to bring other elements forward.', 'worldgraph' ),
+					'analysisOne'             => __( 'Analysis complete. One development prompt surfaced.', 'worldgraph' ),
+					/* translators: %d: development prompt count. */
+					'analysisMany'            => __( 'Analysis complete. %1$d development prompts surfaced.', 'worldgraph' ),
+					'noPromptsTitle'          => __( 'No structural prompts surfaced.', 'worldgraph' ),
+					'noPromptsBody'           => __( 'The current graph covers the foundational connections checked here. Use Dramaturgy for a closer reading of movement, stakes, and audience experience.', 'worldgraph' ),
+					'noElements'              => __( 'No existing elements are singled out by these graph checks.', 'worldgraph' ),
+					'untitledElement'         => __( 'Untitled element', 'worldgraph' ),
+					'elementEvidenceFallback' => __( 'Open this element to develop its graph connections.', 'worldgraph' ),
+					'openElement'             => __( 'Open element', 'worldgraph' ),
+					'highPriority'            => __( 'high priority', 'worldgraph' ),
+					'mediumPriority'          => __( 'medium priority', 'worldgraph' ),
+					'developmentQuestion'     => __( 'Development question', 'worldgraph' ),
+					'graphEvidence'           => __( 'Graph evidence: ', 'worldgraph' ),
+					'noGraphDetail'           => __( 'No supporting graph detail was returned.', 'worldgraph' ),
+					'creativeQuestion'        => __( 'What would you like to discover here?', 'worldgraph' ),
+					/* translators: %s: Story Graph entity label. */
+					'openEntity'              => __( 'Open %1$s', 'worldgraph' ),
+					/* translators: %s: Story Graph entity label. */
+					'draftEntity'             => __( 'Draft a %1$s', 'worldgraph' ),
+					'storyElement'            => __( 'Story element', 'worldgraph' ),
+					'foundation'              => __( 'Foundation', 'worldgraph' ),
+					'exposure'                => __( 'Exposure', 'worldgraph' ),
+					'sceneFocus'              => __( 'Scene focus', 'worldgraph' ),
+					'sceneSetting'            => __( 'Scene setting', 'worldgraph' ),
+					'nextEvent'               => __( 'Next event', 'worldgraph' ),
+					'development'             => __( 'Development', 'worldgraph' ),
 				],
 			]
 		);
@@ -125,8 +173,8 @@ class Analytics_Panel {
 		<div class="wrap worldgraph-analytics-wrap">
 			<h1>Story Graph Analytics</h1>
 			<p class="description">
-				Comprehensive analytics for your Story Graph, powered by the World Graph Studio intelligence engine.
-				Analyze network density, character relationships, entity connectivity, and isolated entities.
+				See what is connected, discover story elements that have not reached a Scene, and turn graph evidence
+				into practical questions for the next writing pass.
 			</p>
 
 			<div id="worldgraph-analytics-app">
@@ -164,7 +212,7 @@ class Analytics_Panel {
 				<div class="worldgraph-actions">
 					<button type="button" class="button button-primary" id="fetch-analytics-btn">
 						<span class="dashicons dashicons-update" style="margin-top: 3px;"></span>
-						Fetch Analytics
+						Refresh Analysis
 					</button>
 					<button type="button" class="button" id="clear-cache-btn">
 						<span class="dashicons dashicons-trash" style="margin-top: 3px;"></span>
@@ -173,18 +221,53 @@ class Analytics_Panel {
 				</div>
 
 				<!-- Loading Indicator -->
-				<div class="worldgraph-loading" id="analytics-loading" style="display: none;">
+				<div class="worldgraph-loading" id="analytics-loading" role="status" aria-live="polite" style="display: none;">
 					<span class="spinner is-active"></span>
 					<span class="worldgraph-loading-text">Loading analytics...</span>
 				</div>
 
 				<!-- Error Notice -->
-				<div class="notice notice-error" id="analytics-error" style="display: none;">
+				<div class="notice notice-error" id="analytics-error" role="alert" style="display: none;">
 					<p id="analytics-error-message"></p>
 				</div>
 
 				<!-- Analytics Content -->
-				<div id="analytics-content" style="display: none;">
+				<div id="analytics-content" aria-busy="false" style="display: none;">
+					<!-- Development Compass -->
+					<section class="worldgraph-section worldgraph-development-compass" aria-labelledby="worldgraph-development-title">
+						<div class="worldgraph-development-header">
+							<div>
+								<p class="worldgraph-section-kicker"><?php esc_html_e( 'Where to go next', 'worldgraph' ); ?></p>
+								<h2 id="worldgraph-development-title"><?php esc_html_e( 'Development Compass', 'worldgraph' ); ?></h2>
+								<p class="description"><?php esc_html_e( 'These prompts use visible graph structure, not a story-quality score. Use them as invitations to develop, connect, imagine the next change, or deliberately leave an element offstage.', 'worldgraph' ); ?></p>
+							</div>
+							<span class="worldgraph-development-phase" id="development-phase"></span>
+						</div>
+						<p class="worldgraph-development-summary" id="development-summary"></p>
+						<p class="worldgraph-development-result-count" id="development-result-count" role="status" aria-live="polite" aria-atomic="true"></p>
+						<div class="worldgraph-opportunity-grid" id="development-opportunities"></div>
+
+						<div class="worldgraph-elements-to-develop">
+							<h3><?php esc_html_e( 'Elements to bring forward', 'worldgraph' ); ?></h3>
+							<p class="description"><?php esc_html_e( 'Open an existing element to deepen it, or draft a new story element from the related question. These links do not create graph relationships.', 'worldgraph' ); ?></p>
+							<div class="worldgraph-element-list" id="elements-to-develop"></div>
+						</div>
+
+						<div class="worldgraph-quick-starts" aria-labelledby="worldgraph-quick-starts-title">
+							<div>
+								<h3 id="worldgraph-quick-starts-title"><?php esc_html_e( 'Start a new story element', 'worldgraph' ); ?></h3>
+								<p class="description"><?php esc_html_e( 'Open a normal Story Graph draft. The Compass never creates or changes relationships automatically.', 'worldgraph' ); ?></p>
+							</div>
+							<div class="worldgraph-quick-start-actions">
+								<a class="button" href="<?php echo esc_url( admin_url( 'post-new.php?post_type=worldgraph_character' ) ); ?>"><?php esc_html_e( 'New Character', 'worldgraph' ); ?></a>
+								<a class="button" href="<?php echo esc_url( admin_url( 'post-new.php?post_type=worldgraph_location' ) ); ?>"><?php esc_html_e( 'New Location', 'worldgraph' ); ?></a>
+								<a class="button button-primary" href="<?php echo esc_url( admin_url( 'post-new.php?post_type=worldgraph_scene' ) ); ?>"><?php esc_html_e( 'New Scene', 'worldgraph' ); ?></a>
+								<a class="button" href="<?php echo esc_url( admin_url( 'post-new.php?post_type=worldgraph_prop' ) ); ?>"><?php esc_html_e( 'New Prop', 'worldgraph' ); ?></a>
+								<a class="button" href="<?php echo esc_url( admin_url( 'post-new.php?post_type=worldgraph_world' ) ); ?>"><?php esc_html_e( 'New Story World', 'worldgraph' ); ?></a>
+							</div>
+						</div>
+					</section>
+
 					<!-- Entity Counts -->
 					<div class="worldgraph-section">
 						<h2>Entity Counts</h2>
@@ -279,7 +362,7 @@ class Analytics_Panel {
 
 				<!-- No Data State -->
 				<div class="worldgraph-no-data" id="no-data-state">
-					<p>No analytics data available. Click "Fetch Analytics" to analyze your Story Graph.</p>
+					<p><?php esc_html_e( 'Select a Project, then use Refresh Analysis to inspect its Story Graph.', 'worldgraph' ); ?></p>
 				</div>
 			</div>
 		</div>
@@ -298,8 +381,24 @@ class Analytics_Panel {
 		$project_id = self::requested_project_id();
 
 		// Check cache first.
-		$cached = \WorldGraph\Utils\get_cached_graph_analytics( $project_id );
-		if ( is_array( $cached ) && isset( $cached['total_entities'], $cached['total_relationships'] ) ) {
+		$force_refresh = isset( $_POST['force'] ) && 1 === absint( wp_unslash( $_POST['force'] ) );
+		$cached        = \WorldGraph\Utils\get_cached_graph_analytics( $project_id );
+		if (
+			! $force_refresh
+			&& is_array( $cached )
+			&& isset(
+				$cached['total_entities'],
+				$cached['total_relationships'],
+				$cached['development']['phase'],
+				$cached['development']['total_opportunities'],
+				$cached['development']['has_more'],
+				$cached['development']['opportunities'],
+				$cached['development']['elements_to_develop']
+			)
+			&& is_array( $cached['development']['phase'] )
+			&& is_array( $cached['development']['opportunities'] )
+			&& is_array( $cached['development']['elements_to_develop'] )
+		) {
 			$cached['cached'] = true;
 			wp_send_json_success( $cached );
 		}

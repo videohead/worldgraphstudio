@@ -284,7 +284,7 @@
         },
         {
           "speaker": "Wolf",
-          "line": "Then you should take my shortcut. It is quicker, and the flowers are finer.",
+          "line": "Then you should take my shortcut. It is quicker, and the flowers are more beautiful.",
           "description": "He gestures toward an unmarked trail.",
           "sequence": 3
         },
@@ -325,13 +325,13 @@
       "dialogue": [
         {
           "speaker": "Little Red Riding Hood",
-          "line": "Something seems different.",
+          "line": "Something seems different here, Grandmother.",
           "description": "She studies the reversed quilt corner.",
           "sequence": 1
         },
         {
           "speaker": "Wolf",
-          "line": "Come closer, my dear. The room is only dim.",
+          "line": "Come closer, my dear. The room is very dim.",
           "description": "He imitates Grandmother's cadence but rushes the final word.",
           "sequence": 2
         },

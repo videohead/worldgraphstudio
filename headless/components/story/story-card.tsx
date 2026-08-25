@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { StoryItem, StoryMedia } from "@/lib/worldgraph";
+import type { StoryItem, StoryMedia, StoryMetric } from "@/lib/worldgraph";
 import { storyFieldText, storyTermNames } from "@/lib/worldgraph";
 import { CharacterFlipCard } from "@/components/story/character-flip-card";
 import { MediaPlayer } from "@/components/story/media-player";
@@ -27,6 +27,13 @@ function StatusPill({ children }: { children: string }) {
       {children.replace(/[_-]+/g, " ")}
     </span>
   );
+}
+
+function projectMetricValue(metric: StoryMetric): string | number {
+  if (metric.key === "density" && typeof metric.value === "number") {
+    return `${(metric.value * 100).toFixed(1)}%`;
+  }
+  return metric.value;
 }
 
 function CardImage({ media, alt }: { media?: StoryMedia; alt: string }) {
@@ -99,7 +106,7 @@ function ProjectCard({ item, href }: { item: StoryItem; href: string }) {
                   {metric.label}
                 </dt>
                 <dd className="font-headline text-xl font-semibold text-wg-espresso">
-                  {metric.value}
+                  {projectMetricValue(metric)}
                 </dd>
               </div>
             ))}

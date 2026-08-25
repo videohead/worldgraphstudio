@@ -298,6 +298,7 @@ function init(): void {
 	Taxonomies\Sequence::init();
 	Taxonomies\SoundType::init();
 	Taxonomies\TemplateCategory::init();
+	Utils\relationship_graph_cache_init();
 	Utils\worldgraph_story_display_init();
 
 	// SCF JSON archives seed editable persisted groups; the database copies are
