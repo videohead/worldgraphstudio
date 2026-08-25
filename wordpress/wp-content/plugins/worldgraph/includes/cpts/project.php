@@ -16,6 +16,122 @@ class Project {
 	 */
 	public static function init(): void {
 		self::register_cpt();
+		add_action( 'save_post_worldgraph_project', [ __CLASS__, 'hydrate_required_fields' ], 20, 3 );
+		add_action( 'admin_notices', [ __CLASS__, 'render_required_fields_notice' ] );
+	}
+
+	/**
+	 * Auto-populate required Project fields from canonical WordPress post data.
+	 *
+	 * This prevents confusing publish failures when SCF-required fields are empty
+	 * on newly created records.
+	 *
+	 * @param int      $post_id Post ID.
+	 * @param \WP_Post $post Post object.
+	 * @param bool     $update Whether this is an existing post update.
+	 */
+	public static function hydrate_required_fields( int $post_id, \WP_Post $post, bool $update ): void {
+		unset( $update );
+
+		if ( wp_is_post_revision( $post_id ) || wp_is_post_autosave( $post_id ) ) {
+			return;
+		}
+
+		$project_name = \WorldGraph\Utils\worldgraph_get_field_value( $post_id, 'project_name' );
+		if ( '' === trim( (string) $project_name ) && '' !== trim( (string) $post->post_title ) ) {
+			\WorldGraph\Utils\worldgraph_update_field_value( $post_id, 'project_name', sanitize_text_field( (string) $post->post_title ) );
+		}
+
+		$project_slug = \WorldGraph\Utils\worldgraph_get_field_value( $post_id, 'project_slug' );
+		if ( '' === trim( (string) $project_slug ) && '' !== trim( (string) $post->post_name ) ) {
+			\WorldGraph\Utils\worldgraph_update_field_value( $post_id, 'project_slug', sanitize_title( (string) $post->post_name ) );
+		}
+
+		$owner = \WorldGraph\Utils\worldgraph_get_field_value( $post_id, 'owner' );
+		if ( empty( $owner ) && ! empty( $post->post_author ) ) {
+			\WorldGraph\Utils\worldgraph_update_field_value( $post_id, 'owner', (int) $post->post_author );
+		}
+	}
+
+	/**
+	 * Show a precise missing-required-fields notice for Project editing.
+	 */
+	public static function render_required_fields_notice(): void {
+		if ( ! is_admin() || ! current_user_can( 'edit_posts' ) ) {
+			return;
+		}
+
+		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+		if ( ! $screen || 'worldgraph_project' !== (string) $screen->post_type || 'post' !== (string) $screen->base ) {
+			return;
+		}
+
+		$post_id = isset( $_GET['post'] ) ? absint( wp_unslash( $_GET['post'] ) ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin context.
+		if ( $post_id <= 0 ) {
+			return;
+		}
+
+		$missing = self::missing_required_field_labels( $post_id );
+		if ( empty( $missing ) ) {
+			return;
+		}
+
+		echo '<div class="notice notice-warning"><p><strong>'
+			. esc_html__( 'This Project cannot be published yet.', 'worldgraph' )
+			. '</strong> '
+			. esc_html__( 'Fill these required fields:', 'worldgraph' )
+			. ' '
+			. esc_html( implode( ', ', $missing ) )
+			. '.</p></div>';
+	}
+
+	/**
+	 * Return the labels of required Project fields that are currently empty.
+	 *
+	 * @param int $post_id Project post ID.
+	 * @return array<int, string>
+	 */
+	private static function missing_required_field_labels( int $post_id ): array {
+		$fields = \WorldGraph\Utils\worldgraph_get_fields( 'worldgraph_project' );
+		if ( empty( $fields ) ) {
+			return [];
+		}
+
+		$missing = [];
+		foreach ( $fields as $field_name => $field ) {
+			if ( empty( $field['required'] ) ) {
+				continue;
+			}
+
+			$value = \WorldGraph\Utils\worldgraph_get_field_value( $post_id, (string) $field_name );
+			if ( self::field_is_empty( $value ) ) {
+				$missing[] = (string) ( $field['label'] ?? $field_name );
+			}
+		}
+
+		return $missing;
+	}
+
+	/**
+	 * Determine if an SCF field value should be treated as empty.
+	 *
+	 * @param mixed $value Raw field value.
+	 */
+	private static function field_is_empty( $value ): bool {
+		if ( is_array( $value ) ) {
+			return 0 === count( array_filter( $value, static function( $item ): bool {
+				if ( is_numeric( $item ) ) {
+					return (int) $item > 0;
+				}
+				return '' !== trim( (string) $item );
+			} ) );
+		}
+
+		if ( is_numeric( $value ) ) {
+			return (int) $value <= 0;
+		}
+
+		return '' === trim( (string) $value );
 	}
 
 	/**
