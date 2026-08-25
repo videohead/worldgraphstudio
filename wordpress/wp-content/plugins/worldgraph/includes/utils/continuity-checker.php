@@ -314,7 +314,7 @@ function build_issue_entity_context( \WP_Post $post ): array {
 
 	// Include the parent Scene for Shot issues so editors can orient quickly.
 	if ( 'worldgraph_shot' === $post->post_type ) {
-		$scene_id = (int) worldgraph_get_related_field_id( $post->ID, 'scene', 'worldgraph_scene' );
+		$scene_id = (int) worldgraph_get_shot_canonical_scene_id( $post->ID );
 		if ( $scene_id > 0 ) {
 			$scene_title                 = get_the_title( $scene_id );
 			$context['scene']            = [
