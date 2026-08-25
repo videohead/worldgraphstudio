@@ -274,6 +274,53 @@ class Credential_Store {
 	}
 
 	/**
+	 * Store an opaque Connection secret without text-field normalization.
+	 *
+	 * OAuth tokens and structured secret envelopes can contain characters that
+	 * are meaningful to the issuer. Encrypt before crossing SCF/post-meta hooks
+	 * so those opaque bytes are never passed through sanitize_text_field().
+	 *
+	 * @return bool Whether the exact plaintext round-tripped from encrypted storage.
+	 */
+	public static function store_connection_secret( int $post_id, string $field_name, string $plaintext ): bool {
+		if ( ! in_array( $field_name, self::CONNECTION_FIELDS, true ) || 'worldgraph_conn' !== get_post_type( $post_id ) || strlen( $plaintext ) > 65536 ) {
+			return false;
+		}
+		if ( '' === $plaintext ) {
+			worldgraph_update_field_value( $post_id, $field_name, '' );
+			return '' === (string) get_post_meta( $post_id, $field_name, true );
+		}
+
+		try {
+			$encrypted = self::encrypt( $plaintext );
+		} catch ( \RuntimeException $exception ) {
+			self::$storage_error = true;
+			return false;
+		}
+		worldgraph_update_field_value( $post_id, $field_name, $encrypted );
+		$loaded = self::load_connection_secret( $post_id, $field_name );
+		return is_string( $loaded ) && hash_equals( hash( 'sha256', $plaintext ), hash( 'sha256', $loaded ) );
+	}
+
+	/**
+	 * Read one Connection secret directly from its authenticated envelope.
+	 *
+	 * @return string|\WP_Error Plaintext, legacy value, or a stable storage error.
+	 */
+	public static function load_connection_secret( int $post_id, string $field_name ) {
+		if ( ! in_array( $field_name, self::CONNECTION_FIELDS, true ) || 'worldgraph_conn' !== get_post_type( $post_id ) ) {
+			return new \WP_Error( 'worldgraph_credential_field_invalid', __( 'The requested Connection credential field is invalid.', 'worldgraph' ) );
+		}
+		$stored = (string) get_post_meta( $post_id, $field_name, true );
+		try {
+			return self::decrypt( $stored );
+		} catch ( \RuntimeException $exception ) {
+			self::$storage_error = true;
+			return new \WP_Error( 'worldgraph_credential_storage_invalid', __( 'The stored Connection credential could not be authenticated.', 'worldgraph' ) );
+		}
+	}
+
+	/**
 	 * Convert a masked submitted option value back to its current plaintext for
 	 * a trusted server-side copy into a Connection record.
 	 */

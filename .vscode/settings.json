@@ -7,6 +7,10 @@
         "/^vendor/bin/phpunit wordpress/wp-content/plugins/worldgraph/tests/test-ai-metabox-chat\\.php$/": {
             "approve": true,
             "matchCommandLine": true
+        },
+        "/^php -l wordpress/wp-content/plugins/worldgraph/plugins/story-import-export/includes/class-import-admin\\.php$/": {
+            "approve": true,
+            "matchCommandLine": true
         }
     }
 }

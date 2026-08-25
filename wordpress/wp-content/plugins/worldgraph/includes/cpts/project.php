@@ -16,6 +16,22 @@ class Project {
 	 */
 	public static function init(): void {
 		self::register_cpt();
+		add_action( 'admin_notices', [ __CLASS__, 'render_import_notice' ] );
+	}
+
+	/**
+	 * Show written-project import guidance on the Projects list screen.
+	 */
+	public static function render_import_notice(): void {
+		$screen = get_current_screen();
+		if ( ! $screen || 'edit' !== $screen->base || 'worldgraph_project' !== $screen->post_type || ! current_user_can( 'manage_options' ) ) {
+			return;
+		}
+		?>
+		<div class="notice notice-info">
+			<p><?php esc_html_e( 'Have a written project, screenplay, or manuscript? You can import it and turn it into a structured Story Graph before creating a project manually.', 'worldgraph' ); ?> <a href="<?php echo esc_url( admin_url( 'admin.php?page=worldgraph-import' ) ); ?>"><?php esc_html_e( 'Import a written project', 'worldgraph' ); ?></a></p>
+		</div>
+		<?php
 	}
 
 	/**

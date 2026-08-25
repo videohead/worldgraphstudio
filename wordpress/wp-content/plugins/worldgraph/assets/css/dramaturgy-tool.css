@@ -51,6 +51,18 @@
 	align-items: center;
 	display: inline-flex;
 	gap: 6px;
+	line-height: 1;
+}
+
+.worldgraph-dramaturgy-controls .button .dashicons,
+.worldgraph-dramaturgy-result-header .button .dashicons {
+	align-items: center;
+	display: inline-flex;
+	font-size: 18px;
+	height: 18px;
+	justify-content: center;
+	line-height: 1;
+	width: 18px;
 }
 
 .worldgraph-dramaturgy-status {

@@ -442,6 +442,7 @@ class Import {
 		?>
 		<div class="wrap worldgraph-import-wrap">
 			<h1><?php esc_html_e( 'Import Story into World Graph Studio', 'worldgraph' ); ?></h1>
+			<p><?php esc_html_e( 'Use this tool to bring a complete World Graph Studio JSON export or a story manuscript into your Story Graph. The importer validates the source and shows a preview before anything is written; manuscripts are prepared with your selected LLM Connection, while canonical JSON is imported directly. You can choose whether matching external IDs should update existing entities or be skipped.', 'worldgraph' ); ?></p>
 			<?php self::render_notice( $notice ); ?>
 			<?php if ( is_array( $report ) ) : ?>
 				<?php self::render_report_result( $report ); ?>
