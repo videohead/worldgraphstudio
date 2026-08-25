@@ -16,7 +16,8 @@ class Test_WorldGraph_Import extends TestCase {
 	 * The import admin page should use a file input and not require pasted JSON.
 	 */
 	public function test_import_admin_page_uses_file_upload() {
-		$path = dirname( __DIR__ ) . '/plugins/story-import-export/includes/class-import-admin.php';
+		$root = dirname( __DIR__ ) . '/plugins/story-import-export/';
+		$path = $root . 'includes/class-import-admin.php';
 		$this->assertFileExists( $path );
 
 		$source = file_get_contents( $path );
@@ -24,6 +25,12 @@ class Test_WorldGraph_Import extends TestCase {
 		$this->assertStringContainsString( 'type="file"', $source );
 		$this->assertStringContainsString( 'worldgraph_json_file', $source );
 		$this->assertStringNotContainsString( 'textarea name="worldgraph_json"', $source );
+		$this->assertStringContainsString( "'worldgraph_create_preview'", $source );
+
+		$script = file_get_contents( $root . 'assets/import.js' );
+		$this->assertNotFalse( $script );
+		$this->assertStringContainsString( 'HTMLFormElement.prototype.submit.call(form)', $script );
+		$this->assertStringNotContainsString( 'form.submit()', $script );
 	}
 
 	/**

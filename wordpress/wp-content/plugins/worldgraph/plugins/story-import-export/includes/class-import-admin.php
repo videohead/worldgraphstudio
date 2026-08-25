@@ -496,7 +496,7 @@ class Import {
 				</tr>
 			</table>
 			<p data-worldgraph-import-status aria-live="polite"></p>
-			<?php submit_button( __( 'Create Import Preview', 'worldgraph' ) ); ?>
+			<?php submit_button( __( 'Create Import Preview', 'worldgraph' ), 'primary', 'worldgraph_create_preview' ); ?>
 		</form>
 		<?php
 	}

@@ -122,7 +122,7 @@
 
 				submitting = true;
 				disableSubmit(form, message('previewing', 'Uploading and preparing preview…'));
-				form.submit();
+				HTMLFormElement.prototype.submit.call(form);
 			});
 		});
 	}

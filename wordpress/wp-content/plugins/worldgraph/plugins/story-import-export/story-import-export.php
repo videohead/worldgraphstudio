@@ -3,7 +3,7 @@
  * Plugin Name: World Graph Studio - Story Import & Export
  * Plugin URI: https://github.com/videohead/storyos
  * Description: Import canonical JSON or decompose uploaded story files through an LLM Connection, then export projects as portable JSON or Markdown.
- * Version: 1.0.0
+ * Version: 1.0.1
  * Author: World Graph Studio Contributors
  * License: GPL v2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -19,7 +19,7 @@ namespace WorldGraphStoryIO;
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'WORLDGRAPH_STORY_IO_VERSION', '1.0.0' );
+define( 'WORLDGRAPH_STORY_IO_VERSION', '1.0.1' );
 define( 'WORLDGRAPH_STORY_IO_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'WORLDGRAPH_STORY_IO_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
