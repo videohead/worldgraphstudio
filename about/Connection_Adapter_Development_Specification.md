@@ -132,16 +132,17 @@ listed because several are not yet callback-driven.
 
 | Concern | Source of truth |
 | --- | --- |
-| Adapter metadata and lazy loading | `includes/utils/connection-adapters.php` |
+| Adapter metadata, capabilities, and lazy loading | `includes/connections/class-adapter-registry.php` (`includes/utils/connection-adapters.php` is the compatibility facade) |
 | Connection schema, save lifecycle, and admin configurator | `includes/cpts/connection.php` |
 | Persisted SCF schema | `acf-json/group_worldgraph_conn.json` |
 | Connection reads, resolution, defaults, and availability | `includes/utils/connection_repository.php` |
 | Generic Connection REST routes | `includes/rest-api/connections-controller.php` |
-| Provider health-test dispatch | `includes/utils/connection_tester.php` |
+| Provider health-test lifecycle | `includes/connections/class-connection-test-service.php` (`includes/utils/connection_tester.php` is the compatibility facade) |
 | First-run guided setup | `includes/admin/setup-wizard.php` |
 | Connections list and actions | `includes/admin/connections.php` |
-| Adapter visibility in the Plugins screen | `includes/admin/plugins.php` |
+| Adapter visibility in the Adapters admin screen | `includes/admin/adapters.php` |
 | Template schema | `includes/cpts/template.php` and `acf-json/group_worldgraph_template.json` |
+| Provider Template scheduling and persistence | `includes/templates/class-template-manager.php` and `includes/templates/class-template-repository.php` |
 | Provider-neutral modalities | `includes/utils/generation-modality.php` |
 | Template input resolution | `includes/utils/template_bindings.php` |
 | Generic generation REST submission | `includes/rest-api/generation-controller.php` |
@@ -199,7 +200,9 @@ not label it delivered or add it to guided setup.
 
 ### 7.1 Bundled adapter
 
-Add bundled providers to `Connection_Adapters::all()`:
+Add bundled providers to `WorldGraph\Connections\Adapter_Registry::all()`.
+Existing call sites may continue using the inherited
+`WorldGraph\Utils\Connection_Adapters` compatibility facade:
 
 ```php
 'acme_media' => [
@@ -208,10 +211,23 @@ Add bundled providers to `Connection_Adapters::all()`:
 	'icon'        => 'dashicons-format-video',
 	'endpoint'    => 'https://api.example.com/v1',
 	'files'       => [
+		'includes/connections/class-acme-connection.php',
 		'includes/utils/acme-media-api.php',
 		'includes/utils/acme-media-catalog.php',
 	],
-	'init'        => [ 'WorldGraph\\Utils\\Acme_Media_Catalog', 'init' ],
+	'callbacks'   => [
+		'test' => [ 'WorldGraph\\Connections\\Acme_Connection', 'test' ],
+	],
+	'templates'   => [
+		'provision'          => [ 'WorldGraph\\Utils\\Acme_Media_Catalog', 'provision' ],
+		'delay'              => 5,
+		'status_meta_prefix' => 'acme_media_catalog',
+	],
+	'generation'  => [
+		'client'           => 'WorldGraph\\Utils\\Acme_Media_API',
+		'poll'             => true,
+		'poll_error_limit' => 10,
+	],
 ],
 ```
 
@@ -264,10 +280,26 @@ add_filter(
 | `init` | Optional callable invoked once per provider per PHP request after files load |
 | `setup_options` | Optional guided Setup Wizard choices |
 | `show_in_plugins` | Set `false` to hide an executable adapter from the adapter table |
+| `callbacks.test` | Optional health callback receiving `( connection_id, record )` |
+| `callbacks.after_save` | Optional lightweight callback after the common Connection save lifecycle |
+| `callbacks.render_admin` | Optional trusted renderer for provider-specific Connection controls |
+| `templates.provision` | Optional idempotent Template provisioner receiving one Connection ID |
+| `templates.delay` | Positive delay for common background provisioning |
+| `templates.status_meta_prefix` | Optional prefix for generic catalog status metadata |
+| `generation.client` | Fixed generation client class; mutually exclusive with `client_resolver` |
+| `generation.client_resolver` | Callable selecting a trusted loaded client class from saved state |
+| `generation.poll` / `poll_with_template` | Asynchronous lifecycle and polling call shape |
+| `generation.adapter` | Optional fixed job adapter marker or trusted resolver |
+| `generation.media_inputs` / `flatten_inputs` | Media-input support and provider parameter shape |
+| `generation.poll_error_limit` | Bounded consecutive polling-error ceiling |
+| `generation.permanent_error_codes` | Provider error codes that fail a poll immediately |
 
-The registry provides metadata, provider-type choices, default endpoints, and
-lazy loading. It does not currently provide callbacks for health testing,
-catalog provisioning, generation submission, polling, or output import.
+The registry provides metadata, provider-type choices, default endpoints,
+lazy loading, health and lifecycle callbacks, Template provisioning, and
+generation-client selection. The client still owns authenticated transport,
+provider operation allowlists, result normalization, and any provider-specific
+output details; a manifest declaration does not make an endpoint safe or
+executable by itself.
 
 The loader receives `( $provider_type, $adapter )`. Keep both arguments in an
 external loader's signature even if the first version does not use them.
@@ -296,7 +328,7 @@ reviewing and usually changing:
 - `Setup_Wizard::test_comfy_connection()` for unsaved-value testing;
 - the wizard's credential field behavior and provider-specific help;
 - `Setup_Wizard::save()` for endpoint and dual-credential persistence;
-- post-save Template provisioning;
+- compatibility with the common managed-save and manifest Template lifecycle;
 - Setup Wizard tests and documentation.
 
 Each `setup_options` entry is keyed by a globally unique, `sanitize_key()`-
@@ -326,8 +358,9 @@ without appearing in the first-run wizard.
 
 | Hook or filter | What it can do | What it cannot do |
 | --- | --- | --- |
-| `worldgraph_conn_adapters` | Register metadata, defaults, loader, and setup definitions | Supply generic test, catalog, submit, or poll callbacks |
+| `worldgraph_conn_adapters` | Register metadata, defaults, loader, lifecycle callbacks, Template provisioning, and generation dispatch | Infer authentication, protocol, tools, or output safety from a URL |
 | `worldgraph_conn_provider_types` | Alter the provider select choices | Register or load an executable adapter |
+| `worldgraph_generation_modalities` | Register a reviewed provider-neutral input/output shape | Grant provider execution or safely import a new output by itself |
 | `worldgraph_setup_connection_choices` | Alter full Setup Wizard choice data | Implement generic live testing or provisioning |
 | `worldgraph_setup_connection_options` | Alter displayed Setup Wizard labels | Register a provider implementation |
 | `worldgraph_after_rest_entity_save` | React to and, when necessary, correct custom REST persistence by post ID | Apply automatically outside custom REST or replace SCF schema alignment |
@@ -411,18 +444,17 @@ the resolved Connection at the execution boundary.
 
 Treat both credential-reference fields as sensitive administrative data.
 Most current API and MCP adapters accept either a literal credential or an
-uppercase `env://VARIABLE_NAME` reference, and the Setup Wizard can persist a
-literal value in post meta. Historical comments that imply an implemented
-encrypted credential store are not an implementation guarantee.
+uppercase `env://VARIABLE_NAME` reference. `Credential_Store` encrypts literal
+Connection credentials at rest, masks them in forms, preserves an unchanged
+mask on save, and migrates legacy plaintext when the host supports authenticated
+AES-256-GCM. If encryption is unavailable, a new literal is not written.
 
-Current security limitation: both credential fields flow into repository
-records through `Connection_Repository::PUBLIC_FIELDS`; generic list/item REST
-serialization also includes them from the registered runtime field schema;
-and `/resolve` explicitly returns them. If a stored value is literal, these
-administrator-only responses contain the secret. Prefer `env://` so a response
-contains only a reference. Work that accepts literal credentials or changes
-these routes must add write-only/redacted response semantics before claiming
-that secrets never reach the browser.
+Trusted server-side repository records contain decrypted credential values so
+provider clients can authenticate. Generic Connection list/item responses and
+`/resolve` pass through `Connection_Repository::redact_credentials()` and expose
+only an empty value or the fixed mask. Never serialize a raw `get()` or
+`resolve()` result to a browser, remote client, log, exception, health report,
+Template, or generation job.
 
 Requirements for new adapters:
 
@@ -452,6 +484,13 @@ PUT    /wp-json/worldgraph/v1/connections/{id}
 DELETE /wp-json/worldgraph/v1/connections/{id}
 GET    /wp-json/worldgraph/v1/connections/{id}/resolve
 POST   /wp-json/worldgraph/v1/connections/{id}/test
+GET    /wp-json/worldgraph/v1/connections/{id}/catalog
+POST   /wp-json/worldgraph/v1/connections/{id}/catalog/sync
+POST   /wp-json/worldgraph/v1/connections/{id}/catalog/prepare
+POST   /wp-json/worldgraph/v1/connections/{id}/catalog/entries/{entry_id}/enable
+POST   /wp-json/worldgraph/v1/connections/{id}/catalog/entries/{entry_id}/disable
+POST   /wp-json/worldgraph/v1/connections/{id}/catalog/entries/{entry_id}/materialize
+POST   /wp-json/worldgraph/v1/connections/{id}/catalog/entries/{entry_id}/download
 ```
 
 All require `manage_options`; object updates and deletion also check the
@@ -504,8 +543,10 @@ curl --user 'admin:APPLICATION_PASSWORD' \
 
 The generic `/connections/sync` route refreshes a fixed local provider
 capability descriptor. It is not a generic live provider catalog endpoint.
-Provider Template discovery currently belongs to the provider-specific
-save/test/admin lifecycle.
+The manifest Template provisioner is scheduled by the common published,
+non-disabled Connection save lifecycle; a provider test may also invoke it when
+Templates are part of readiness. The `/catalog*` routes are the older ComfyUI-
+specific discovery/readiness surface, not generic manifest provisioning.
 
 Current collection and deletion caveats:
 
@@ -811,73 +852,80 @@ Keep the runtime prompt and resolved media bindings out of
 discovered reference schema under a clearly named data key such as
 `provider_schema`.
 
-If a genuinely new modality is required, update `Generation_Modality`, the
-Template schema/UI, binding validation, request authorization, import behavior,
-tests, and documentation as one contract. Do not coerce an unrelated output to
-`text_to_image` just to pass validation.
+`status` is optional in the shared upsert definition, but a new Template
+defaults to `active`; pass `draft` explicitly until a discovered operation is
+actually executable.
+
+If a genuinely new modality is required, register a reviewed definition through
+`worldgraph_generation_modalities`, then update the Template UI, binding
+validation, request authorization, import behavior, tests, and documentation
+as one contract. The definition must use a supported output type and does not
+grant execution by itself. Do not copy untrusted remote schemas into this
+filter or coerce an unrelated output to `text_to_image` just to pass validation.
 
 ### 13.3 Save and test lifecycle
 
-Bundled catalog classes normally expose `init()` and `provision( $connection_id )`
-and register a provider-specific cron hook. Existing scheduling in
-`Connection::after_scf_save()` and `Setup_Wizard::save()` contains hard-coded
-provider branches. A new bundled provider must either update those call sites
-or introduce and test a reviewed generic callback extension before relying on
-manifest `init` alone.
+Catalog classes expose an idempotent `provision( $connection_id )` method and
+declare it as `templates.provision`. `Template_Manager` schedules the stable
+`worldgraph_provision_connection_templates` hook after the common Connection
+save lifecycle, deduplicated by Connection ID, and dispatches the registered
+one-argument callback. A zero delay override uses `templates.delay`, or five
+seconds when omitted. The shipped catalog-specific cron hooks remain registered
+for backward compatibility, but new adapters should use the common manager.
+
+Catalogs should persist each normalized definition through
+`Template_Repository::upsert_provider_template()`. It validates the published,
+enabled owning Connection, exact provider identity, registered modality,
+allowed status, and array-shaped configuration. It derives
+`generation_structure` and upserts by the exact
+`(connection_id, provider_template_id)` identity while preserving unrelated
+operator-owned fields.
 
 Testing a Connection may provision Templates when discovery is part of
 readiness. A provisioning failure must be visible; decide explicitly whether
 it makes the whole Connection test fail or returns a verified transport with a
 separate provisioning warning, and cover that policy in tests.
 
-Do not substitute `Connection::upsert_managed()` or direct post-meta writes for
-the common save lifecycle. `upsert_managed()` routes registered fields through
-the SCF helpers, but programmatic callers remain responsible for any lifecycle
-work normally triggered after an editor save, including single-default
-enforcement and provider scheduling. The current Setup Wizard performs its
-required adapter loading and catalog scheduling explicitly. SCF owns the
-Connection fields; `render_configurator_meta_box()` adds provider guidance and
-actions without implementing a second field save path.
+Do not substitute direct post-meta writes for the common save lifecycle.
+`Connection::upsert_managed()` routes registered fields through the SCF helpers,
+enforces the single-default invariant, and crosses the same post-save adapter
+and Template boundary after every field is durable. SCF owns the Connection
+fields; `render_configurator_meta_box()` adds provider guidance and actions
+without implementing a second field save path.
 
 ## 14. Wire Connection Testing
 
-`Connection_Tester::test()` currently dispatches by hard-coded provider slug.
-A manifest entry does not install a health check.
+`Connection_Tester::test()` is a compatibility facade over the provider-neutral
+`Connection_Test_Service`. Declare `callbacks.test` in the manifest; core loads
+the adapter, calls it with `( $connection_id, $record )`, validates its return,
+and owns result persistence.
 
-For a bundled adapter:
-
-1. load the adapter through `Connection_Adapters::load()`;
-2. add a provider branch in `Connection_Tester::test()`;
-3. make the test non-destructive and cheap;
-4. verify authentication plus the minimum executable capability;
-5. provision/validate Templates if readiness requires them;
-6. call the existing result-recording path so status,
-   `last_validated_at`, optional health data, and `worldgraph_conn_tested` stay
-   consistent;
-7. ensure health data is bounded and contains no secret or sensitive content.
+The callback returns an unpersisted array containing `success`, `message`, and
+optional `health`, or a `WP_Error`. It must be non-destructive and cheap, verify
+authentication plus the smallest executable capability, and may validate or
+provision Templates when discovery is part of readiness. Core records
+`verified` or `error`, stamps `last_validated_at`, clears stale health when the
+new result is empty, recursively redacts sensitive health keys, bounds the
+payload, and then fires `worldgraph_conn_tested`.
 
 Do not let an unknown provider fall through to the historical Comfy Cloud
 credential-presence message. Either add a real test or return an accurate
 “adapter has no tester” result.
 
-An external plugin cannot currently inject a test into the generic
-`POST /connections/{id}/test` route: dispatch is hard-coded,
-`record_result()` is private, and `worldgraph_conn_tested` is a post-test
-notification. It must make a coordinated core change, introduce a reviewed
-generic test callback with compatibility tests, or expose its own
-administrator-only test action and clearly state that the generic Test button
-is unsupported.
-
-Current result recording only replaces `last_health_report` when a test
-returns non-empty health data, so an empty later failure can leave stale health
-from an earlier success. New work should clear or replace stale health and
-cover that behavior in tests.
+An external plugin can therefore participate in the existing administrator-
+only `POST /connections/{id}/test` route without changing core. It must register
+its filter early enough, use its loader for external files, and test both the
+callback and the common persistence/redaction lifecycle.
 
 ## 15. Wire Generation Execution
 
-Generation dispatch is not currently derived from manifest callbacks. An
-executable generation provider requires deliberate changes to every applicable
-surface below.
+Generation support is declared in the adapter manifest and selected through
+`Connection_Adapters`. A fixed `generation.client` or trusted
+`generation.client_resolver` removes provider-slug allowlists and class switches
+from the shared route, quick-generation eligibility, and batch-worker dispatch.
+The declared class still must implement the exact static client signatures and
+the provider integration still must cover every applicable validation and
+output surface below.
 
 ### 15.1 Generic generation route
 
@@ -889,23 +937,25 @@ Review `Generation_Controller::submit_generation()` for:
 - required `provider_template_id`;
 - provider model/tool allowlists;
 - job metadata needed by the worker;
-- callbacks or provider-specific authorization.
+- provider-specific authorization or readiness checks that cannot be expressed
+  by the common Template/Connection contract.
 
 ### 15.2 Story-record quick Generate action
 
-`Asset_Generator::queue_for_post()` has a narrower provider allowlist and
-provider-specific readiness checks. Add a provider here only if the quick
-action supports its modality and input contract. A provider supported by the
-generic generation route need not automatically appear in the quick image
-action.
+`Asset_Generator::queue_for_post()` uses the manifest generation capability and
+`generation.media_inputs`, then applies any retained provider-specific
+readiness and tool checks. Test the quick action for each claimed modality and
+input contract; declaring a client does not prove that every provider operation
+works as representative media.
 
 ### 15.3 Batch worker
 
-Review `Generation_Batch` for all of the following:
+The batch worker selects the client through the manifest, calls
+`run_template()`, optionally polls according to `generation.poll` and
+`poll_with_template`, and bounds polling errors with `poll_error_limit` plus
+`permanent_error_codes`. Review all of the following for a new provider:
 
-- submission provider allowlist;
-- polling provider allowlist for asynchronous clients;
-- `client_for_job()` mapping;
+- fixed versus trusted resolver client selection;
 - Template default-parameter merging;
 - provider-specific input/upload resolution;
 - idempotency keys and ambiguous-submit recovery;
@@ -933,11 +983,11 @@ timed out. Persist a provider idempotency key before submission when the
 provider supports one; otherwise fail with a message that tells the operator
 to verify the provider before retrying.
 
-There is no provider-neutral retry ceiling today. In particular, a polling
-`WP_Error` leaves most existing provider jobs in `submitted`; only selected
-providers have explicit permanent-error and retry-limit handling. A new async
-adapter must wire and test its own bounded transition policy so a dead job does
-not remain submitted forever.
+Every async adapter gets a bounded polling-error ceiling. The normalized
+manifest default is ten consecutive `WP_Error` results; set a deliberate lower
+or higher positive `poll_error_limit` and provider-prefixed permanent codes when
+the provider contract warrants it. A successful poll clears the accumulated
+error count.
 
 ### 15.4 Output import
 
@@ -1025,12 +1075,13 @@ Internal class names, method names, log source tags, and REST/AJAX action slugs
 may continue to use `catalog` and `materialize`; those are implementation terms,
 not primary interface copy.
 
-`Connection::render_configurator_meta_box()` contains hard-coded provider
-branches and has no manifest callback. A third-party provider needing custom
-controls must add its own capability-protected meta box/admin surface or
-introduce and test a reviewed core extension point.
+`Connection::render_configurator_meta_box()` retains rich built-in provider
+branches and otherwise dispatches the optional `callbacks.render_admin`
+manifest callable. A third-party renderer runs only on the administrator-facing
+Connection screen, but remains responsible for escaping untrusted output and
+protecting every mutation with capabilities and nonces.
 
-The Plugins screen is informational for Connection adapters. For a published
+The Adapters screen is informational for Connection adapters. For a published
 Connection considered by the repository, its Connection meta status—not a
 second plugin toggle—controls whether the adapter is disabled. Other
 availability and query conditions still apply. A separate feature plugin may
@@ -1145,8 +1196,9 @@ When a coding agent receives a Connection task, it should execute this order:
 6. Add a real Connection health test.
 7. Add idempotent catalog/Template provisioning if generation operations are
    discoverable.
-8. Wire every applicable generation or feature-plugin call site; do not infer
-   that the manifest does this.
+8. Declare the generation client and polling/input policy in the manifest,
+   then wire and test any provider-specific validation, parameter, import, or
+   feature-plugin behavior that the common worker cannot infer.
 9. Normalize and import every final output.
 10. Add guided setup only after manual Connection setup works end to end.
 11. Run focused checks, the full suite, syntax/JSON validation, and patch
@@ -1174,19 +1226,21 @@ Agents must account for these current limitations rather than invent generic
 behavior that does not exist:
 
 - There is no shared Connection-adapter PHP interface.
-- The manifest has no general callbacks for test, catalog, submit, poll, or
-  result import.
-- `Connection_Tester`, Setup Wizard testing/provisioning,
-  `Connection::after_scf_save()`, and generation worker dispatch contain
-  provider-specific branches.
+- The manifest provides lifecycle callbacks and generation client selection,
+  but no generic authenticated transport, protocol negotiation, schema trust,
+  provider parameter allowlist, result import, or cancellation interface.
+- Saved Connection testing, common Template scheduling/persistence, and worker
+  client selection are registry-driven. Unsaved Setup Wizard live testing and
+  some rich built-in readiness/parameter/import paths remain provider-specific.
 - `Capability_Sync` is a fixed local descriptor, not live provider discovery.
 - The Connection `capabilities` and `mcp_configuration` fields have no generic
   executor.
 - Credential resolution is duplicated across clients; not every historical
   adapter supports every reference scheme.
-- Literal credential values are currently returned by administrator-only
-  Connection REST responses through the runtime field schema and explicit
-  resolve output; repository records also expose both credential fields.
+- Trusted server-side repository records expose decrypted credential values;
+  callers must not serialize them. Administrator-only Connection list/item and
+  resolve responses mask both credential fields, and literal values are stored
+  through `Credential_Store` authenticated encryption when available.
 - Fal, Suno, and Comfy MCP clients are pinned to `2025-03-26` and do not
   implement a complete lifecycle for that revision: they omit
   `notifications/initialized`, negotiated-version/capability validation, and
@@ -1199,8 +1253,9 @@ behavior that does not exist:
   not generally follow `nextCursor` pagination.
 - VideoDraft's direct tool calls are a provider-specific MCP-shaped exception,
   not a protocol-complete stateless reference.
-- The Connection configurator is provider-specific and hard-coded, not a
-  generic catalog or third-party UI callback.
+- Rich built-in Connection configurators remain provider-specific; external
+  adapters can render a trusted administrator surface through
+  `callbacks.render_admin`.
 - Runtime advisor `tools` metadata does not grant or dispatch provider tools.
 - The current Abilities implementation uses the wrong registration lifecycle
   and lacks required categories; World Graph Studio also does not bundle a

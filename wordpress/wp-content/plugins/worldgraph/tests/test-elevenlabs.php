@@ -89,12 +89,14 @@ class Test_ElevenLabs extends TestCase {
 
 	/** Registry and setup UI expose ElevenLabs through conditional loading. */
 	public function test_registry_contract(): void {
-		$registry = file_get_contents( dirname( __DIR__ ) . '/includes/utils/connection-adapters.php' );
-		$wizard = file_get_contents( dirname( __DIR__ ) . '/includes/admin/setup-wizard.php' );
+		$registry = file_get_contents( dirname( __DIR__ ) . '/includes/connections/class-adapter-registry.php' );
+		$facade   = file_get_contents( dirname( __DIR__ ) . '/includes/utils/connection-adapters.php' );
+		$wizard   = file_get_contents( dirname( __DIR__ ) . '/includes/admin/setup-wizard.php' );
 
 		$this->assertStringContainsString( "'elevenlabs' => [", $registry );
 		$this->assertStringContainsString( "includes/utils/elevenlabs-api.php", $registry );
 		$this->assertStringContainsString( "ElevenLabs Generative Audio", $registry );
+		$this->assertStringContainsString( '/connections/class-adapter-registry.php', $facade );
 		$this->assertStringContainsString( "'elevenlabs' === \$mode", $wizard );
 	}
 }

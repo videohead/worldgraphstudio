@@ -1,0 +1,288 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://worldgraph.studio/schemas/worldgraph-connection-adapter/1.0.0",
+  "title": "World Graph Studio Connection adapter manifest",
+  "description": "Strict portable authoring profile for entries returned through worldgraph_conn_adapters. It intentionally requires explicit labels and normalized object shapes even where the PHP runtime accepts older compatibility forms. Runtime closures must be represented by a function/class string or a [class, method] array before validation.",
+  "x-worldgraph-schema-version": "1.0.0",
+  "type": "object",
+  "propertyNames": {
+    "pattern": "^[a-z][a-z0-9_-]*$"
+  },
+  "additionalProperties": {
+    "$ref": "#/$defs/adapter"
+  },
+  "$defs": {
+    "callable": {
+      "description": "A portable PHP callable: function/class string or [class, method]. Closures are valid only in the runtime PHP manifest and cannot be serialized here.",
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "array",
+          "prefixItems": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "string",
+              "minLength": 1
+            }
+          ],
+          "minItems": 2,
+          "maxItems": 2
+        }
+      ]
+    },
+    "setupOption": {
+      "type": "object",
+      "required": [
+        "label",
+        "environment"
+      ],
+      "properties": {
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "environment": {
+          "enum": [
+            "local",
+            "development",
+            "staging",
+            "production"
+          ]
+        },
+        "mcp_endpoint": {
+          "type": "boolean",
+          "default": false
+        },
+        "separate_mcp_credential": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "patternProperties": {
+        "^x-": true
+      },
+      "additionalProperties": false
+    },
+    "callbacks": {
+      "type": "object",
+      "properties": {
+        "test": {
+          "description": "Callable (int connection_id, array record): array|WP_Error. The record is Connection_Repository::get() output, not the decoded resolve() shape. The returned array contains success, message, and health; core persists the normalized result.",
+          "$ref": "#/$defs/callable"
+        },
+        "after_save": {
+          "description": "Optional synchronous callable (int connection_id, array record): void. Keep it lightweight and schedule slow work.",
+          "$ref": "#/$defs/callable"
+        },
+        "render_admin": {
+          "description": "Optional trusted wp-admin callable (WP_Post connection_post, array adapter): void. It must escape output and protect mutations with capabilities and nonces.",
+          "$ref": "#/$defs/callable"
+        }
+      },
+      "patternProperties": {
+        "^x-": true
+      },
+      "additionalProperties": false
+    },
+    "templates": {
+      "type": "object",
+      "required": [
+        "provision"
+      ],
+      "properties": {
+        "provision": {
+          "description": "Callable (int connection_id): array|WP_Error. It idempotently creates or updates provider Templates.",
+          "$ref": "#/$defs/callable"
+        },
+        "delay": {
+          "description": "Positive scheduling delay in seconds.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "status_meta_prefix": {
+          "description": "Stable non-secret prefix for <prefix>_synced_at and <prefix>_error Connection metadata.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        }
+      },
+      "patternProperties": {
+        "^x-": true
+      },
+      "additionalProperties": false
+    },
+    "generation": {
+      "type": "object",
+      "properties": {
+        "client": {
+          "description": "Loaded class name implementing the static generation client signatures.",
+          "type": "string",
+          "minLength": 1
+        },
+        "client_resolver": {
+          "description": "Callable (array connection, string provider_template_id, string adapter): string returning a trusted loaded client class.",
+          "$ref": "#/$defs/callable"
+        },
+        "poll": {
+          "description": "Whether a successful submission may require asynchronous polling.",
+          "type": "boolean",
+          "default": false
+        },
+        "poll_with_template": {
+          "description": "Whether get_job_status receives provider_template_id as its third argument.",
+          "type": "boolean",
+          "default": false
+        },
+        "adapter": {
+          "description": "Fixed sanitized adapter marker or callable (array connection, string provider_template_id, string adapter): string.",
+          "$ref": "#/$defs/callable"
+        },
+        "media_inputs": {
+          "description": "Whether this adapter supports authorized resolved media inputs.",
+          "type": "boolean",
+          "default": false
+        },
+        "flatten_inputs": {
+          "description": "Merge resolved media inputs into top-level parameters instead of parameters.inputs.",
+          "type": "boolean",
+          "default": false
+        },
+        "poll_error_limit": {
+          "description": "Consecutive polling WP_Error results allowed before terminal failure.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "permanent_error_codes": {
+          "description": "Stable provider-prefixed WP_Error codes that make a polling error immediately terminal.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]*$"
+          },
+          "uniqueItems": true
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "client"
+          ],
+          "not": {
+            "required": [
+              "client_resolver"
+            ]
+          }
+        },
+        {
+          "required": [
+            "client_resolver"
+          ],
+          "not": {
+            "required": [
+              "client"
+            ]
+          }
+        }
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "poll_with_template": {
+                "const": true
+              }
+            },
+            "required": [
+              "poll_with_template"
+            ]
+          },
+          "then": {
+            "properties": {
+              "poll": {
+                "const": true
+              }
+            },
+            "required": [
+              "poll"
+            ]
+          }
+        }
+      ],
+      "patternProperties": {
+        "^x-": true
+      },
+      "additionalProperties": false
+    },
+    "adapter": {
+      "type": "object",
+      "required": [
+        "label"
+      ],
+      "properties": {
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "icon": {
+          "type": "string"
+        },
+        "endpoint": {
+          "type": "string"
+        },
+        "mcp_endpoint": {
+          "type": "string"
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "loader": {
+          "description": "Callable (string provider_type, array adapter): void. External plugins use it to load their own implementation files.",
+          "$ref": "#/$defs/callable"
+        },
+        "init": {
+          "description": "Optional callable (): void invoked once after the adapter implementation loads.",
+          "$ref": "#/$defs/callable"
+        },
+        "setup_options": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9_-]*$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/setupOption"
+          }
+        },
+        "show_in_plugins": {
+          "type": "boolean",
+          "default": true
+        },
+        "callbacks": {
+          "$ref": "#/$defs/callbacks"
+        },
+        "templates": {
+          "$ref": "#/$defs/templates"
+        },
+        "generation": {
+          "$ref": "#/$defs/generation"
+        }
+      },
+      "patternProperties": {
+        "^x-": true
+      },
+      "additionalProperties": false
+    }
+  }
+}

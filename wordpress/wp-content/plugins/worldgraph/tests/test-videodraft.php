@@ -30,6 +30,11 @@ if ( ! function_exists( 'sanitize_text_field' ) ) {
 		return trim( strip_tags( (string) $value ) );
 	}
 }
+if ( ! function_exists( 'apply_filters' ) ) {
+	function apply_filters( $hook_name, $value ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed
+		return $value;
+	}
+}
 if ( ! function_exists( 'wp_strip_all_tags' ) ) {
 	function wp_strip_all_tags( $value ): string {
 		// phpcs:ignore WordPress.WP.AlternativeFunctions.strip_tags_strip_tags -- WordPress-free test shim.
@@ -347,7 +352,7 @@ class Test_VideoDraft extends TestCase {
 	/** Core generation and plugin surfaces stay wired together. */
 	public function test_runtime_and_sync_source_contracts(): void {
 		$root = dirname( __DIR__ );
-		$registry = file_get_contents( $root . '/includes/utils/connection-adapters.php' );
+		$registry = file_get_contents( $root . '/includes/connections/class-adapter-registry.php' );
 		$batch = file_get_contents( $root . '/includes/utils/generation-batch.php' );
 		$assets = file_get_contents( $root . '/includes/utils/class-asset-generator.php' );
 		$api = file_get_contents( $root . '/includes/utils/videodraft-api.php' );
@@ -358,7 +363,8 @@ class Test_VideoDraft extends TestCase {
 		$importer = file_get_contents( $root . '/plugins/story-import-export/includes/class-worldgraph-importer.php' );
 
 		$this->assertStringContainsString( "'videodraft' => [", $registry );
-		$this->assertStringContainsString( 'VideoDraft_API::class', $batch );
+		$this->assertStringContainsString( 'VideoDraft_API', $registry );
+		$this->assertStringContainsString( 'Connection_Adapters::generation_client(', $batch );
 		$this->assertStringContainsString( "'videodraft' === \$provider", $assets );
 		$this->assertStringContainsString( "'Content-Length: ' . \$size", $api );
 		$this->assertStringContainsString( "\$finalized['cdn_url']", $api );

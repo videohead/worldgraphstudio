@@ -49,7 +49,10 @@ contract is:
 The bootstrap checks the Secure Custom Fields dependency, loads core utilities,
 registers content types and taxonomies, reconciles the persisted SCF schema,
 registers REST/admin modules, initializes the AI Editor, and loads configured
-provider adapters.
+provider adapters. Provider-neutral extension boundaries live in
+[includes/connections](../includes/connections) and
+[includes/templates](../includes/templates); the historical utility class names
+remain thin compatibility facades.
 
 ## Story Graph data model
 
@@ -153,14 +156,23 @@ non-disabled Connections or while the provider is being configured.
 template or endpoint, optional ComfyUI API workflow, default configuration,
 input bindings, and model requirements.
 
+The filterable adapter manifest declares conditional loading, health and
+lifecycle callbacks, Template provisioning, and generation-client selection.
+The common Template manager schedules provisioners, while the common repository
+validates and idempotently upserts definitions by Connection and provider
+operation. An endpoint URL without explicit transport, authentication,
+operation, and output contracts remains non-executable metadata.
+
 The shipped executable adapters are:
 
 - local ComfyUI HTTP;
 - Comfy MCP, including Comfy Cloud;
 - fal MCP;
 - ElevenLabs;
-- SunoAPI.org REST; and
-- AceData Cloud Suno MCP.
+- SunoAPI.org REST;
+- AceData Cloud Suno MCP;
+- VideoDraft MCP; and
+- OpenRouter video generation REST.
 
 Other provider names in the Connection schema are manually managed extension
 points unless an adapter registers executable behavior.

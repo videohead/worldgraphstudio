@@ -78,15 +78,18 @@ class Test_Fal_MCP extends TestCase {
 	/** Connection adapters are manifest-driven and the wizard renders its choices as a dropdown. */
 	public function test_connection_adapter_loading_and_setup_ui_contract(): void {
 		$bootstrap = file_get_contents( dirname( __DIR__ ) . '/worldgraph.php' );
-		$registry = file_get_contents( dirname( __DIR__ ) . '/includes/utils/connection-adapters.php' );
-		$wizard = file_get_contents( dirname( __DIR__ ) . '/includes/admin/setup-wizard.php' );
-		$adapters = file_get_contents( dirname( __DIR__ ) . '/includes/admin/adapters.php' );
+		$facade    = file_get_contents( dirname( __DIR__ ) . '/includes/utils/connection-adapters.php' );
+		$registry  = file_get_contents( dirname( __DIR__ ) . '/includes/connections/class-adapter-registry.php' );
+		$wizard    = file_get_contents( dirname( __DIR__ ) . '/includes/admin/setup-wizard.php' );
+		$adapters  = file_get_contents( dirname( __DIR__ ) . '/includes/admin/adapters.php' );
 
 		$this->assertNotFalse( $bootstrap );
+		$this->assertNotFalse( $facade );
 		$this->assertNotFalse( $registry );
 		$this->assertNotFalse( $wizard );
 		$this->assertNotFalse( $adapters );
 		$this->assertStringContainsString( "includes/utils/connection-adapters.php", $bootstrap );
+		$this->assertStringContainsString( '/connections/class-adapter-registry.php', $facade );
 		$this->assertStringNotContainsString( "require_once WORLDGRAPH_PLUGIN_DIR . 'includes/utils/fal-mcp.php'", $bootstrap );
 		$this->assertStringNotContainsString( "require_once WORLDGRAPH_PLUGIN_DIR . 'includes/utils/comfy-cloud-mcp.php'", $bootstrap );
 		$this->assertStringContainsString( 'load_configured()', $registry );

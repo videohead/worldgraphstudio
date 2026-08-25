@@ -259,7 +259,7 @@ class Generation_Batch {
 			}
 			$provider_type = $connection['provider_type'];
 			Connection_Adapters::load( (string) $provider_type );
-			if ( ! in_array( $provider_type, [ 'comfyui', 'fal', 'elevenlabs', 'suno', 'videodraft', 'openrouter' ], true ) ) {
+			if ( ! Connection_Adapters::supports_generation( (string) $provider_type ) ) {
 				update_post_meta( $job_id, '_worldgraph_gen_status', 'failed' );
 				update_post_meta( $job_id, '_worldgraph_gen_error', sprintf( 'No generation adapter is registered for provider: %s.', $provider_type ) );
 				self::clear_videodraft_submission_cache( $job_id );
@@ -268,6 +268,13 @@ class Generation_Batch {
 				continue;
 			}
 			$client = self::client_for_job( $job_id, $connection );
+			if ( '' === $client || ! is_callable( [ $client, 'run_template' ] ) ) {
+				update_post_meta( $job_id, '_worldgraph_gen_status', 'failed' );
+				update_post_meta( $job_id, '_worldgraph_gen_error', sprintf( 'The generation client for provider %s is unavailable.', $provider_type ) );
+				self::clear_videodraft_submission_cache( $job_id );
+				self::clear_job_claim( $job_id );
+				continue;
+			}
 			$params = (array) get_post_meta( $job_id, '_worldgraph_gen_params', true );
 			$template_id = absint( get_post_meta( $job_id, '_worldgraph_gen_template_id', true ) );
 			if ( $template_id ) {
@@ -276,7 +283,8 @@ class Generation_Batch {
 				$params         = array_merge( $template_input, $params );
 			}
 			$inputs = get_post_meta( $job_id, '_worldgraph_gen_inputs', true );
-			if ( 'fal' === $provider_type && is_array( $inputs ) && ! empty( $inputs ) ) {
+			$generation_config = Connection_Adapters::generation_config( (string) $provider_type );
+			if ( ! empty( $generation_config['flatten_inputs'] ) && is_array( $inputs ) && ! empty( $inputs ) ) {
 				$params = array_merge( $params, $inputs );
 			} elseif ( is_array( $inputs ) && ! empty( $inputs ) ) {
 				$params['inputs'] = $inputs;
@@ -405,7 +413,7 @@ class Generation_Batch {
 			}
 			$connection_id = absint( get_post_meta( $job_id, '_worldgraph_gen_connection_id', true ) );
 			$connection = Connection_Repository::get( $connection_id );
-			if ( ! $connection || ! in_array( $connection['provider_type'], [ 'comfyui', 'fal', 'suno', 'videodraft', 'openrouter' ], true ) ) {
+			if ( ! $connection || ! Connection_Adapters::supports_polling( (string) ( $connection['provider_type'] ?? '' ) ) ) {
 				update_post_meta( $job_id, '_worldgraph_gen_status', 'failed' );
 				update_post_meta( $job_id, '_worldgraph_gen_error', 'No generation adapter is registered for this Connection provider.' );
 				self::clear_videodraft_submission_cache( $job_id );
@@ -414,7 +422,13 @@ class Generation_Batch {
 			}
 			Connection_Adapters::load( (string) $connection['provider_type'] );
 			$client = self::client_for_job( $job_id, $connection );
-			if ( in_array( $client, [ Fal_MCP::class, Suno_API::class, Suno_MCP::class, VideoDraft_API::class ], true ) ) {
+			if ( '' === $client || ! is_callable( [ $client, 'get_job_status' ] ) ) {
+				update_post_meta( $job_id, '_worldgraph_gen_status', 'failed' );
+				update_post_meta( $job_id, '_worldgraph_gen_error', 'The registered generation polling client is unavailable.' );
+				self::clear_job_claim( $job_id );
+				continue;
+			}
+			if ( Connection_Adapters::poll_with_template( (string) $connection['provider_type'] ) ) {
 				$result = $client::get_job_status(
 					(string) get_post_meta( $job_id, '_worldgraph_gen_job_id', true ),
 					$connection_id,
@@ -427,15 +441,12 @@ class Generation_Batch {
 				);
 			}
 			if ( is_wp_error( $result ) ) {
-				$terminal = false;
-				if ( VideoDraft_API::class === $client ) {
-					$attempts = absint( get_post_meta( $job_id, '_worldgraph_gen_poll_attempts', true ) ) + 1;
-					update_post_meta( $job_id, '_worldgraph_gen_poll_attempts', $attempts );
-					$permanent_codes = [ 'videodraft_credential_missing', 'videodraft_connection_invalid', 'videodraft_tool_not_allowed' ];
-					if ( $attempts >= 10 || in_array( $result->get_error_code(), $permanent_codes, true ) ) {
-						$terminal = true;
-					}
-				}
+				$generation_config = Connection_Adapters::generation_config( (string) $connection['provider_type'] );
+				$attempts          = absint( get_post_meta( $job_id, '_worldgraph_gen_poll_attempts', true ) ) + 1;
+				$retry_limit       = max( 1, absint( $generation_config['poll_error_limit'] ?? 10 ) );
+				$permanent_codes   = array_values( array_filter( array_map( 'sanitize_key', (array) ( $generation_config['permanent_error_codes'] ?? [] ) ) ) );
+				$terminal          = $attempts >= $retry_limit || in_array( $result->get_error_code(), $permanent_codes, true );
+				update_post_meta( $job_id, '_worldgraph_gen_poll_attempts', $attempts );
 				self::store_job_error( $job_id, $result );
 				update_post_meta( $job_id, '_worldgraph_gen_status', $terminal ? 'failed' : 'submitted' );
 				self::clear_videodraft_submission_cache( $job_id );
@@ -491,35 +502,12 @@ class Generation_Batch {
 	 * @return string
 	 */
 	private static function client_for_job( int $job_id, array $connection ): string {
-		if ( 'elevenlabs' === ( $connection['provider_type'] ?? '' ) ) {
-			return ElevenLabs_API::class;
-		}
-		if ( 'fal' === ( $connection['provider_type'] ?? '' ) ) {
-			return Fal_MCP::class;
-		}
-		if ( 'suno' === ( $connection['provider_type'] ?? '' ) ) {
-			$template = trim( (string) get_post_meta( $job_id, '_worldgraph_gen_workflow', true ) );
-			return str_starts_with( $template, 'mcp:' ) ? Suno_MCP::class : Suno_API::class;
-		}
-		if ( 'videodraft' === ( $connection['provider_type'] ?? '' ) ) {
-			return VideoDraft_API::class;
-		}
-		if ( 'openrouter' === ( $connection['provider_type'] ?? '' ) ) {
-			return OpenRouter_API::class;
-		}
-
-		$adapter = sanitize_key( (string) get_post_meta( $job_id, '_worldgraph_gen_adapter', true ) );
-		if ( 'local_comfyui' === $adapter ) {
-			return Local_ComfyUI::class;
-		}
-
-		// A local ComfyUI Connection runs on its own HTTP API. Its MCP endpoint
-		// serves template discovery and model downloads, not generation.
-		if ( 'local' === ( $connection['environment'] ?? '' ) ) {
-			return Local_ComfyUI::class;
-		}
-
-		return Comfy_Cloud_MCP::class;
+		return Connection_Adapters::generation_client(
+			(string) ( $connection['provider_type'] ?? '' ),
+			$connection,
+			(string) get_post_meta( $job_id, '_worldgraph_gen_workflow', true ),
+			(string) get_post_meta( $job_id, '_worldgraph_gen_adapter', true )
+		);
 	}
 
 	/** Finish journal cleanup without reimporting already-persisted attachments. */

@@ -357,6 +357,9 @@ class Generation_Controller extends Base_Controller {
 			);
 		}
 		\WorldGraph\Utils\Connection_Adapters::load( (string) $connection['provider_type'] );
+		if ( ! \WorldGraph\Utils\Connection_Adapters::supports_generation( (string) $connection['provider_type'] ) ) {
+			return new WP_Error( 'generation_provider_unsupported', 'The selected Connection has no registered generation client.', [ 'status' => 501 ] );
+		}
 
 		// Local ComfyUI needs its nodes/models physically installed; refuse the
 		// request here (consulting the Connection's MCP server to auto-fetch

@@ -19,6 +19,12 @@ if ( ! function_exists( 'apply_filters' ) ) {
 		return $value;
 	}
 }
+if ( ! function_exists( 'sanitize_text_field' ) ) {
+	function sanitize_text_field( $value ): string {
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.strip_tags_strip_tags -- WordPress-free test shim.
+		return trim( strip_tags( (string) $value ) );
+	}
+}
 if ( ! function_exists( 'wp_json_encode' ) ) {
 	function wp_json_encode( $value ): string {
 		return (string) json_encode( $value );

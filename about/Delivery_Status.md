@@ -21,11 +21,11 @@ not been configured.
 | AI assistance | Gutenberg AI Editor, Story Graph context, configured LLM access, WordPress Abilities, and 50+ specialist agents loaded from extensible profiles |
 | Story intelligence | Search, optional semantic assistance, continuity checks, relationship analytics, summaries, and admin panels |
 | Generation | Connection and template records, validation, queued generation jobs, WP-Cron processing, job state, cancellation, result import, and provenance |
-| Provider adapters | A filterable Connection adapter manifest plus local ComfyUI HTTP workflows, Comfy Cloud MCP, fal MCP, ElevenLabs, SunoAPI.org REST, AceData Cloud Suno MCP, VideoDraft MCP, OpenRouter video generation REST, and manually managed external-generator workflows where configured |
+| Provider adapters | A filterable, callback-driven Connection/Template/generation registry plus local ComfyUI HTTP workflows, Comfy Cloud MCP, fal MCP, ElevenLabs, SunoAPI.org REST, AceData Cloud Suno MCP, VideoDraft MCP, OpenRouter video generation REST, and manually managed external-generator workflows where configured |
 | Project interchange | Default-enabled Story Import & Export plugin with canonical World Graph Studio JSON import/export, Markdown screenplay/storyboard export, and preview/confirm LLM decomposition of supported persisted story documents; Final Draft FDX import; optional VideoDraft structural Project push/pull |
 | Synchronization | Optional bidirectional VideoDraft structural synchronization, with persistent remote-ID mappings |
 | Editorial format code | CMX 3600 and SMPTE 436m XML parsing, timecode, and format-generation functions; the bundled admin workflow remains incomplete |
-| Extension surfaces | Canonical import contract, bundled format and synchronization plugins, filterable Connection adapters, profile-driven agents, REST APIs, and WordPress Abilities |
+| Extension surfaces | Canonical import contract, bundled format and synchronization plugins, filterable Connection lifecycle/Template/generation adapters, profile-driven agents, REST APIs, and WordPress Abilities |
 | Administration | Setup wizard, connection management, plugin toggles, dashboards, and permission-aware REST/admin actions |
 
 “Delivered” describes code in the repository. Optional connections still need

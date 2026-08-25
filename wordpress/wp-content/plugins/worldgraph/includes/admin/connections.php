@@ -416,14 +416,9 @@ class Connections {
 			];
 		}
 
-		$catalog_prefixes = [
-			'fal'         => 'fal_catalog',
-			'elevenlabs'  => 'elevenlabs_catalog',
-			'suno'        => 'suno_catalog',
-			'videodraft'  => 'videodraft_catalog',
-		];
-		if ( isset( $catalog_prefixes[ $provider ] ) ) {
-			$prefix     = $catalog_prefixes[ $provider ];
+		$adapter = \WorldGraph\Utils\Connection_Adapters::get( $provider );
+		$prefix  = sanitize_key( (string) ( $adapter['templates']['status_meta_prefix'] ?? '' ) );
+		if ( '' !== $prefix ) {
 			$synced_at  = self::display_timestamp( (string) get_post_meta( $connection_id, $prefix . '_synced_at', true ) );
 			$error      = (string) get_post_meta( $connection_id, $prefix . '_error', true );
 			$has_error  = '' !== trim( $error );

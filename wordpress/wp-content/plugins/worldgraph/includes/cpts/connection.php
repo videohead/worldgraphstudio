@@ -193,8 +193,8 @@ class Connection {
 	}
 
 	/**
-	 * Load the selected adapter and schedule provider catalog refreshes after
-	 * SCF has persisted a Connection edit.
+	 * Load the selected adapter and schedule its registered Template lifecycle
+	 * after SCF has persisted a Connection edit.
 	 *
 	 * @param int|string $post_id SCF object ID.
 	 */
@@ -213,15 +213,10 @@ class Connection {
 		}
 
 		\WorldGraph\Utils\Connection_Adapters::load( $provider_type );
-
-		if ( 'fal' === $provider_type && ! wp_next_scheduled( \WorldGraph\Utils\Fal_Catalog::HOOK, [ $post_id ] ) ) {
-			wp_schedule_single_event( time() + 5, \WorldGraph\Utils\Fal_Catalog::HOOK, [ $post_id ] );
-		} elseif ( 'elevenlabs' === $provider_type && ! wp_next_scheduled( \WorldGraph\Utils\ElevenLabs_Catalog::HOOK, [ $post_id ] ) ) {
-			wp_schedule_single_event( time() + 5, \WorldGraph\Utils\ElevenLabs_Catalog::HOOK, [ $post_id ] );
-		} elseif ( 'suno' === $provider_type && ! wp_next_scheduled( \WorldGraph\Utils\Suno_Catalog::HOOK, [ $post_id ] ) ) {
-			wp_schedule_single_event( time() + 5, \WorldGraph\Utils\Suno_Catalog::HOOK, [ $post_id ] );
-		} elseif ( 'videodraft' === $provider_type && ! wp_next_scheduled( \WorldGraph\Utils\VideoDraft_Catalog::HOOK, [ $post_id ] ) ) {
-			wp_schedule_single_event( time() + 5, \WorldGraph\Utils\VideoDraft_Catalog::HOOK, [ $post_id ] );
+		\WorldGraph\Templates\Template_Manager::schedule_for_connection( $post_id );
+		$after_save = \WorldGraph\Utils\Connection_Adapters::callback( $provider_type, 'after_save' );
+		if ( is_callable( $after_save ) ) {
+			call_user_func( $after_save, $post_id, \WorldGraph\Utils\Connection_Repository::get( $post_id ) );
 		}
 	}
 
@@ -707,6 +702,12 @@ class Connection {
 		$provider_type = sanitize_key( (string) \WorldGraph\Utils\worldgraph_get_field_value( $post->ID, 'provider_type' ) );
 		if ( '' === $provider_type ) {
 			echo '<p>' . esc_html__( 'Choose a provider type and save this Connection to see its setup and available workflows.', 'worldgraph' ) . '</p>';
+			return;
+		}
+
+		$custom_renderer = \WorldGraph\Utils\Connection_Adapters::callback( $provider_type, 'render_admin' );
+		if ( is_callable( $custom_renderer ) ) {
+			call_user_func( $custom_renderer, $post, \WorldGraph\Utils\Connection_Adapters::get( $provider_type ) );
 			return;
 		}
 
@@ -1433,6 +1434,10 @@ class Connection {
 				\WorldGraph\Utils\worldgraph_update_field_value( (int) $post_id, $key, $value );
 			}
 		}
+
+		// Programmatic setup writes must cross the same lifecycle boundary as
+		// editor and custom REST saves after all SCF-owned values are durable.
+		self::after_scf_save( (int) $post_id );
 
 		return (int) $post_id;
 	}

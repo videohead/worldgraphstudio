@@ -28,6 +28,12 @@ if ( ! function_exists( 'sanitize_text_field' ) ) {
 	}
 }
 
+if ( ! function_exists( 'apply_filters' ) ) {
+	function apply_filters( $hook_name, $value ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed
+		return $value;
+	}
+}
+
 if ( ! function_exists( 'absint' ) ) {
 	function absint( $value ): int {
 		return abs( (int) $value );

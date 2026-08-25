@@ -72,28 +72,35 @@ The SCF plugin is also required in order to extend World Graph Studio capabiliti
 
 Provider implementations are registered in the World Graph Studio Connection adapter
 manifest and loaded conditionally. An adapter loads when WordPress has a saved,
-non-disabled Connection for its provider, or when an admin explicitly selects,
-tests, or configures that provider. Merely installing World Graph Studio does not load all
-provider API clients.
+non-disabled Connection for its provider, or when an administrator explicitly
+tests, saves, or otherwise invokes that provider. Changing an unsaved browser
+selection does not load PHP. Merely installing World Graph Studio does not load
+all provider API clients.
 
 The Setup Wizard's **Preferred Connection** dropdown is generated from the same
 manifest. It contains the small set of adapters that support guided setup;
 additional provider types remain available on **World Graph Studio > Connections**. The
-Plugins screen lists executable Connection adapters and their configured state,
+Adapters screen lists executable Connection adapters and their configured state,
 but does not give them a second enable/disable control. Connection status is the
-single source of truth for whether an adapter should load.
+configured-startup and new-work authority; an explicit trusted code path can
+still call the lazy loader to test or repair a Connection.
 
 Third-party code can extend the manifest through
-`worldgraph_conn_adapters`, provide a callable `loader`, and declare guided
-setup choices with `setup_options`. The `files` shorthand resolves paths inside
-the main World Graph Studio plugin and is therefore intended for bundled
-implementations, not files owned by an external plugin.
+`worldgraph_conn_adapters`, provide a callable `loader`, and declare health,
+post-save/admin, Template-provisioning, and generation-client capabilities.
+The same manifest may declare guided setup choices with `setup_options`. The
+`files` shorthand resolves paths inside the main World Graph Studio plugin and
+is therefore intended for bundled implementations, not files owned by an
+external plugin.
 
 This adapter boundary is a core product capability: an integration can register
-provider metadata, conditional loading, and setup choices without changing the
-Story Graph or Connection schema. Its own provider-specific code can then
-reuse whichever shared services it integrates with, such as Connection records,
-Templates, generation jobs, media import, and provenance.
+provider metadata, conditional loading, Connection testing, idempotent Template
+provisioning, and generation dispatch without changing the Story Graph or
+Connection schema. Endpoint URLs alone remain metadata: authentication,
+protocol negotiation, allowed operations, job states, outputs, and safe media
+handling must be implemented explicitly. See
+[Adding Connections and Templates](Adding_Connections_and_Templates.md) for the
+concise extension workflow.
 
 For reliable production scheduling, invoke `wp-cron.php` from the host scheduler. Local Lando users can run due events with `lando wp-cron`.
 

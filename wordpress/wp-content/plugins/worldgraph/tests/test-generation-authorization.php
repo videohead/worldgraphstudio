@@ -93,6 +93,19 @@ if ( ! function_exists( 'sanitize_key' ) ) {
 	}
 }
 
+if ( ! function_exists( 'sanitize_text_field' ) ) {
+	function sanitize_text_field( $value ): string {
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.strip_tags_strip_tags -- WordPress-free test shim.
+		return trim( strip_tags( (string) $value ) );
+	}
+}
+
+if ( ! function_exists( 'apply_filters' ) ) {
+	function apply_filters( $hook_name, $value ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed
+		return $value;
+	}
+}
+
 if ( ! function_exists( 'wp_http_validate_url' ) ) {
 	function wp_http_validate_url( $url ) {
 		return false !== filter_var( $url, FILTER_VALIDATE_URL ) ? (string) $url : false;

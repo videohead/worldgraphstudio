@@ -209,9 +209,7 @@ not portable and are excluded.
 | `editorial_artifacts` | array | No | Missing means `[]`. |
 | `sequence` | object | Yes | One Sequence taxonomy term and its ordered Scene list. |
 
-There is no top-level `storyboards` section in the canonical version 1.2
-contract. A storyboard is a derived Markdown view of Scenes, Shots, and linked
-assets, not a separately imported document section.
+
 
 ## Project
 

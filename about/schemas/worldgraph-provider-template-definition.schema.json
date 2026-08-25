@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://worldgraph.studio/schemas/worldgraph-provider-template-definition/1.0.0",
+  "title": "World Graph Studio provider Template definition",
+  "description": "Strict portable authoring profile for Template_Repository::upsert_provider_template(). JSON configuration shapes are objects even where the PHP runtime accepts array compatibility forms. The owning Connection ID is supplied separately and is not part of this object.",
+  "x-worldgraph-schema-version": "1.0.0",
+  "type": "object",
+  "required": [
+    "provider_type",
+    "provider_template_id",
+    "template_name",
+    "modality"
+  ],
+  "properties": {
+    "provider_type": {
+      "description": "Registered adapter slug; it must exactly match the owning Connection.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "provider_template_id": {
+      "description": "Stable remote operation, model, endpoint, or tool identifier.",
+      "type": "string",
+      "minLength": 1
+    },
+    "template_name": {
+      "description": "Operator-facing Template label.",
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string"
+    },
+    "modality": {
+      "description": "A built-in or worldgraph_generation_modalities-registered modality slug.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "input": {
+      "description": "Safe provider defaults; runtime prompts and resolved media bindings do not belong here.",
+      "type": "object"
+    },
+    "provider_schema": {
+      "description": "Bounded, non-secret reference schema used for validation and operator guidance.",
+      "type": "object"
+    },
+    "configuration": {
+      "description": "Additional non-secret provider configuration merged without erasing omitted operator-owned values.",
+      "type": "object"
+    },
+    "status": {
+      "enum": [
+        "draft",
+        "active",
+        "archived"
+      ],
+      "default": "active"
+    },
+    "version": {
+      "description": "Optional provider model or schema version.",
+      "type": "string"
+    }
+  },
+  "patternProperties": {
+    "^x-": true
+  },
+  "additionalProperties": false
+}

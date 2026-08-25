@@ -25,6 +25,13 @@ if ( ! function_exists( 'sanitize_key' ) ) {
 	}
 }
 
+if ( ! function_exists( 'sanitize_text_field' ) ) {
+	function sanitize_text_field( $value ): string {
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.strip_tags_strip_tags -- WordPress-free test shim.
+		return trim( strip_tags( (string) $value ) );
+	}
+}
+
 require_once dirname( __DIR__ ) . '/includes/utils/generation-modality.php';
 require_once dirname( __DIR__ ) . '/includes/utils/model_family.php';
 require_once dirname( __DIR__ ) . '/includes/utils/comfy-template-registry.php';

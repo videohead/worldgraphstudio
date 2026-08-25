@@ -654,7 +654,9 @@ abilities; their current LLM requests use `tool_choice: none`. See
 
 ## Implementation map
 
-- [Provider registry](../../wordpress/wp-content/plugins/worldgraph/includes/utils/connection-adapters.php)
+- [Provider registry](../../wordpress/wp-content/plugins/worldgraph/includes/connections/class-adapter-registry.php)
+- [Template provisioning manager](../../wordpress/wp-content/plugins/worldgraph/includes/templates/class-template-manager.php)
+- [Provider Template repository](../../wordpress/wp-content/plugins/worldgraph/includes/templates/class-template-repository.php)
 - [Generation modalities](../../wordpress/wp-content/plugins/worldgraph/includes/utils/generation-modality.php)
 - [Generation worker](../../wordpress/wp-content/plugins/worldgraph/includes/utils/generation-batch.php)
 - [Representative workflows and batches](../../wordpress/wp-content/plugins/worldgraph/includes/utils/class-generation-workflows.php)

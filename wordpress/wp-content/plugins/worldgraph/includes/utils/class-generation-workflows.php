@@ -1747,12 +1747,13 @@ class Generation_Workflows {
 			$connection_id = absint( worldgraph_get_field_value( $template->ID, 'connection_id' ) );
 			$connection    = $connection_id ? Connection_Repository::get( $connection_id ) : null;
 			$provider      = sanitize_key( (string) worldgraph_get_field_value( $template->ID, 'provider_type' ) );
-			if ( ! $connection || ! Connection_Repository::is_available( $connection_id ) || $provider !== ( $connection['provider_type'] ?? '' ) || ! in_array( $provider, [ 'comfyui', 'fal', 'elevenlabs', 'suno', 'videodraft', 'openrouter' ], true ) ) {
+			if ( ! $connection || ! Connection_Repository::is_available( $connection_id ) || $provider !== ( $connection['provider_type'] ?? '' ) || ! Connection_Adapters::supports_generation( $provider ) ) {
 				continue;
 			}
 			$requires_media       = ! empty( Generation_Modality::media_inputs( $modality ) );
 			$provider_template_id = trim( (string) ( worldgraph_get_field_value( $template->ID, 'provider_template_id' ) ?: get_post_meta( $template->ID, 'comfy_template_id', true ) ) );
-			$media_supported      = 'videodraft' === $provider || ( 'comfyui' === $provider && 'local' === ( $connection['environment'] ?? '' ) );
+			$media_supported      = Connection_Adapters::supports_media_inputs( $provider )
+				&& ( 'comfyui' !== $provider || 'local' === ( $connection['environment'] ?? '' ) );
 			if ( $requires_media && ! $media_supported ) {
 				continue;
 			}

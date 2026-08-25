@@ -8,6 +8,7 @@
 defined( 'ABSPATH' ) || exit;
 
 use PHPUnit\Framework\TestCase;
+use WorldGraph\Connections\Builtin_Adapter_Runtime;
 use WorldGraph\Utils\Connection_Adapters;
 use WorldGraph\Utils\Connection_Repository;
 use WorldGraph\Utils\Generation_Modality;
@@ -301,14 +302,16 @@ class Test_Suno extends TestCase {
 
 	/** The batch submits, polls, and selects the client from the Template transport prefix. */
 	public function test_generation_batch_wires_both_suno_clients(): void {
-		$source = (string) file_get_contents( dirname( __DIR__ ) . '/includes/utils/generation-batch.php' );
+		$batch = (string) file_get_contents( dirname( __DIR__ ) . '/includes/utils/generation-batch.php' );
 
-		$this->assertMatchesRegularExpression( '/in_array\( \$provider_type, \[[^\]]*\'suno\'[^\]]*\], true \)/', $source );
-		$this->assertMatchesRegularExpression( '/in_array\( \$connection\[\'provider_type\'\], \[[^\]]*\'suno\'[^\]]*\], true \)/', $source );
-		$this->assertStringContainsString( "[ Fal_MCP::class, Suno_API::class, Suno_MCP::class, VideoDraft_API::class ]", $source );
-		$this->assertStringContainsString( "str_starts_with( \$template, 'mcp:' ) ? Suno_MCP::class : Suno_API::class", $source );
-		$this->assertStringContainsString( '$client::run_template(', $source );
-		$this->assertStringContainsString( '$client::get_job_status(', $source );
+		$this->assertSame( Suno_API::class, Builtin_Adapter_Runtime::suno_client( [], 'chirp-v4' ) );
+		$this->assertSame( Suno_MCP::class, Builtin_Adapter_Runtime::suno_client( [], 'mcp:generate_music' ) );
+		$this->assertStringContainsString( 'Connection_Adapters::supports_generation(', $batch );
+		$this->assertStringContainsString( 'Connection_Adapters::supports_polling(', $batch );
+		$this->assertStringContainsString( 'Connection_Adapters::generation_client(', $batch );
+		$this->assertStringContainsString( 'Connection_Adapters::poll_with_template(', $batch );
+		$this->assertStringContainsString( '$client::run_template(', $batch );
+		$this->assertStringContainsString( '$client::get_job_status(', $batch );
 	}
 
 	/** Setup sends each service its own endpoint and key, then saves both references. */

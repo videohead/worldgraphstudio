@@ -8,10 +8,13 @@
 namespace WorldGraph\Utils;
 
 use WP_Error;
+use WorldGraph\Templates\Template_Repository;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
+
+require_once dirname( __DIR__ ) . '/templates/class-template-repository.php';
 
 /** VideoDraft Template catalog. */
 class VideoDraft_Catalog {
@@ -19,10 +22,9 @@ class VideoDraft_Catalog {
 	/** Background provisioning hook. */
 	const HOOK = 'worldgraph_provision_videodraft_templates';
 
-	/** Register Connection-save and background hooks. */
+	/** Register the legacy provider provisioning hook. */
 	public static function init(): void {
 		add_action( self::HOOK, [ __CLASS__, 'provision' ] );
-		add_action( 'save_post_worldgraph_conn', [ __CLASS__, 'schedule_after_connection_save' ], 20, 2 );
 	}
 
 	/** Schedule provisioning after Connection metadata is stored. */
@@ -100,46 +102,26 @@ class VideoDraft_Catalog {
 
 	/** Upsert one VideoDraft tool as a Template post. */
 	private static function materialize( int $connection_id, array $tool, array $definition ) {
-		$name = sanitize_key( (string) ( $tool['name'] ?? '' ) );
-		$existing = get_posts( [
-			'post_type'      => 'worldgraph_template',
-			'post_status'    => 'any',
-			'posts_per_page' => 1,
-			'fields'         => 'ids',
-			'meta_query'     => [ // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
-				[ 'key' => 'connection_id', 'value' => (string) $connection_id ],
-				[ 'key' => 'provider_template_id', 'value' => $name ],
-			],
-		] );
-
-		$post_id = wp_insert_post( [
-			'ID'           => $existing ? (int) $existing[0] : 0,
-			'post_type'    => 'worldgraph_template',
-			'post_title'   => $definition['label'],
-			'post_content' => sanitize_textarea_field( (string) ( $tool['description'] ?? '' ) ),
-			'post_status'  => 'publish',
-		], true );
-		if ( is_wp_error( $post_id ) || ! $post_id ) {
-			return new WP_Error( 'videodraft_template_write_failed', __( 'World Graph Studio could not save a Template discovered from VideoDraft.', 'worldgraph' ) );
-		}
-
+		$name   = sanitize_key( (string) ( $tool['name'] ?? '' ) );
 		$schema = is_array( $tool['inputSchema'] ?? null ) ? $tool['inputSchema'] : ( is_array( $tool['input_schema'] ?? null ) ? $tool['input_schema'] : [] );
-		$configuration = [
-			'input'           => self::schema_defaults( $schema ),
-			'provider_schema' => $schema,
-			'provider_tool'   => $name,
-		];
-		worldgraph_update_field_value( $post_id, 'template_name', $definition['label'] );
-		worldgraph_update_field_value( $post_id, 'provider_type', 'videodraft' );
-		worldgraph_update_field_value( $post_id, 'connection_id', (string) $connection_id );
-		worldgraph_update_field_value( $post_id, 'provider_template_id', $name );
-		worldgraph_update_field_value( $post_id, 'modality', $definition['modality'] );
-		worldgraph_update_field_value( $post_id, 'generation_structure', $definition['output'] );
-		worldgraph_update_field_value( $post_id, 'configuration_json', (string) wp_json_encode( $configuration ) );
-		worldgraph_update_field_value( $post_id, 'status', 'active' );
-		worldgraph_update_field_value( $post_id, 'version', substr( hash( 'sha256', (string) wp_json_encode( $schema ) ), 0, 12 ) );
 
-		return (int) $post_id;
+		return Template_Repository::upsert_provider_template(
+			$connection_id,
+			[
+				'provider_type'        => 'videodraft',
+				'provider_template_id' => $name,
+				'template_name'        => (string) ( $definition['label'] ?? $name ),
+				'description'          => sanitize_textarea_field( (string) ( $tool['description'] ?? '' ) ),
+				'modality'             => (string) ( $definition['modality'] ?? '' ),
+				'input'                => self::schema_defaults( $schema ),
+				'provider_schema'      => $schema,
+				'configuration'        => [
+					'provider_tool' => $name,
+				],
+				'status'               => 'active',
+				'version'              => substr( hash( 'sha256', (string) wp_json_encode( $schema ) ), 0, 12 ),
+			]
+		);
 	}
 
 	/** Extract safe, non-prompt defaults from a JSON Schema. */

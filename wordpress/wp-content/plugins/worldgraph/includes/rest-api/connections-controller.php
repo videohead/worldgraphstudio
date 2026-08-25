@@ -297,7 +297,7 @@ class Connections_Controller extends Base_Controller {
 	}
 
 	/**
-	 * Validate a Comfy Cloud MCP connection.
+	 * Run the saved Connection's manifest-declared health check.
 	 *
 	 * @param \WP_REST_Request $request Request.
 	 * @return \WP_REST_Response|\WP_Error

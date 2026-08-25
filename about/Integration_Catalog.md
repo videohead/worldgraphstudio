@@ -46,10 +46,12 @@ mapping and format-level boundaries.
 | VideoDraft | Hosted JSON-RPC MCP | Discovers live image, video, and audio tools, provisions Templates, polls asynchronous work, uploads bound local references, and imports completed media | VideoDraft PAT |
 | OpenRouter | REST API | Submits text-to-video (and image-to-video/reference-to-video) jobs to any OpenRouter video model, polls asynchronous jobs, and imports completed video | OpenRouter API key |
 
-Connection status is the loading authority for these adapters. Provider model
-availability, pricing, quotas, regions, and terms remain external operating
-conditions. See [Deployment and Connections](Deployment_and_Connections.md)
-and [Web GenAI Platform Support](WEB_GENAI.md).
+Connection status is the configured-startup and new-work authority for these
+adapters; explicit trusted diagnostics can still load one on demand. Provider
+model availability, pricing, quotas, regions, and terms remain external
+operating conditions. See
+[Deployment and Connections](Deployment_and_Connections.md) and
+[Web GenAI Platform Support](WEB_GENAI.md).
 
 ## AI Editor backends
 
@@ -82,7 +84,7 @@ lifecycle handling, result retrieval, and WordPress asset ingestion.
 | Extension unit | Addition contract | Stable services it reuses |
 | --- | --- | --- |
 | Format integration | Normalize input to the World Graph Studio document contract or project output from live Story Graph records | Validation, identity mapping, relationships, permissions, and persistence |
-| Connection integration | Register provider metadata, implementation loading, and optional guided setup through `worldgraph_conn_adapters`; supply provider-specific behavior in the integration | Stable Connection records and whichever shared Template, job, media-import, or provenance services the implementation adopts |
+| Connection integration | Register metadata, conditional loading, health/lifecycle callbacks, Template provisioning, generation dispatch, and optional guided setup through `worldgraph_conn_adapters`; implement explicit transport and output contracts | Stable Connection records, common Template scheduling/upserts, generation jobs, media import, and provenance |
 | Specialist agent | Add a focused `.agent.md` profile; router keywords are optional | Story Graph context, permission checks, bounded chat, editor selection, and configured LLM access |
 
 The current bundle contains 51 specialist agent profiles. See

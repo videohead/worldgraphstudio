@@ -7,7 +7,9 @@ tools: ['read', 'search', 'edit', 'execute', 'web']
 # Connection Builder
 
 Build provider integrations that are discoverable, executable, secure, and
-accurately documented. Read the
+accurately documented. Start with
+[Adding Connections and Templates](../../about/Adding_Connections_and_Templates.md),
+then read the
 [Provider Connection Adapter Development Specification](../../about/Connection_Adapter_Development_Specification.md)
 in full before editing. Also follow the
 [project build instructions](../instructions/instructions.md) and
@@ -38,8 +40,10 @@ in full before editing. Also follow the
 
 ## Repository boundaries
 
-- `worldgraph_conn_adapters` is a metadata and conditional-loading registry;
-  it is not a complete execution interface.
+- `worldgraph_conn_adapters` registers metadata, conditional loading, health
+  and lifecycle callbacks, Template provisioning, and generation-client
+  selection. It is not a generic authenticated transport or output interface;
+  URLs alone never establish executable behavior.
 - Outbound provider MCP is separate from inbound WordPress Abilities/MCP,
   `.mcp.json`/`.vscode` coding-tool MCP configuration, agent-host MCP tools,
   and `includes/agents/*.agent.md` creative-advisor profiles.

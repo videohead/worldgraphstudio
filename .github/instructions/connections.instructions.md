@@ -7,7 +7,9 @@ applyTo: "wordpress/wp-content/plugins/worldgraph/**,about/**"
 # Provider Connection Instructions
 
 Before planning, implementing, reviewing, testing, or documenting a provider
-Connection, read and follow the
+Connection, start with
+[Adding Connections and Templates](../../about/Adding_Connections_and_Templates.md)
+and read and follow the
 [Provider Connection Adapter Development Specification](../../about/Connection_Adapter_Development_Specification.md).
 
 - Treat the Connection record, adapter manifest, provider transport,

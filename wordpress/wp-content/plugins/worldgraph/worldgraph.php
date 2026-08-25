@@ -124,6 +124,8 @@ function autoloader( string $class ): void {
 		'REST\\' => 'rest-api/',
 		'Taxonomies\\' => 'taxonomies/',
 		'Admin\\' => 'admin/',
+		'Connections\\' => 'connections/',
+		'Templates\\' => 'templates/',
 		'Utils\\' => 'utils/',
 		'AI\\' => 'ai-editor/',
 	];
@@ -237,6 +239,7 @@ function init(): void {
 	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/utils/generation-modality.php';
 	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/utils/template-run-controls.php';
 	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/utils/connection-adapters.php';
+	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/templates/class-template-manager.php';
 	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/utils/generation-batch.php';
 	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/utils/relationships.php';
 	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/utils/story-search.php';
@@ -286,6 +289,7 @@ function init(): void {
 	CPT\Generation_Job::init();
 	Utils\worldgraph_maybe_migrate_cpt_keys();
 	Utils\Template_Smoke_Check::init();
+	Templates\Template_Manager::init();
 	Utils\Connection_Adapters::load_configured();
 
 	// Register taxonomies.

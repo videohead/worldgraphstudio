@@ -154,9 +154,10 @@ integration catalog as the status sources of truth.
 
 - `includes/agents/*.agent.md` profiles are discovered at runtime; a focused
   advisor can be added without introducing another execution service.
-- Provider Connection adapters register metadata, conditional loaders, and
-  setup options through `worldgraph_conn_adapters`. Testing, discovery,
-  Templates, execution, and polling remain provider-specific integration work.
+- Provider Connection adapters register metadata, conditional loaders,
+  Connection callbacks, Template provisioners, and generation dispatch through
+  `worldgraph_conn_adapters`. The provider still owns authenticated transport,
+  safe discovery, operation allowlists, normalization, and output handling.
   Follow the
   [provider Connection adapter specification](../../about/Connection_Adapter_Development_Specification.md)
   for the exact REST API, MCP, Template, execution, security, and test
@@ -403,7 +404,11 @@ Key testing principles:
 - `includes/utils/comfy-cloud-mcp.php` - Cloud ComfyUI MCP integration
 - `includes/utils/local-comfyui.php` - Local ComfyUI instance management
 - `includes/utils/comfy-manifest.php` - ComfyUI node/workflow manifest
-- `includes/utils/connection_tester.php` - Service connection validation
+- `includes/connections/class-adapter-registry.php` - Connection adapter manifest, capabilities, and lazy loading
+- `includes/connections/class-connection-test-service.php` - Generic Connection health-test lifecycle
+- `includes/utils/connection-adapters.php` and `connection_tester.php` - Backward-compatible utility facades
+- `includes/templates/class-template-manager.php` - Common Template provisioning scheduler/dispatcher
+- `includes/templates/class-template-repository.php` - Idempotent provider Template persistence
 
 ### Data and Model Management
 - `includes/utils/model_family.php` - Model family definitions and handling

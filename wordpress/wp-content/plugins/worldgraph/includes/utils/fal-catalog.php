@@ -8,10 +8,13 @@
 namespace WorldGraph\Utils;
 
 use WP_Error;
+use WorldGraph\Templates\Template_Repository;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
+
+require_once dirname( __DIR__ ) . '/templates/class-template-repository.php';
 
 /**
  * Keeps fal Template configuration owned by the Connection and its MCP schema.
@@ -21,10 +24,9 @@ class Fal_Catalog {
 	/** Background hook used after a fal Connection is saved. */
 	const HOOK = 'worldgraph_provision_fal_templates';
 
-	/** Register automatic provisioning hooks. */
+	/** Register the legacy provider provisioning hook. */
 	public static function init(): void {
 		add_action( self::HOOK, [ __CLASS__, 'provision' ] );
-		add_action( 'save_post_worldgraph_conn', [ __CLASS__, 'schedule_after_connection_save' ], 20, 2 );
 	}
 
 	/** Schedule discovery after a fal Connection has finished saving its meta. */
@@ -127,44 +129,22 @@ class Fal_Catalog {
 
 	/** Create or update the Template representing one fal model schema. */
 	private static function materialize( int $connection_id, string $endpoint_id, array $model, array $schema ) {
-		$existing = get_posts( [
-			'post_type'      => 'worldgraph_template',
-			'post_status'    => 'any',
-			'posts_per_page' => 1,
-			'fields'         => 'ids',
-			'meta_query'     => [ // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
-				[ 'key' => 'connection_id', 'value' => (string) $connection_id ],
-				[ 'key' => 'provider_template_id', 'value' => $endpoint_id ],
-			],
-		] );
-
 		$metadata = is_array( $model['metadata'] ?? null ) ? $model['metadata'] : [];
 		$name     = (string) ( $model['name'] ?? $metadata['display_name'] ?? $endpoint_id );
-		$post_id  = wp_insert_post( [
-			'ID'          => $existing ? (int) $existing[0] : 0,
-			'post_type'   => 'worldgraph_template',
-			'post_title'  => $name,
-			'post_status' => 'publish',
-		], true );
-		if ( is_wp_error( $post_id ) || ! $post_id ) {
-			return new WP_Error( 'fal_template_write_failed', __( 'World Graph Studio could not save the Template discovered from fal MCP.', 'worldgraph' ) );
-		}
 
-		$configuration = [
-			'input'           => self::schema_defaults( $schema ),
-			'provider_schema' => $schema,
-		];
-		worldgraph_update_field_value( $post_id, 'template_name', $name );
-		worldgraph_update_field_value( $post_id, 'provider_type', 'fal' );
-		worldgraph_update_field_value( $post_id, 'connection_id', (string) $connection_id );
-		worldgraph_update_field_value( $post_id, 'provider_template_id', $endpoint_id );
-		worldgraph_update_field_value( $post_id, 'modality', Generation_Modality::TEXT_TO_IMAGE );
-		worldgraph_update_field_value( $post_id, 'generation_structure', 'image' );
-		worldgraph_update_field_value( $post_id, 'configuration_json', (string) wp_json_encode( $configuration ) );
-		worldgraph_update_field_value( $post_id, 'status', 'active' );
-		worldgraph_update_field_value( $post_id, 'version', (string) ( $metadata['updated_at'] ?? gmdate( 'Y-m-d' ) ) );
-
-		return (int) $post_id;
+		return Template_Repository::upsert_provider_template(
+			$connection_id,
+			[
+				'provider_type'        => 'fal',
+				'provider_template_id' => $endpoint_id,
+				'template_name'        => $name,
+				'modality'             => Generation_Modality::TEXT_TO_IMAGE,
+				'input'                => self::schema_defaults( $schema ),
+				'provider_schema'      => $schema,
+				'status'               => 'active',
+				'version'              => (string) ( $metadata['updated_at'] ?? gmdate( 'Y-m-d' ) ),
+			]
+		);
 	}
 
 	/** Extract safe provider defaults without asking users to reproduce a schema. */

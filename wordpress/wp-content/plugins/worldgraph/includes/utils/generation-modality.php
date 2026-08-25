@@ -78,7 +78,7 @@ class Generation_Modality {
 		$image_input    = [ 'type' => 'media', 'required' => true, 'label' => 'Reference image' ];
 		$audio_input    = [ 'type' => 'media', 'required' => true, 'label' => 'Source audio' ];
 
-		return [
+		$modalities = [
 			self::TEXT_TO_IMAGE       => [
 				'label'       => 'Text to image',
 				'description' => 'A single end-to-end still image generated from a text prompt.',
@@ -210,6 +210,40 @@ class Generation_Modality {
 				'models'      => [],
 			],
 		];
+
+		/**
+		 * Filters provider-neutral generation modality definitions.
+		 *
+		 * Extensions may add a modality when a provider produces a genuinely new
+		 * input/output shape. Invalid definitions are discarded so discovery data
+		 * cannot turn an unknown operation into a text-to-image Template.
+		 *
+		 * @param array<string, array> $modalities Registered modality definitions.
+		 */
+		$filtered = apply_filters( 'worldgraph_generation_modalities', $modalities );
+		if ( ! is_array( $filtered ) ) {
+			return $modalities;
+		}
+
+		$normalized = [];
+		foreach ( $filtered as $slug => $definition ) {
+			$slug = sanitize_key( (string) $slug );
+			if ( '' === $slug || ! is_array( $definition ) ) {
+				continue;
+			}
+			$output_type = sanitize_key( (string) ( $definition['output_type'] ?? '' ) );
+			if ( ! in_array( $output_type, [ 'image', 'video', 'audio', 'text' ], true ) ) {
+				continue;
+			}
+			$definition['label']       = sanitize_text_field( (string) ( $definition['label'] ?? $slug ) );
+			$definition['output_type'] = $output_type;
+			$definition['inputs']      = is_array( $definition['inputs'] ?? null ) ? $definition['inputs'] : [];
+			$definition['nodes']       = is_array( $definition['nodes'] ?? null ) ? $definition['nodes'] : [];
+			$definition['models']      = is_array( $definition['models'] ?? null ) ? $definition['models'] : [];
+			$normalized[ $slug ]       = $definition;
+		}
+
+		return isset( $normalized[ self::FALLBACK ] ) ? $normalized : $modalities;
 	}
 
 	/**
@@ -219,6 +253,11 @@ class Generation_Modality {
 	 */
 	public static function slugs(): array {
 		return array_keys( self::all() );
+	}
+
+	/** Whether a modality slug is explicitly registered (without fallback). */
+	public static function has( string $slug ): bool {
+		return array_key_exists( sanitize_key( $slug ), self::all() );
 	}
 
 	/**

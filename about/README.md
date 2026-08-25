@@ -22,6 +22,12 @@ delivery status, then follow the path that matches what you are trying to do.
 ## Build and operate
 
 - [Deployment and connections](Deployment_and_Connections.md)
+- [Adding Connections and Templates](Adding_Connections_and_Templates.md) —
+  concise human and coding-agent quickstart for adapter registration,
+  provisioning, and generation dispatch; includes versioned
+  [adapter](schemas/worldgraph-connection-adapter.schema.json) and
+  [provider Template](schemas/worldgraph-provider-template-definition.schema.json)
+  authoring schemas.
 - [Connection adapter development specification](Connection_Adapter_Development_Specification.md) —
   implementation contract for REST API, MCP, and hybrid provider Connections.
 - [Plugin setup guide](../wordpress/wp-content/plugins/worldgraph/documentation/SETUP_GUIDE.md)

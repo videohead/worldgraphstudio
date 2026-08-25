@@ -8,10 +8,13 @@
 namespace WorldGraph\Utils;
 
 use WP_Error;
+use WorldGraph\Templates\Template_Repository;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
+
+require_once dirname( __DIR__ ) . '/templates/class-template-repository.php';
 
 /** Maintains transport-specific Suno Templates from one Connection. */
 class Suno_Catalog {
@@ -19,10 +22,9 @@ class Suno_Catalog {
 	/** Background hook used after a Suno Connection is saved. */
 	const HOOK = 'worldgraph_provision_suno_templates';
 
-	/** Register automatic provisioning hooks only while this adapter is loaded. */
+	/** Register the legacy provider provisioning hook. */
 	public static function init(): void {
 		add_action( self::HOOK, [ __CLASS__, 'provision' ] );
-		add_action( 'save_post_worldgraph_conn', [ __CLASS__, 'schedule_after_connection_save' ], 20, 2 );
 	}
 
 	/** Schedule provisioning after Connection meta has been saved. */
@@ -379,52 +381,26 @@ class Suno_Catalog {
 	/** Create or update one transport-specific Suno Template. */
 	private static function materialize( int $connection_id, array $definition ) {
 		$reference = sanitize_text_field( (string) ( $definition['reference'] ?? '' ) );
-		$existing  = get_posts(
-			[
-				'post_type'      => 'worldgraph_template',
-				'post_status'    => 'any',
-				'posts_per_page' => 1,
-				'fields'         => 'ids',
-				'meta_query'     => [ // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
-					[ 'key' => 'connection_id', 'value' => (string) $connection_id ],
-					[ 'key' => 'provider_template_id', 'value' => $reference ],
-				],
-			]
-		);
-
 		$name        = (string) ( $definition['name'] ?? $reference );
 		$description = (string) ( $definition['description'] ?? '' );
-		$post_id     = wp_insert_post(
+
+		return Template_Repository::upsert_provider_template(
+			$connection_id,
 			[
-				'ID'           => $existing ? (int) $existing[0] : 0,
-				'post_type'    => 'worldgraph_template',
-				'post_title'   => $name,
-				'post_content' => $description,
-				'post_status'  => 'publish',
-			],
-			true
+				'provider_type'        => 'suno',
+				'provider_template_id' => $reference,
+				'template_name'        => $name,
+				'description'          => $description,
+				'modality'             => (string) ( $definition['modality'] ?? '' ),
+				'input'                => (array) ( $definition['input'] ?? [] ),
+				'provider_schema'      => (array) ( $definition['schema'] ?? [] ),
+				'configuration'        => [
+					'transport' => (string) ( $definition['transport'] ?? '' ),
+				],
+				'status'               => 'active',
+				'version'              => gmdate( 'Y-m-d' ),
+			]
 		);
-		if ( is_wp_error( $post_id ) || ! $post_id ) {
-			return new WP_Error( 'suno_template_write_failed', __( 'World Graph Studio could not save a Suno generation Template.', 'worldgraph' ) );
-		}
-
-		$configuration = [
-			'input'           => (array) ( $definition['input'] ?? [] ),
-			'provider_schema' => (array) ( $definition['schema'] ?? [] ),
-			'transport'       => (string) ( $definition['transport'] ?? '' ),
-		];
-		worldgraph_update_field_value( $post_id, 'template_name', $name );
-		worldgraph_update_field_value( $post_id, 'description', wp_kses_post( $description ) );
-		worldgraph_update_field_value( $post_id, 'provider_type', 'suno' );
-		worldgraph_update_field_value( $post_id, 'connection_id', (string) $connection_id );
-		worldgraph_update_field_value( $post_id, 'provider_template_id', $reference );
-		worldgraph_update_field_value( $post_id, 'modality', (string) $definition['modality'] );
-		worldgraph_update_field_value( $post_id, 'generation_structure', (string) ( $definition['structure'] ?? 'audio' ) );
-		worldgraph_update_field_value( $post_id, 'configuration_json', (string) wp_json_encode( $configuration ) );
-		worldgraph_update_field_value( $post_id, 'status', 'active' );
-		worldgraph_update_field_value( $post_id, 'version', gmdate( 'Y-m-d' ) );
-
-		return (int) $post_id;
 	}
 
 	/** Record a visible, non-fatal catalog synchronization failure. */

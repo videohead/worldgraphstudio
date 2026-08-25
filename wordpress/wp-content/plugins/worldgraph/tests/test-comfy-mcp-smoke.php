@@ -7,6 +7,14 @@
 
 use PHPUnit\Framework\TestCase;
 
+if ( ! function_exists( 'sanitize_key' ) ) {
+	function sanitize_key( $value ): string {
+		return preg_replace( '/[^a-z0-9_\-]/', '', strtolower( (string) $value ) );
+	}
+}
+
+require_once dirname( __DIR__ ) . '/includes/connections/class-builtin-adapter-runtime.php';
+
 class Test_Comfy_MCP_Smoke extends TestCase {
 
 	/** Managed setup must use a published modern workflow, never a legacy fallback. */
@@ -59,10 +67,21 @@ class Test_Comfy_MCP_Smoke extends TestCase {
 	 * endpoint serves discovery and downloads, never generation.
 	 */
 	public function test_generation_batch_routes_local_comfy_to_local_api(): void {
-		$batch = file_get_contents( dirname( __DIR__ ) . '/includes/utils/generation-batch.php' );
+		$batch    = file_get_contents( dirname( __DIR__ ) . '/includes/utils/generation-batch.php' );
+		$registry = file_get_contents( dirname( __DIR__ ) . '/includes/connections/class-adapter-registry.php' );
 
 		$this->assertNotFalse( $batch );
-		$this->assertStringContainsString( "if ( 'local' === ( \$connection['environment'] ?? '' ) ) {", $batch );
+		$this->assertNotFalse( $registry );
+		$this->assertSame(
+			\WorldGraph\Utils\Local_ComfyUI::class,
+			\WorldGraph\Connections\Builtin_Adapter_Runtime::comfy_client( [ 'environment' => 'local' ] )
+		);
+		$this->assertSame(
+			\WorldGraph\Utils\Comfy_Cloud_MCP::class,
+			\WorldGraph\Connections\Builtin_Adapter_Runtime::comfy_client( [ 'environment' => 'production' ] )
+		);
+		$this->assertStringContainsString( "'client_resolver'    => [ Builtin_Adapter_Runtime::class, 'comfy_client' ]", $registry );
+		$this->assertStringContainsString( 'Connection_Adapters::generation_client(', $batch );
 		$this->assertStringContainsString( "update_post_meta( \$job_id, '_worldgraph_gen_adapter', 'local_comfyui' );", $batch );
 		$this->assertStringNotContainsString( 'Retrying via local ComfyUI API', $batch );
 	}

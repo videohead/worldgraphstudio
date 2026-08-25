@@ -203,7 +203,6 @@ class Setup_Wizard {
 		$comfy_local_mcp_url = esc_url_raw( wp_unslash( $_POST['worldgraph_comfy_local_mcp_url'] ?? '' ) );
 		if ( 'none' !== $comfy_mode ) {
 			$provider_type = sanitize_key( (string) ( $generation_choice['provider_type'] ?? '' ) );
-			$is_fal = 'fal' === $provider_type;
 			$is_local_comfy = 'comfyui' === $provider_type && 'local' === ( $generation_choice['environment'] ?? '' );
 			$provider_endpoint = \WorldGraph\Utils\Connection_Adapters::endpoint( $provider_type );
 			$provider_mcp_endpoint = \WorldGraph\Utils\Connection_Adapters::mcp_endpoint( $provider_type );
@@ -230,14 +229,6 @@ class Setup_Wizard {
 			// here and let the readiness checklist report what is still missing.
 			if ( $is_local_comfy ) {
 				\WorldGraph\Utils\Comfy_Bootstrap::ensure_template( $connection_id );
-			} elseif ( $is_fal && $connection_id && ! wp_next_scheduled( \WorldGraph\Utils\Fal_Catalog::HOOK, [ $connection_id ] ) ) {
-				wp_schedule_single_event( time() + 5, \WorldGraph\Utils\Fal_Catalog::HOOK, [ $connection_id ] );
-			} elseif ( 'elevenlabs' === $provider_type && $connection_id && ! wp_next_scheduled( \WorldGraph\Utils\ElevenLabs_Catalog::HOOK, [ $connection_id ] ) ) {
-				wp_schedule_single_event( time() + 5, \WorldGraph\Utils\ElevenLabs_Catalog::HOOK, [ $connection_id ] );
-			} elseif ( 'suno' === $provider_type && $connection_id && ! wp_next_scheduled( \WorldGraph\Utils\Suno_Catalog::HOOK, [ $connection_id ] ) ) {
-				wp_schedule_single_event( time() + 5, \WorldGraph\Utils\Suno_Catalog::HOOK, [ $connection_id ] );
-			} elseif ( 'videodraft' === $provider_type && $connection_id && ! wp_next_scheduled( \WorldGraph\Utils\VideoDraft_Catalog::HOOK, [ $connection_id ] ) ) {
-				wp_schedule_single_event( time() + 5, \WorldGraph\Utils\VideoDraft_Catalog::HOOK, [ $connection_id ] );
 			}
 		}
 

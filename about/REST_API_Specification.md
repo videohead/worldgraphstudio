@@ -748,21 +748,37 @@ PUT    /wp-json/worldgraph/v1/connections/{id}
 DELETE /wp-json/worldgraph/v1/connections/{id}
 GET    /wp-json/worldgraph/v1/connections/{id}/resolve
 POST   /wp-json/worldgraph/v1/connections/{id}/test
+GET    /wp-json/worldgraph/v1/connections/{id}/catalog
+POST   /wp-json/worldgraph/v1/connections/{id}/catalog/sync
+POST   /wp-json/worldgraph/v1/connections/{id}/catalog/prepare
+POST   /wp-json/worldgraph/v1/connections/{id}/catalog/entries/{entry_id}/enable
+POST   /wp-json/worldgraph/v1/connections/{id}/catalog/entries/{entry_id}/disable
+POST   /wp-json/worldgraph/v1/connections/{id}/catalog/entries/{entry_id}/materialize
+POST   /wp-json/worldgraph/v1/connections/{id}/catalog/entries/{entry_id}/download
 ```
 
-Connection status is the load/disable authority for provider adapters.
+Connection status is the configured-startup and new-work authority for provider
+adapters; an explicit administrator test may still load a disabled adapter for
+diagnosis.
 `resolve` reports the normalized Connection configuration, including its
-sensitive credential references; `test` exercises the provider-specific
-readiness check; `sync` refreshes the local provider-capability descriptor.
-Provider catalog and Template discovery run through provider-specific
-save/test/admin flows rather than this generic capability route.
+sensitive credential fields as empty values or a fixed mask; trusted
+server-side adapters receive the underlying value. `test` dispatches the
+manifest-declared provider readiness callback; `sync` refreshes the fixed local
+provider-capability descriptor. The manifest provisioner is automatically
+scheduled by the common save lifecycle; a provider's test callback may invoke
+it when Templates are part of readiness. The `/catalog*` routes are the
+administrator-only, ComfyUI-specific workflow catalog surface and are not a
+generic manifest-provisioning API.
 
 The adapter registry is extensible through the `worldgraph_conn_adapters`
 filter. An integration can contribute provider metadata, a callable loader,
-optional initialization, and guided setup choices without changing the
+optional initialization, Connection lifecycle callbacks, Template provisioning,
+generation-client selection, and guided setup choices without changing the
 Connection resource contract. Plugin-relative `files` are resolved inside the
 main World Graph Studio plugin and are intended for bundled implementations;
-external plugins should use a callable loader.
+external plugins should use a callable loader. See
+[Adding Connections and Templates](Adding_Connections_and_Templates.md) for the
+portable manifest schema and callback contracts.
 
 ## AI Editor and Advisors
 

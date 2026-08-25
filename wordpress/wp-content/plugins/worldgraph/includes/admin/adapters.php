@@ -78,7 +78,18 @@ class Adapters {
 				<tbody>
 					<?php foreach ( Connection_Adapters::all() as $provider_type => $adapter ) : ?>
 						<?php
-						$implemented = ! empty( $adapter['files'] ) || ! empty( $adapter['loader'] );
+						if ( false === ( $adapter['show_in_plugins'] ?? true ) ) {
+							continue;
+						}
+						$generation  = is_array( $adapter['generation'] ?? null ) ? $adapter['generation'] : [];
+						$templates   = is_array( $adapter['templates'] ?? null ) ? $adapter['templates'] : [];
+						$implemented = ! empty( $adapter['files'] )
+							|| ! empty( $adapter['loader'] )
+							|| ! empty( $adapter['init'] )
+							|| ! empty( $adapter['callbacks'] )
+							|| ! empty( $templates['provision'] )
+							|| ! empty( $generation['client'] )
+							|| ! empty( $generation['client_resolver'] );
 						$connections = Connection_Repository::get_all( [ 'provider_type' => $provider_type ] );
 						$enabled     = array_filter(
 							$connections,

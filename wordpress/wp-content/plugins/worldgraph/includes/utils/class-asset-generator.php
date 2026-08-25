@@ -213,7 +213,7 @@ class Asset_Generator {
 			$provider_template_id = sanitize_text_field( (string) ( $connection['model'] ?? '' ) );
 		}
 		$use_local_template = 'comfyui' === $provider && 'local' === ( $connection['environment'] ?? '' );
-		if ( ! in_array( $provider, [ 'comfyui', 'fal', 'elevenlabs', 'suno', 'videodraft', 'openrouter' ], true ) ) {
+		if ( ! Connection_Adapters::supports_generation( (string) $provider ) ) {
 			return new WP_Error( 'worldgraph_asset_provider_unsupported', __( 'This provider has no World Graph Studio asset generation adapter yet.', 'worldgraph' ), [ 'status' => 501 ] );
 		}
 		if ( '' === $provider_template_id && ! $use_local_template ) {
@@ -320,7 +320,9 @@ class Asset_Generator {
 		// A user-selected Template wins; otherwise keep the legacy per-CPT
 		// workflow name so existing jobs without a Template keep working.
 		$template       = $use_local_template ? (string) $template_id : $provider_template_id;
-		$adapter        = 'fal' === $provider ? 'fal_mcp' : ( in_array( $provider, [ 'elevenlabs', 'suno', 'videodraft', 'openrouter' ], true ) ? $provider : ( $use_local_template ? 'local_comfyui' : 'comfy_mcp' ) );
+		$adapter        = 'comfyui' === $provider
+			? ( $use_local_template ? 'local_comfyui' : 'comfy_mcp' )
+			: Connection_Adapters::generation_adapter( (string) $provider, $connection, $template );
 		$template_input = array_merge( self::fal_template_input( $template_id ), Template_Run_Controls::defaults( $template_id ) );
 		$params         = $profile_values;
 		$params         = array_merge( $params, $run_values );
