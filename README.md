@@ -112,12 +112,36 @@ WordPress + World Graph Studio
 WordPress is the application and source of truth. External AI and generation
 services are replaceable connections; they do not own the Story Graph.
 
-## Quick start (for Adam and other non-technical users)
-
-- Install WordPress (recommend WordPress Studio at https://developer.wordpress.com/studio/ or use LocalWP from https://localwp.com/)
-- Install SCF Plugin (https://wordpress.org/plugins/secure-custom-fields/)
-- Install World Graph Studio Plugin (located in wordpress/wp-content/plugins/worldgraph from this repository - you can copy directly or zip and install)
-- Activate the plugins
+## Quick Setup Guide
+1. Install WordPress
+- Recommended: WordPress Studio
+- WordPress Studio is a free local WordPress development environment that lets you create and manage WordPress sites on your computer with minimal setup.
+- Visit: https://developer.wordpress.com/studio/
+- Download and install WordPress Studio for your operating system.
+- Launch Studio.
+- Create a new local WordPress site.
+- Wait for Studio to complete the automatic installation.
+- Open the WordPress Admin dashboard for your new site.
+- Alternative: LocalWP
+- LocalWP is another popular local development tool that automatically installs and configures WordPress, including SSL support.
+- Visit: https://localwp.com/
+- Download and install LocalWP.
+- Click Create New Site.
+- Enter a site name.
+- Accept the preferred environment settings (or customize as needed).
+- Create the site and allow WordPress to install automatically.
+- Click WP Admin to open the WordPress dashboard.
+2. Install the Secure Custom Fields (SCF) Plugin
+- Secure Custom Fields (SCF) allows you to create and manage custom fields, field groups, custom post types, and taxonomies within WordPress.
+- Log in to your WordPress Admin dashboard.
+- Navigate to Plugins → Add Plugin.
+- Search for Secure Custom Fields.
+- Click Install Now.
+- Click Activate.
+- After activation, access SCF from the WordPress admin menu to begin creating custom fields and field groups.
+- Plugin URL: https://wordpress.org/plugins/secure-custom-fields/
+3. Install World Graph Studio Plugin (located in wordpress/wp-content/plugins/worldgraph from this repository - you can copy directly or zip and install)
+- Activate the plugin
 - Use the Setup Wizard to connect an LLM (API Key or BYOK) and Generate connection (API Key or BYOK)
 - Add additional Connections to your other Generate engines as needed
 - Import an existing script or story and explore the tool.
