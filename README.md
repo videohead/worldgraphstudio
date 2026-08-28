@@ -112,7 +112,21 @@ WordPress + World Graph Studio
 WordPress is the application and source of truth. External AI and generation
 services are replaceable connections; they do not own the Story Graph.
 
-## Quick start
+## Quick start (for Adam and other non-technical users)
+
+Install WordPress (recommend WordPress Studio at https://developer.wordpress.com/studio/ or use LocalWP from https://localwp.com/)
+Install SCF Plugin (https://wordpress.org/plugins/secure-custom-fields/)
+Install World Graph Studio Plugin (located in wordpress/wp-content/plugins/worldgraph from this repository - you can copy directly or zip and install)
+Activate the plugins
+Use the Setup Wizard to connect an LLM (API Key or BYOK) and Generate connection (API Key or BYOK)
+Add additional Connections to your other Generate engines as needed
+Import an existing script or story and explore the tool.
+
+## Theme files for a unified look
+There's also a theme in wordpress/wp-content/themes/worldworldgraph-child
+You will also need to install the frost theme (https://frostwp.com/)
+
+## Quick start (for Developers and people looking to get into the guts)
 
 ### Requirements
 
