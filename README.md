@@ -122,7 +122,7 @@ services are replaceable connections; they do not own the Story Graph.
 - Create a new local WordPress site.
 - Wait for Studio to complete the automatic installation.
 - Open the WordPress Admin dashboard for your new site.
-- Alternative: LocalWP
+1b. An alternative to WordPress Studio is LocalWP
 - LocalWP is another popular local development tool that automatically installs and configures WordPress, including SSL support.
 - Visit: https://localwp.com/
 - Download and install LocalWP.
