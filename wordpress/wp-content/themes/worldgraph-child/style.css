@@ -213,13 +213,7 @@ textarea:focus {
 }
 
 .site-header .wg-wordmark a::before {
-	background:
-		radial-gradient(circle at 24% 26%, var(--wg-sepia) 0 2px, transparent 3px),
-		radial-gradient(circle at 76% 26%, var(--wg-sepia) 0 2px, transparent 3px),
-		radial-gradient(circle at 50% 76%, var(--wg-sepia) 0 2px, transparent 3px),
-		linear-gradient(28deg, transparent 46%, var(--wg-sepia) 47% 50%, transparent 51%),
-		linear-gradient(-28deg, transparent 46%, var(--wg-sepia) 47% 50%, transparent 51%);
-	border: 1px solid var(--wg-sepia);
+	background: url("data:image/svg+xml,%3Csvg%20viewBox%3D%220%200%2032%2032%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M18%204C22.97%204%2027%208.03%2027%2013C27%2017.97%2022.97%2022%2018%2022C13.02%2022%209%2017.97%209%2013C9%208.03%2013.02%204%2018%204Z%22%20fill%3D%22%23FFC44D%22%2F%3E%3Cpath%20d%3D%22M11.9756%2030.9834H23.9756M17.9756%2025.9834V30.9834M12.8711%201C6.42811%203.735%203.24911%2011.603%205.98411%2018.046C8.71911%2024.489%2016.5861%2027.668%2023.0301%2024.934M26.9512%2012.9668C26.9512%207.9958%2022.9222%203.9668%2017.9512%203.9668C12.9802%203.9668%208.95121%207.9958%208.95121%2012.9668C8.95121%2017.9378%2012.9802%2021.9668%2017.9512%2021.9668C22.9222%2021.9668%2026.9512%2017.9378%2026.9512%2012.9668Z%22%20stroke%3D%22%23F2EAD7%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E") center / contain no-repeat;
 	content: "";
 	display: inline-grid;
 	height: 2.15rem;
