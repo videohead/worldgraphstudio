@@ -674,6 +674,17 @@
 			</div>
 			<!-- /wp:group -->
 
+			<!-- wp:group {"className":"wg-card wg-audience-card","layout":{"type":"constrained"}} -->
+			<div class="wp-block-group wg-card wg-audience-card">
+				<!-- wp:heading {"level":3,"className":"wg-card__title","fontFamily":"headline"} -->
+				<h3 class="wp-block-heading wg-card__title has-headline-font-family"><?php echo esc_html__( 'Creators', 'worldgraph-child' ); ?></h3>
+				<!-- /wp:heading -->
+				<!-- wp:paragraph -->
+				<p><?php echo esc_html__( 'Design worlds, characters, props and creative assets.', 'worldgraph-child' ); ?></p>
+				<!-- /wp:paragraph -->
+			</div>
+			<!-- /wp:group -->
+
 		</div>
 		<!-- /wp:group -->
 	</section>
