@@ -530,7 +530,7 @@ textarea:focus {
 }
 
 .wg-stat__value {
-	color: var(--wg-espresso);
+	color: var(--wg-ivory);
 	font-family: var(--wp--preset--font-family--headline, Oswald, "Arial Narrow", sans-serif);
 	font-size: clamp(1.7rem, 4vw, 3rem);
 	line-height: 1;
