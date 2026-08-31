@@ -178,6 +178,46 @@ final class Builtin_Connection_Tests {
 		);
 	}
 
+	/** Test CyberBara authentication, Seedance 2.5 scenes, and Templates. */
+	public static function test_seedance_25( int $connection_id, array $record ): array {
+		unset( $record );
+
+		$models = \WorldGraph\Utils\Seedance_25_API::video_models( $connection_id );
+		if ( is_wp_error( $models ) ) {
+			return self::outcome( false, $models->get_error_message() );
+		}
+
+		$scenes   = \WorldGraph\Utils\Seedance_25_API::model_scenes( $models );
+		$required = [ 'text-to-video', 'image-to-video' ];
+		$missing  = array_values( array_diff( $required, $scenes ) );
+		$health   = [
+			'model_count' => count( $models ),
+			'model'       => \WorldGraph\Utils\Seedance_25_API::MODEL,
+			'scenes'      => $scenes,
+		];
+		if ( ! empty( $missing ) ) {
+			$health['missing_scenes'] = $missing;
+			return self::outcome(
+				false,
+				sprintf( 'CyberBara is reachable but Seedance 2.5 does not expose required scenes: %s.', implode( ', ', $missing ) ),
+				$health
+			);
+		}
+
+		$provisioned = \WorldGraph\Templates\Template_Manager::provision_for_connection( $connection_id );
+		if ( is_wp_error( $provisioned ) ) {
+			return self::outcome( false, $provisioned->get_error_message(), $health );
+		}
+
+		$template_ids           = (array) ( $provisioned['template_ids'] ?? [] );
+		$health['template_ids'] = $template_ids;
+		return self::outcome(
+			true,
+			sprintf( 'Connected to CyberBara; Seedance 2.5 text-to-video and image-to-video are available through %d Template(s).', count( $template_ids ) ),
+			$health
+		);
+	}
+
 	/** Test midjourney-api.com REST, AceData Cloud MCP, and Templates. */
 	public static function test_midjourney( int $connection_id, array $record ): array {
 		$api_credential = trim( (string) ( $record['credential_reference'] ?? '' ) );

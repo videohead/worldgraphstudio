@@ -36,8 +36,8 @@ AI Editor    Generation Engine   Interchange
     v             v              v
 Configured     Comfy / fal /        Story Import & Export /
 LLM endpoint   ElevenLabs / Suno /  FDX / VideoDraft
-               VideoDraft /         + cataloged scaffolds
-               OpenRouter
+               CyberBara Seedance /  + cataloged scaffolds
+               VideoDraft / OpenRouter
 ```
 
 Core Story Graph work has no AI dependency. An unavailable connection should
@@ -197,9 +197,9 @@ The generation lifecycle is:
    results remain on the generation record.
 
 The delivered adapters cover Comfy Cloud MCP, local ComfyUI HTTP workflows,
-fal MCP, ElevenLabs, SunoAPI.org REST, AceData Cloud Suno MCP, VideoDraft MCP,
-OpenRouter video generation REST, and manually managed external-generator
-workflows where configured. Suno uses one
+fal MCP, ElevenLabs, SunoAPI.org REST, AceData Cloud Suno MCP, Seedance 2.5
+through CyberBara REST, VideoDraft MCP, OpenRouter video generation REST, and
+manually managed external-generator workflows where configured. Suno uses one
 Connection with distinct REST and MCP credential references; its managed
 Templates cover prompt music, custom music, and `text_to_lyrics`. Job state,
 cancellation, validation failures, and generation logs remain in WordPress.
@@ -219,7 +219,9 @@ to the shared generation lifecycle.
 See [Generation Engine](plugins/GENERATION_ENGINE.md),
 [Comfy Template Catalog](plugins/COMFY_TEMPLATE_CATALOG.md), and
 [Deployment and Connections](Deployment_and_Connections.md). The two-provider
-Suno contract is detailed in [Suno Integration](plugins/SUNO.md).
+Suno contract is detailed in [Suno Integration](plugins/SUNO.md), and the
+third-party Seedance transport boundary is detailed in [Seedance 2.5 via
+CyberBara](plugins/SEEDANCE.md).
 
 ### Interchange
 

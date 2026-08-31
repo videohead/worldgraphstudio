@@ -21,7 +21,7 @@ not been configured.
 | AI assistance | Gutenberg AI Editor, Story Graph context, configured LLM access, WordPress Abilities, and 50+ specialist agents loaded from extensible profiles |
 | Story intelligence | Search, optional semantic assistance, continuity checks, relationship analytics, summaries, and admin panels |
 | Generation | Connection and template records, validation, queued generation jobs, WP-Cron processing, job state, cancellation, result import, and provenance |
-| Provider adapters | A filterable, callback-driven Connection/Template/generation registry plus local ComfyUI HTTP workflows, Comfy Cloud MCP, fal MCP, ElevenLabs, SunoAPI.org REST, AceData Cloud Suno MCP, midjourney-api.com REST, Ace Data Cloud MidJourney MCP, Higgsfield reviewed REST generation with OAuth MCP catalog discovery, VideoDraft MCP, OpenRouter video generation REST, and manually managed external-generator workflows where configured |
+| Provider adapters | A filterable, callback-driven Connection/Template/generation registry plus local ComfyUI HTTP workflows, Comfy Cloud MCP, fal MCP, ElevenLabs, SunoAPI.org REST, AceData Cloud Suno MCP, midjourney-api.com REST, Ace Data Cloud MidJourney MCP, Higgsfield reviewed REST generation with OAuth MCP catalog discovery, Seedance 2.5 generation through CyberBara REST, VideoDraft MCP, OpenRouter video generation REST, and manually managed external-generator workflows where configured |
 | Project interchange | Default-enabled Story Import & Export plugin with canonical World Graph Studio JSON import/export, Markdown screenplay/storyboard export, and preview/confirm LLM decomposition of supported persisted story documents; Final Draft FDX import; optional VideoDraft structural Project push/pull |
 | Synchronization | Optional bidirectional VideoDraft structural synchronization, with persistent remote-ID mappings |
 | Editorial format code | CMX 3600 and SMPTE 436m XML parsing, timecode, and format-generation functions; the bundled admin workflow remains incomplete |
@@ -58,6 +58,18 @@ the hosted MCP service. MCP support is authenticated, bounded runtime
 `tools/list` discovery only; discovered remote tools do not become executable
 Templates and the adapter exposes no arbitrary `tools/call`. See
 [Higgsfield Connection](plugins/HIGGSFIELD.md).
+
+The delivered Seedance boundary is one manually configured `seedance_25`
+Connection to the CyberBara REST intermediary. It provisions only the fixed
+`seedance-2.5:text-to-video` and `seedance-2.5:image-to-video` Templates,
+reauthorizes and bounds local reference-image uploads, polls asynchronous
+tasks, validates the full bounded output list, and imports every distinct final
+video. It is not a direct
+ByteDance, BytePlus, Volcengine, or Dreamina integration. CyberBara does not
+document a submission idempotency key, provider-side cancellation, or a
+callback contract for this path, so ambiguous paid submissions are not retried
+automatically and completion is reconciled by polling. See
+[Seedance 2.5 via CyberBara](plugins/SEEDANCE.md).
 
 The Story Import & Export feature is bundled at
 `plugins/story-import-export/` and enabled by default. JSON import/export and

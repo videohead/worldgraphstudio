@@ -150,9 +150,9 @@ The current release provides:
 - Returned-media import into WordPress, normalized text-result retention, and
   source linkage and provenance.
 - Adapters for Comfy Cloud MCP, local ComfyUI HTTP workflows, fal MCP,
-  ElevenLabs, SunoAPI.org REST, AceData Cloud Suno MCP, VideoDraft hosted MCP,
-  OpenRouter video generation REST, and manually managed external-generator
-  workflows where configured.
+  ElevenLabs, SunoAPI.org REST, AceData Cloud Suno MCP, Seedance 2.5 through
+  CyberBara REST, VideoDraft hosted MCP, OpenRouter video generation REST, and
+  manually managed external-generator workflows where configured.
 
 Capabilities depend on the selected adapter, template, model, credentials, and
 reachable service. The product may store media types for which the current
@@ -161,6 +161,11 @@ installation has no direct generator.
 The Suno integration delivers prompt music, custom music, and
 `text_to_lyrics` through transport-specific Templates. Its REST and MCP
 providers require separate credentials. See [Suno Integration](plugins/SUNO.md).
+
+The Seedance integration delivers fixed text-to-video and image-to-video
+Templates through the third-party CyberBara REST intermediary. It is separate
+from the direct BytePlus ModelArk API. See [Seedance 2.5 via
+CyberBara](plugins/SEEDANCE.md).
 
 The VideoDraft integration discovers live image, video, and audio tool schemas,
 provisions Templates, polls asynchronous generation, and imports completed

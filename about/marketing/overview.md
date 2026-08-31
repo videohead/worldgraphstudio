@@ -53,7 +53,7 @@ Export and synchronization tools help move your work back into writing, editing,
 
 World Graph Studio is not tied to a single AI company, model, or generation platform.
 
-Connect to thousands of generative models and creative workflows through ComfyUI, Comfy Cloud, VideoDraft, and supported AI providers. Use different models for different parts of your production while keeping the project itself connected.
+Connect to thousands of generative models and creative workflows through ComfyUI, Comfy Cloud, VideoDraft, [Seedance 2.5 through a manually configured third-party CyberBara REST Connection](../plugins/SEEDANCE.md), and supported AI providers. Use different models for different parts of your production while keeping the project itself connected.
 
 For example:
 
@@ -62,6 +62,7 @@ For example:
 * Send location and background images to another API
 * Produce dialogue with ElevenLabs
 * Create music with Suno
+* Generate text-to-video or animate one reference image with Seedance 2.5 via third-party CyberBara
 * Run private and uncensored workflows using local models
 * Add hosted services when they are useful and manage your costs
 

@@ -471,10 +471,12 @@ World Graph Studio runs on a WordPress.org-capable host or a local Docker/Lando
 deployment. Helpful specialist agents require an API-connected LLM: a local
 OpenAI-compatible server or a supported hosted API key. Generation can use
 Comfy Cloud MCP, local ComfyUI HTTP workflows, fal MCP, ElevenLabs, Suno through
-SunoAPI.org REST and AceData Cloud MCP, or VideoDraft when the matching
-Connection and Template are configured. Suno's REST and MCP services require
-distinct credentials. Browser-only AI subscriptions are not a World Graph
-Studio server connection.
+SunoAPI.org REST and AceData Cloud MCP,
+[Seedance 2.5 through a manually configured third-party CyberBara REST
+Connection](../plugins/SEEDANCE.md), or VideoDraft when the matching Connection
+and Template are configured. The Seedance Connection uses a CyberBara API key.
+Suno's REST and MCP services require distinct credentials. Browser-only AI
+subscriptions are not a World Graph Studio server connection.
 
 Use “no credits needed” to describe World Graph Studio itself and local/open
 model workflows. Do not imply that optional hosted providers are free or lack

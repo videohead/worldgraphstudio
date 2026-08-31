@@ -15,6 +15,7 @@ The entries below describe the delivered connector boundary. See
 | ElevenLabs Generative Audio API | Supported | Configure an ElevenLabs API key, provision Templates for speech, dialogue, sound effects, music, or voice design, and import the generated audio into WordPress. |
 | SunoAPI.org REST + AceData Cloud Suno MCP | Supported | Configure one `suno` Connection with separate REST and MCP credentials, provision transport-specific prompt-music, custom-music, and lyrics Templates, poll asynchronous tasks, import every final song, and retain generated lyric results. |
 | midjourney-api.com REST + Ace Data Cloud MidJourney MCP | Supported | Configure one `midjourney` Connection with either intermediary credential or both, provision the matching Imagine text-to-image Templates, poll asynchronous tasks, and import every final image. These are third-party services, not an official Midjourney public API. |
+| [Seedance 2.5 via CyberBara REST](plugins/SEEDANCE.md) | Supported | Manually configure one `seedance_25` Connection with a CyberBara API key, provision the two fixed text-to-video/image-to-video Templates, poll asynchronous tasks, validate the full bounded output list, and import every distinct final video. This is a third-party CyberBara route, not a direct ByteDance, BytePlus, Volcengine, or Dreamina API. |
 | VideoDraft hosted MCP | Supported | Configure a VideoDraft PAT, discover live image, video, and audio tool schemas, provision Templates, poll asynchronous image/video jobs, and import completed media into WordPress. The optional bundled sync plugin also exchanges the shared structural Project subset. |
 | OpenAI, Anthropic, or OpenAI-compatible LLM API | Supported for AI Editor | Configure an API credential and compatible base URL in **World Graph Studio > AI Settings**. A browser subscription alone is not sufficient. |
 | Other web image/video platforms | External asset source | Generate in the provider's own web app, then upload or register the result in World Graph Studio with its prompt, model, source URL, and usage-rights information. |
@@ -28,7 +29,7 @@ connections in the current release:
 - Runway
 - Google Veo
 - Kling
-- Seedance
+- Direct ByteDance, BytePlus, Volcengine, or Dreamina Seedance endpoints
 - Adobe Firefly
 - Amazon Bedrock or SageMaker video endpoints
 
@@ -53,27 +54,34 @@ The presence of `veo` or `nova_reel` in the connection form is an extension poin
 1. Create a fal, ElevenLabs, or VideoDraft account and credential; obtain both
    a SunoAPI.org key and a separate AceData Cloud token for Suno; or obtain
    the midjourney-api.com and/or Ace Data Cloud credential for the MidJourney
-   transport you intend to use.
-2. In the Setup Wizard or **World Graph Studio > Connections**, choose the matching provider.
+   transport you intend to use; or obtain a CyberBara API key for the reviewed
+   Seedance 2.5 intermediary path.
+2. In the Setup Wizard or **World Graph Studio > Connections**, choose the
+   matching provider. Seedance 2.5 via CyberBara is configured on the
+   Connections screen only.
 3. Use `env://FAL_KEY`, `env://ELEVENLABS_API_KEY`,
    `env://VIDEODRAFT_API_KEY`, `env://OPENROUTER_API_KEY`, the paired
    `env://SUNO_API_KEY` and `env://ACEDATACLOUD_API_TOKEN` references, or the
    `env://MIDJOURNEY_API_KEY` and/or a service-scoped Ace Data Cloud token in
-   production when credentials are supplied by the runtime.
+   production when credentials are supplied by the runtime. Use
+   `env://CYBERBARA_API_KEY` for Seedance 2.5 via CyberBara.
 4. Test the Connection so World Graph Studio can discover provider capabilities and create or update Templates.
 5. Select a provider Template and submit the generation from World Graph Studio.
 
-fal, Suno, MidJourney, and asynchronous VideoDraft and OpenRouter image/video
-jobs are queued and polled through WP-Cron. ElevenLabs and synchronous
-VideoDraft audio responses are imported directly. Suno music completion
+fal, Suno, MidJourney, Seedance 2.5 via CyberBara, and asynchronous VideoDraft
+and OpenRouter image/video jobs are queued and polled through WP-Cron.
+ElevenLabs and synchronous VideoDraft audio responses are imported directly.
+Suno music completion
 imports every final track; MidJourney completion imports every final image;
-the `text_to_lyrics` modality retains normalized text results without
-pretending they are media attachments.
+Seedance completion validates the full output list and imports every distinct
+final video; the
+`text_to_lyrics` modality retains normalized text results without pretending
+they are media attachments.
 
 These are first-party World Graph Studio execution paths. Provider model
 availability, quotas, pricing, regions, and terms remain controlled by fal,
-ElevenLabs, VideoDraft, OpenRouter, SunoAPI.org, midjourney-api.com, and Ace
-Data Cloud.
+ElevenLabs, VideoDraft, OpenRouter, SunoAPI.org, midjourney-api.com, Ace Data
+Cloud, and CyberBara.
 
 ### Path C: Local or third-party web generation
 
@@ -90,9 +98,9 @@ A third-party extension can make another web platform a direct connector by
 implementing its authentication, capability validation, submission, polling or
 webhooks, cancellation where available, artifact download, and asset ingestion.
 The delivered generation batch already dispatches ComfyUI, fal, ElevenLabs,
-Suno, MidJourney, VideoDraft, and OpenRouter jobs through their adapters; adding an
-arbitrary provider name or endpoint to a Connection record does not create an
-executable adapter.
+Suno, MidJourney, Seedance 2.5 via CyberBara, VideoDraft, and OpenRouter jobs
+through their adapters; adding an arbitrary provider name or endpoint to a
+Connection record does not create an executable adapter.
 
 Before an extension labels another provider supported, its maintainer should
 verify official API access and terms, implement the complete job lifecycle,

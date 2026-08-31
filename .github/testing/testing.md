@@ -140,7 +140,7 @@ rather than treating the build as complete parity evidence.
 
 Tests should mock LLM, ComfyUI, Comfy Cloud, fal, ElevenLabs, SunoAPI.org REST,
 AceData Cloud Suno MCP, midjourney-api.com REST, Ace Data Cloud MidJourney MCP,
-Higgsfield REST/OAuth/MCP, VideoDraft MCP, Celtx, and Web
+Higgsfield REST/OAuth/MCP, CyberBara Seedance 2.5 REST, VideoDraft MCP, Celtx, and Web
 Stories traffic unless a test is explicitly an environment-specific smoke
 test. A valid credential or reachable model is deployment state, not a unit
 test prerequisite. Suno tests must keep the REST and MCP credentials separate
@@ -151,6 +151,18 @@ must keep the combined
 REST key ID/secret separate from the MCP OAuth credential, exercise only the
 three reviewed REST operation references, and prove MCP discovery does not
 expose arbitrary `tools/call`.
+
+Seedance 2.5 tests must mock every CyberBara request and use no live account or
+key. Cover the exact `https://cyberbara.com` origin, Bearer-only credential
+placement, bounded model readiness check, the fixed
+`seedance-2.5:text-to-video` and `seedance-2.5:image-to-video` references,
+strict parameter normalization, queued attachment reauthorization, bounded
+image upload, asynchronous state mapping, and import of every distinct safe
+final video. Include malformed, unauthorized, rate-limited, service-failure,
+and ambiguous-submit fixtures; an ambiguous paid submit must not be retried.
+Assert that provider errors and results never expose the captured test secret;
+keep test-only placeholder credentials confined to fixtures and the captured
+CyberBara authorization header.
 
 Manifest-profile OAuth tests must mock authorization, registration, and token
 responses. Cover S256 PKCE, nonce/capability checks, one-time state

@@ -2,8 +2,8 @@
 
 World Graph Studio keeps stories, Story Graph data, and specialist creative
 advisors in WordPress. Generative media workflows can run through configured
-tools including ComfyUI, fal, ElevenLabs, Suno, MidJourney, VideoDraft, and
-OpenRouter.
+tools including ComfyUI, fal, ElevenLabs, Suno, MidJourney, Seedance 2.5 via
+CyberBara, VideoDraft, and OpenRouter.
 The delivered Higgsfield adapter adds reviewed REST image/video generation and
 OAuth-protected MCP catalog inspection.
 Neither a GPU nor a generation connection is required for writing, planning, continuity,
@@ -25,8 +25,9 @@ Every World Graph Studio user needs:
    ElevenLabs account, separate SunoAPI.org and Ace Data Cloud accounts,
    separate midjourney-api.com and Ace Data Cloud MidJourney credentials, a
    Higgsfield developer API credential plus an eligible Higgsfield account for
-   MCP, a VideoDraft account with a personal access token, an OpenRouter
-   account with an API key, or another manually managed asset source.
+   MCP, a CyberBara account with an API key, a VideoDraft account with a
+   personal access token, an OpenRouter account with an API key, or another
+   manually managed asset source.
 3. Optionally, an API-connected LLM: a local OpenAI-compatible server such as
    llama.cpp, Ollama, vLLM, or LM Studio; or a hosted provider API such as
    OpenAI or Anthropic.
@@ -349,6 +350,52 @@ WordPress media remains the project copy.
 See [Higgsfield Connection](plugins/HIGGSFIELD.md) for exact Template inputs,
 OAuth behavior, request states, upload types, retention, security boundaries,
 troubleshooting, and official provider references.
+
+## Seedance 2.5 via CyberBara REST
+
+World Graph Studio represents this transport as one `seedance_25` Connection
+to the third-party CyberBara REST API. It is not a direct ByteDance, BytePlus,
+Volcengine, or Dreamina credential or endpoint.
+
+Configure it from **World Graph Studio > Connections**, not the first-run Setup
+Wizard:
+
+1. Create and publish a **Seedance 2.5 via CyberBara** Connection.
+2. Keep Endpoint URL at exactly `https://cyberbara.com`.
+3. Put the CyberBara API key in **API Key / OAuth Reference**, preferably as
+   `env://CYBERBARA_API_KEY` with that environment variable set in the
+   WordPress runtime.
+4. Leave the Connection enabled and run **Check connection**. The check lists
+   video models without submitting generation and requires the reviewed
+   `seedance-2.5` text-to-video and image-to-video scenes before provisioning
+   Templates.
+
+An empty `Model Access` value permits both reviewed operations. To narrow it,
+use a JSON array containing `seedance-2.5:text-to-video`,
+`seedance-2.5:image-to-video`, or both. The Templates default to 10 seconds,
+`720p`, and `16:9`; the image-to-video Template additionally requires one
+World Graph Studio-managed source image.
+
+Generation uses Bearer authentication, uploads an authorized local reference
+image to `/api/v1/uploads/images` when needed, submits to
+`/api/v1/videos/generations`, and polls `/api/v1/tasks/{taskId}`. The complete
+bounded output list must contain only safe HTTPS URLs; every distinct final
+video is then imported into the WordPress Media Library before the job
+completes. Remote pricing, quotas, moderation, model availability, and output
+retention remain CyberBara operating conditions.
+
+BytePlus now documents a separate direct Seedance 2.5 ModelArk/LAS API. Its
+host, model ID, request body, task lifecycle, and credential are different and
+are not implemented by this `seedance_25` adapter. SeedanceAPI.org is another
+separate relay and its current v2 documentation points to 2.0/Fast/Mini models.
+See the provider comparison in the Connection guide before choosing an access
+path.
+
+This reviewed path has no documented idempotency key, callback, or
+provider-side cancellation operation. An ambiguous paid submission is not
+retried automatically; inspect the CyberBara account before deliberately
+retrying. See [Seedance 2.5 via CyberBara](plugins/SEEDANCE.md) for the exact
+input, upload, lifecycle, security, consent, and troubleshooting boundaries.
 
 ## VideoDraft MCP and Project Sync
 

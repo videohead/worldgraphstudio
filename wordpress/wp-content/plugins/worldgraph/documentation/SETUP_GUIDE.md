@@ -118,6 +118,32 @@ provisioned. Both paths poll asynchronously and import every final image. See
 the [MidJourney Connection guide](../../../../../about/plugins/MIDJOURNEY.md)
 for modes, lifecycle, security boundaries, and troubleshooting.
 
+### Seedance 2.5 via CyberBara (Connections screen only)
+
+Seedance 2.5 via CyberBara is not a first-run wizard choice. Finish or skip the
+wizard, then open **World Graph Studio > Connections** and create a
+**Seedance 2.5 via CyberBara** Connection with:
+
+- Endpoint URL: `https://cyberbara.com`
+- API Key / OAuth Reference: a CyberBara API key, preferably
+  `env://CYBERBARA_API_KEY`
+- Environment: `production`
+- Status: enabled
+
+This Connection uses a third-party CyberBara API key. It is not authenticated
+by a ByteDance, BytePlus, Volcengine, Dreamina, or consumer Seedance account.
+Save and publish the Connection, then run **Check connection**. The check lists
+video models without generating media and provisions the two reviewed
+`seedance-2.5:text-to-video` and `seedance-2.5:image-to-video` Templates only
+when the required model scenes are present.
+
+Both Templates default to a 10-second, `720p`, `16:9` video. Text-to-video
+requires a prompt. Image-to-video requires a prompt and one
+World Graph Studio-managed `image_input` bound to the `image` slot. See the
+[Seedance 2.5 via CyberBara guide](../../../../../about/plugins/SEEDANCE.md)
+for the intermediary boundary, exact inputs, uploads, polling, retries,
+consent, and troubleshooting.
+
 ### Local ComfyUI HTTP API plus optional MCP
 
 Use this when ComfyUI runs on the same workstation or a reachable private host.
@@ -291,10 +317,12 @@ not expose separate fallback fields. Do not expect the wizard to save
 - provisions the managed local ComfyUI Template where applicable; and
 - sets `worldgraph_setup_complete = true`.
 
-Higgsfield and MidJourney are intentionally absent from this managed wizard
-save. Configure them afterward on the Connections screen. Higgsfield needs a
-saved record for its OAuth state and callback; MidJourney needs two explicitly
-separated intermediary credentials.
+Higgsfield, MidJourney, and Seedance 2.5 via CyberBara are intentionally absent
+from this managed wizard save. Configure them afterward on the Connections
+screen. Higgsfield needs a saved record for its OAuth state and callback;
+MidJourney needs two explicitly separated intermediary credentials; Seedance
+uses a manually reviewed CyberBara endpoint and credential rather than a
+guided wizard test.
 
 The generation credential entered in this form is stored on the managed
 Connection's `credential_reference` meta. For Suno, the separate AceData Cloud
@@ -338,6 +366,9 @@ Provider-specific behavior:
 - MidJourney verifies the midjourney-api.com REST key and required Ace Data
   Cloud MCP tools, then provisions two transport-specific text-to-image
   Templates;
+- Seedance 2.5 via CyberBara verifies the fixed CyberBara endpoint, credential,
+  reviewed model, and text-to-video/image-to-video scenes, then provisions two
+  REST video Templates;
 - VideoDraft verifies hosted MCP generation and Project tools, then
   synchronizes live-schema Templates;
 - Comfy Cloud's Connection test currently verifies credential presence; catalog
@@ -475,6 +506,15 @@ Data Cloud MidJourney service token in the MCP field. Confirm the REST mode is
 supports `turbo`. The combined Connection check fails when either transport or
 either required MCP tool is unavailable.
 
+For Seedance 2.5 via CyberBara, use only `https://cyberbara.com` and a
+CyberBara-issued API key or `env://CYBERBARA_API_KEY` reference. A direct
+ByteDance, BytePlus, Volcengine, Dreamina, or consumer account credential will
+not authenticate this Connection. If **Check connection** succeeds but no
+Templates appear, confirm `Model Access` is blank or is a JSON array containing
+one or both exact `seedance-2.5:` operation references. If a submission times
+out, inspect the CyberBara account before retrying because this path has no
+documented submission idempotency key.
+
 ### No Template appears in the Assets metabox
 
 - Confirm the Template is published with `status = active`.
@@ -513,3 +553,4 @@ either required MCP tool is unavailable.
 - [Suno Integration](../../../../../about/plugins/SUNO.md)
 - [Higgsfield Connection](../../../../../about/plugins/HIGGSFIELD.md)
 - [MidJourney Connection](../../../../../about/plugins/MIDJOURNEY.md)
+- [Seedance 2.5 via CyberBara](../../../../../about/plugins/SEEDANCE.md)

@@ -173,7 +173,7 @@
 				<h3 class="wp-block-heading wg-step__title has-headline-font-family"><?php echo esc_html__( 'Generate with any tool', 'worldgraph-child' ); ?></h3>
 				<!-- /wp:heading -->
 				<!-- wp:paragraph -->
-				<p><?php echo esc_html__( 'Send work to ComfyUI, VideoDraft, fal, ElevenLabs, Suno, OpenRouter, or free local models, one Connection at a time.', 'worldgraph-child' ); ?></p>
+				<p><?php echo esc_html__( 'Send work through supported Connections such as ComfyUI, VideoDraft, fal, ElevenLabs, Suno, Seedance 2.5 via third-party CyberBara, and OpenRouter, or use free local models.', 'worldgraph-child' ); ?></p>
 				<!-- /wp:paragraph -->
 			</div>
 			<!-- /wp:group -->

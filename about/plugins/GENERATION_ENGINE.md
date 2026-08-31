@@ -318,6 +318,20 @@ returned task ID and `suno_get_task`. Music completion imports both returned
 tracks before the generation is marked complete. See [Suno
 Integration](SUNO.md) for the operator and transport contracts.
 
+### Seedance 2.5 via CyberBara REST
+
+One manually configured `seedance_25` Connection calls the fixed
+`https://cyberbara.com` origin with a CyberBara Bearer credential. Its health
+check requires the exact `seedance-2.5` model and text-to-video/image-to-video
+scenes before the two reviewed Templates are provisioned.
+
+The adapter can upload one reauthorized, bounded local reference image, submit
+asynchronous generation, poll the correlated task, and import every distinct
+video only after the complete output list passes the HTTPS safety contract. It
+does not automatically retry an ambiguous paid submission. This is a
+third-party CyberBara path, not the separate direct BytePlus ModelArk API. See
+[Seedance 2.5 via CyberBara](SEEDANCE.md).
+
 ### VideoDraft hosted MCP
 
 A `videodraft` Connection calls `https://app.videodraft.ai/api/mcp` directly
@@ -835,3 +849,4 @@ abilities; their current LLM requests use `tool_choice: none`. See
 - [ComfyUI manifests](../../wordpress/wp-content/plugins/worldgraph/includes/utils/comfy-manifest.php)
 - [Setup and Connections](../Deployment_and_Connections.md)
 - [Suno Integration](SUNO.md)
+- [Seedance 2.5 via CyberBara](SEEDANCE.md)

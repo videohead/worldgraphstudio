@@ -19,73 +19,71 @@ deliverables back out, add provider integrations around a shared Connection
 registry without changing the canonical project model, and expand the bundled
 team of specialist agents with new profile files.
 
+## Why it exists
+
+Creating new works in the age of AI across a variety of tools and services is
+incredibly challenging. The "best" model today can be clearly usurped by tomorrow's
+champion. Creating content locally keeps your thoughts and creative ideas out
+of the way of the online generation tools, providing a concentrated place to 
+store your world, location, and character ideas that can be easily shared. 
+World Graph Studio keeps narrative context and production context together, 
+so a character can stay connected to a world, a scene, a shot, a generated asset, 
+an editorial decision, and the reasoning behind those choices. The narrative
+context and descriptive content is maintained in one source of truth, and 
+can be round-tripped through multiple story tools, or used to generate content
+with any (or multiple) generation providers.
+
+With self-hosted and open models, creators can work without a platform-level
+credit meter, proprietary project format, or mandatory cloud account. Hosted
+providers remain optional and may apply their own prices, quotas, licenses,
+and usage policies. With the right hardware setup, this solution can generate 
+end-to-end stories on BYOK or local compute at no cost using ComfyUI or other
+local generate connections.
+
 ## What ships today
 
-- A structured Story Graph with 15 WordPress content types, nine taxonomies,
-  reusable relationships, and Structured Content Fields.
+- A default-enabled Story Import & Export feature plugin with canonical World
+  Graph Studio JSON import/export, Markdown screenplay/storyboard export, and
+  preview-before-commit LLM decomposition for persisted JSON, TXT, Markdown,
+  Fountain, Final Draft, RTF, text-layer PDF, EPUB, DOCX, and ODT uploads.
+- A structured Story Graph with 15 content types, nine taxonomies,
+  reusable relationships, analysis tools, and Structured Content Fields.
 - Project, world, character, location, prop, organization, episode, scene,
   shot, sound, storyboard, asset, editorial, template, and connection tools.
 - An AI Editor, Story Graph-aware analysis, continuity checks, relationship
   analytics, semantic-search fallbacks, and 50+ specialist agents loaded from
   extensible `.agent.md` profiles.
-- Template-backed image, video, and audio generation jobs through providers
-  including VideoDraft, with WordPress media imports, provenance, status tracking,
+- Template-backed image, video, and audio generation jobs through an expanding list
+  of connection providers, with media imports, provenance, status tracking,
   cancellation, and scheduled batches.
-- A default-enabled Story Import & Export feature plugin with canonical World
-  Graph Studio JSON import/export, Markdown screenplay/storyboard export, and
-  preview-before-commit LLM decomposition for persisted JSON, TXT, Markdown,
-  Fountain, RTF, text-layer PDF, EPUB, DOCX, and ODT uploads.
-- Final Draft FDX import, normalized through the same canonical JSON importer.
-- Optional bidirectional VideoDraft structural Project sync and reusable EDL
-  parsing, timecode, and format-generation code.
-- Bundled deterministic Fountain-to-FDX, Celtx, Descript, and Web Stories
-  integration source with readiness and current blockers called out in the
-  integration catalog.
-- A filterable Connection adapter manifest that lets integrations register
-  provider types, guided setup choices, and a conditional implementation
-  loader.
+- Optional bidirectional project sync and reusable VideoDraft, EDL parsing, 
+  timecode, and format-generation code.
 - A permission-aware REST API and WordPress Abilities for tools, resources,
   and prompts.
+- A custom WordPress theme for viewing and sharing your project and its structure
+- Extensible headless interface for developers and users who want to escape
+  the limitations of the WordPress GUI
 
-The additional-script roadmap area that was previously described as on hold is
-closed for the current release: story documents in the listed text-bearing
-formats can now be decomposed through a selected LLM Connection, and Final
-Draft FDX import remains delivered. Format-specific, lossless Fade In,
-Highland, Story Architect, and other unaccepted adapters are extension
-opportunities rather than unfinished requirements. The separate deterministic
-Fountain-to-FDX importer, Celtx, Descript, and Web Stories surfaces remain
-visible in the catalog with their actual scaffold or prototype status. See
-[Delivery status](about/Delivery_Status.md) for exact directions and
+See [Delivery status](about/Delivery_Status.md) for exact directions and
 boundaries.
 
 ## Built to extend
 
-- **Interchange adapters reuse one Story Graph contract.** The bundled Story
+- **Interchange adapters for importing and round trips.** The bundled Story
   Import & Export plugin owns canonical JSON import/export and Markdown
   projections. It can also extract persisted story uploads and ask a selected
   LLM Connection for a validated JSON candidate that the creator must preview
   and confirm. FDX and VideoDraft pull reuse that importer rather than replacing
   WordPress as the source of truth.
-- **Connections are an extension surface.** An integration can register its
-  provider metadata, a conditional loader, and setup choices through a
+- **Connections are extendable to any API provider.** A generating connection integration 
+  can register its provider metadata, a conditional loader, and setup choices through a
   WordPress hook. Its implementation then supplies any provider-specific
   validation, catalog, execution, or polling behavior it needs around shared
-  Connection records.
+  Connection records to incorporate the widest range of generate providers.
 - **Agents are profile-driven.** World Graph Studio discovers bundled
   `.agent.md` files at runtime, so a focused production role can be added
-  without creating another service or changing the Story Graph.
-
-## Why it exists
-
-Creative work is more than a prompt and an output file. World Graph Studio
-keeps narrative context and production context together, so a character can
-stay connected to a world, a scene, a shot, a generated asset, an editorial
-decision, and the reasoning behind those choices.
-
-With self-hosted and open models, creators can work without a platform-level
-credit meter, proprietary project format, or mandatory cloud account. Hosted
-providers remain optional and may apply their own prices, quotas, licenses,
-and usage policies.
+  without creating another service or changing the Story Graph. There are over
+  50 agents provided by default, extend them or add more as needed.
 
 ## Architecture
 
@@ -113,38 +111,42 @@ WordPress is the application and source of truth. External AI and generation
 services are replaceable connections; they do not own the Story Graph.
 
 ## Quick Setup Guide
+
 1. Install WordPress
-- Recommended: WordPress Studio
-- WordPress Studio is a free local WordPress development environment that lets you create and manage WordPress sites on your computer with minimal setup.
-- Visit: https://developer.wordpress.com/studio/
-- Download and install WordPress Studio for your operating system.
-- Launch Studio.
-- Create a new local WordPress site.
-- Wait for Studio to complete the automatic installation.
-- Open the WordPress Admin dashboard for your new site.
-1b. An alternative to WordPress Studio is LocalWP
-- LocalWP is another popular local development tool that automatically installs and configures WordPress, including SSL support.
-- Visit: https://localwp.com/
-- Download and install LocalWP.
-- Click Create New Site.
-- Enter a site name.
-- Accept the preferred environment settings (or customize as needed).
-- Create the site and allow WordPress to install automatically.
-- Click WP Admin to open the WordPress dashboard.
-2. Install the Secure Custom Fields (SCF) Plugin
-- Secure Custom Fields (SCF) allows you to create and manage custom fields, field groups, custom post types, and taxonomies within WordPress.
-- Log in to your WordPress Admin dashboard.
-- Navigate to Plugins → Add Plugin.
-- Search for Secure Custom Fields.
-- Click Install Now.
-- Click Activate.
-- After activation, access SCF from the WordPress admin menu to begin creating custom fields and field groups.
-- Plugin URL: https://wordpress.org/plugins/secure-custom-fields/
-3. Install World Graph Studio Plugin (located in wordpress/wp-content/plugins/worldgraph from this repository - you can copy directly or zip and install)
-- Activate the plugin
-- Use the Setup Wizard to connect an LLM (API Key or BYOK) and Generate connection (API Key or BYOK)
-- Add additional Connections to your other Generate engines as needed
-- Import an existing script or story and explore the tool.
+   - Recommended: WordPress Studio
+   - WordPress Studio is a free local WordPress development environment that lets you create and manage WordPress sites on your computer with minimal setup.
+   - Visit: https://developer.wordpress.com/studio/
+   - Download and install WordPress Studio for your operating system.
+   - Launch Studio.
+   - Create a new local WordPress site.
+   - Wait for Studio to complete the automatic installation.
+   - Open the WordPress Admin dashboard for your new site.
+   - Alternative: LocalWP
+   - LocalWP is another popular local development tool that automatically installs and configures WordPress, including SSL support.
+   - Visit: https://localwp.com/
+   - Download and install LocalWP.
+   - Click Create New Site.
+   - Enter a site name.
+   - Accept the preferred environment settings (or customize as needed).
+   - Create the site and allow WordPress to install automatically.
+   - Click WP Admin to open the WordPress dashboard.
+
+2. Install the Secure Custom Fields (SCF) plugin
+   - Secure Custom Fields (SCF) allows you to create and manage custom fields, field groups, custom post types, and taxonomies within WordPress.
+   - Log in to your WordPress Admin dashboard.
+   - Navigate to Plugins → Add Plugin.
+   - Search for Secure Custom Fields.
+   - Click Install Now.
+   - Click Activate.
+   - After activation, access SCF from the WordPress admin menu to begin creating custom fields and field groups.
+   - Plugin URL: https://wordpress.org/plugins/secure-custom-fields/
+
+3. Install the World Graph Studio plugin
+   - The plugin lives in wordpress/wp-content/plugins/worldgraph in this repository; you can copy it directly or zip and install it.
+   - Activate the plugin.
+   - Use the Setup Wizard to connect an LLM (API Key or BYOK) and a Generate connection (API Key or BYOK).
+   - Add additional connections to your other Generate engines as needed.
+   - Import an existing script or story and explore the tool.
 
 ## Theme files for a unified look
 - There's also a theme in wordpress/wp-content/themes/worldworldgraph-child

@@ -240,6 +240,53 @@ class Adapter_Registry {
 					],
 				],
 			],
+			'seedance_25' => [
+				'label'       => 'Seedance 2.5 via CyberBara',
+				'description' => 'Generate Seedance 2.5 videos through the CyberBara asynchronous REST API.',
+				'icon'        => 'dashicons-video-alt2',
+				'endpoint'    => 'https://cyberbara.com',
+				'files'       => [
+					'includes/utils/seedance-25-api.php',
+					'includes/utils/seedance-25-catalog.php',
+				],
+				'callbacks'   => [
+					'test' => [ Builtin_Connection_Tests::class, 'test_seedance_25' ],
+				],
+				'templates'   => [
+					'provision'          => [ 'WorldGraph\\Utils\\Seedance_25_Catalog', 'provision' ],
+					'delay'              => 5,
+					'status_meta_prefix' => 'seedance_25_catalog',
+				],
+				'generation'  => [
+					'client'                => 'WorldGraph\\Utils\\Seedance_25_API',
+					'poll'                  => true,
+					'poll_with_template'    => true,
+					'poll_error_limit'      => 10,
+					'permanent_error_codes' => [
+						'seedance_25_api_unauthorized',
+						'seedance_25_api_credential_missing',
+						'seedance_25_api_credential_invalid',
+						'seedance_25_api_endpoint_invalid',
+						'seedance_25_api_connection_invalid',
+						'seedance_25_api_connection_disabled',
+						'seedance_25_api_operation_not_allowed',
+						'seedance_25_api_job_id_invalid',
+						'seedance_25_api_job_not_found',
+						'seedance_25_api_job_id_mismatch',
+						'seedance_25_api_task_contract_mismatch',
+						'seedance_25_api_output_contract_invalid',
+						'seedance_25_api_output_missing',
+					],
+					'adapter'               => 'seedance_25_api',
+					'media_inputs'          => true,
+					'prompt_policy'         => [
+						'video' => [
+							'limits' => [ 'target_words' => 80, 'max_words' => 140 ],
+							'hints'  => [ 'lead_with' => 'action', 'format' => 'chronological_prose' ],
+						],
+					],
+				],
+			],
 			'midjourney' => [
 				'label'        => 'MidJourney',
 				'description'  => 'Generate images through midjourney-api.com REST or the AceData Cloud MidJourney MCP server.',

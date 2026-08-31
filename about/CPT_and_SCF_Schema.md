@@ -649,12 +649,13 @@ worker token, heartbeat, attempt, and progress metadata protect recovery and
 cancellation. Successful completion is published only after the resulting
 video attachment and its batch/Project provenance are verified.
 
-The built-in catalogs currently provision text-to-image, VideoDraft image and
-video, ElevenLabs audio, VideoDraft audio, and Suno prompt-music,
-custom-music, and `text_to_lyrics` Templates. Suno
-Templates are transport-specific for SunoAPI.org REST or AceData Cloud MCP;
-other modalities require an adapter extension. Imported attachments and Asset
-records retain generation lineage. Featured-image and
+The built-in catalogs currently provision text-to-image, Seedance 2.5
+text-to-video and image-to-video through CyberBara, VideoDraft image and video,
+ElevenLabs audio, VideoDraft audio, and Suno prompt-music, custom-music, and
+`text_to_lyrics` Templates. Suno Templates are transport-specific for
+SunoAPI.org REST or AceData Cloud MCP; other modalities require an adapter
+extension. Imported attachments and Asset records retain generation lineage.
+Featured-image and
 `_worldgraph_asset_gallery_ids` updates remain separate from the Template
 configuration itself. The Story Media Gallery editor allows authorized users
 to add, remove, and reorder image, audio, and video attachments in that same
@@ -711,9 +712,12 @@ Connection access to administrators. A `suno` Connection uses the former for
 SunoAPI.org REST and the latter for AceData Cloud MCP; those credentials are
 distinct and are not interchangeable. A `videodraft` Connection uses a
 dedicated PAT or `env://VIDEODRAFT_API_KEY` reference for hosted JSON-RPC
-generation and optional Project sync. Templates and generation jobs select a
-Connection by post ID; this association is currently stored as configuration
-rather than as a Story Graph edge.
+generation and optional Project sync. A `seedance_25` Connection uses a
+CyberBara API key or `env://CYBERBARA_API_KEY`; direct BytePlus and
+SeedanceAPI.org credentials are different transports and are not
+interchangeable. Templates and generation jobs select a Connection by post ID;
+this association is currently stored as configuration rather than as a Story
+Graph edge.
 
 ## Fields
 

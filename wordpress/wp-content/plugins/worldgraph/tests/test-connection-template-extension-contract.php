@@ -191,7 +191,7 @@ class Test_Connection_Template_Extension_Contract extends TestCase {
 
 	/** Every shipped provider catalog delegates the shared persistence contract. */
 	public function test_provider_catalogs_use_the_common_template_repository(): void {
-		foreach ( [ 'fal-catalog.php', 'elevenlabs-catalog.php', 'suno-catalog.php', 'midjourney-catalog.php', 'videodraft-catalog.php' ] as $catalog_file ) {
+		foreach ( [ 'fal-catalog.php', 'elevenlabs-catalog.php', 'suno-catalog.php', 'higgsfield-catalog.php', 'seedance-25-catalog.php', 'midjourney-catalog.php', 'videodraft-catalog.php' ] as $catalog_file ) {
 			$catalog = $this->source( 'includes/utils/' . $catalog_file );
 			$this->assertStringContainsString( 'Template_Repository::upsert_provider_template', $catalog, $catalog_file );
 			$this->assertStringNotContainsString( "add_action( 'save_post_worldgraph_conn'", $catalog, $catalog_file );

@@ -876,20 +876,24 @@ import an attachment matching its requested image/video/audio output type.
 
 Delivered execution adapters are Comfy Cloud MCP, local ComfyUI HTTP workflows,
 fal MCP, ElevenLabs, Suno through SunoAPI.org REST and AceData Cloud MCP,
-MidJourney through midjourney-api.com REST and Ace Data Cloud MCP, VideoDraft
-MCP, and OpenRouter video generation REST.
+MidJourney through midjourney-api.com REST and Ace Data Cloud MCP, Seedance 2.5
+through CyberBara REST, VideoDraft MCP, and OpenRouter video generation REST.
 The Suno callback route is public because the provider calls it, but an HMAC
 query token binds it to one Suno Connection. It only schedules an authenticated
 poll; the worker still retrieves canonical status and imports every final track
 before completing the job. The built-in catalogs provision text-to-image,
-MidJourney Imagine, ElevenLabs audio, and Suno music/lyrics Templates. Additional output modalities
-need an adapter that registers and executes a compatible Template; a provider
-value without that implementation is configuration metadata only.
+MidJourney Imagine, ElevenLabs audio, Suno music/lyrics, and reviewed Seedance
+2.5 text-to-video/image-to-video Templates. Additional output modalities need
+an adapter that registers and executes a compatible Template; a provider value
+without that implementation is configuration metadata only.
 
 See [Suno Integration](plugins/SUNO.md) for the transport-specific Template,
 callback, polling, credential, and result contracts, and [MidJourney
 Connection](plugins/MIDJOURNEY.md) for the two-intermediary REST/MCP image
-contract. Neither provider guide adds a new public REST route to WordPress.
+contract. [Seedance 2.5 via CyberBara](plugins/SEEDANCE.md) documents the fixed
+third-party REST video boundary. These provider guides do not add new public
+REST routes to WordPress; the generic Connection, Template, generation, and job
+routes above remain the product surface.
 
 ## Connections
 

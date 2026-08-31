@@ -39,8 +39,8 @@ The setup screen separates core WordPress operation from optional services:
   unstructured story uploads into a canonical import preview.
 - **Generation connection:** submit supported Templates through Comfy Cloud
   MCP, local ComfyUI, fal MCP, ElevenLabs, SunoAPI.org REST, AceData Cloud Suno
-  MCP, or VideoDraft hosted MCP, depending on the adapter and Templates you
-  configure.
+  MCP, Seedance 2.5 via CyberBara REST, or VideoDraft hosted MCP, depending on
+  the adapter and Templates you configure.
 - **Manual external generation:** create media in another tool, then import it
   into WordPress with its source and provenance.
 
@@ -226,6 +226,12 @@ the generic Template-backed generation API. A Suno Connection requires a
 SunoAPI.org REST key and a separate AceData Cloud MCP token; one cannot
 authenticate the other. See [Suno Integration](../plugins/SUNO.md).
 
+A manually configured Seedance 2.5 via CyberBara Connection provisions fixed
+text-to-video and image-to-video Templates. The latter accepts one authorized
+reference image; asynchronous completion imports the returned videos. This
+uses a third-party CyberBara key, not a BytePlus or SeedanceAPI.org key. See
+[Seedance 2.5 via CyberBara](../plugins/SEEDANCE.md).
+
 A VideoDraft Connection provisions Templates from the provider's live tool
 schemas. Image and video jobs are polled through WP-Cron, completed media is
 imported into WordPress, and local reference attachments use the provider's
@@ -300,6 +306,7 @@ and licensing terms.
 - [REST API](../REST_API_Specification.md)
 - [Generation engine](../plugins/GENERATION_ENGINE.md)
 - [Suno integration](../plugins/SUNO.md)
+- [Seedance 2.5 via CyberBara](../plugins/SEEDANCE.md)
 - [VideoDraft connection and sync](../plugins/VIDEODRAFT.md)
 - [Script and EDL integration](../Script_EDL_Integration.md)
 - [Story Import & Export plugin](../plugins/STORY_IMPORT_EXPORT.md)
