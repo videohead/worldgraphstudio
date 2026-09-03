@@ -62,14 +62,15 @@ class Comfy_Catalog {
 		if ( ! is_array( $connection ) ) {
 			return new WP_Error( 'worldgraph_conn_not_found', __( 'That Connection does not exist.', 'worldgraph' ), [ 'status' => 404 ] );
 		}
-		if ( 'comfyui' !== ( $connection['provider_type'] ?? '' ) ) {
-			return new WP_Error( 'worldgraph_conn_not_comfy', __( 'Template discovery only applies to ComfyUI Connections.', 'worldgraph' ), [ 'status' => 400 ] );
+		if ( ! in_array( $connection['provider_type'] ?? '', [ 'comfyui', 'comfy_cloud' ], true ) ) {
+			return new WP_Error( 'worldgraph_conn_not_comfy', __( 'Template discovery only applies to ComfyUI or Comfy Cloud Connections.', 'worldgraph' ), [ 'status' => 400 ] );
 		}
 
-		$capability = Comfy_Cloud_MCP::capability_tier( $connection_id );
+		$client     = Comfy_Provider::client_for_connection( $connection );
+		$capability = $client::capability_tier( $connection_id );
 		$use_mcp    = in_array( $capability['tier'], [ 'a', 'b' ], true );
 		$entries    = $use_mcp
-			? self::discover_via_mcp( $connection_id, $capability )
+			? self::discover_via_mcp( $connection_id, $capability, $client )
 			: self::synthesize_local( $connection );
 
 		if ( is_wp_error( $entries ) ) {
@@ -286,11 +287,12 @@ class Comfy_Catalog {
 	 * type is what lets a provider template be mapped onto a World Graph Studio modality
 	 * without guessing.
 	 *
-	 * @param int   $connection_id Connection post ID.
-	 * @param array $capability    Capability tier report.
+	 * @param int    $connection_id Connection post ID.
+	 * @param array  $capability    Capability tier report.
+	 * @param string $client        MCP client class to call, resolved from the Connection's provider type.
 	 * @return array<int, array>|WP_Error
 	 */
-	private static function discover_via_mcp( int $connection_id, array $capability ) {
+	private static function discover_via_mcp( int $connection_id, array $capability, string $client = Comfy_Cloud_MCP::class ) {
 		if ( ! in_array( 'list_templates', $capability['tools'], true ) ) {
 			return new WP_Error( 'worldgraph_catalog_no_discovery', __( 'This MCP server does not expose list_templates, so its catalog cannot be discovered.', 'worldgraph' ), [ 'status' => 501 ] );
 		}
@@ -304,7 +306,7 @@ class Comfy_Catalog {
 		$filtered_task_types = [];
 		$errors             = [];
 		foreach ( array_merge( [ '' ], array_keys( $task_types ) ) as $task_type ) {
-			$result = Comfy_Cloud_MCP::list_templates( '' !== $task_type ? [ 'task_type' => $task_type ] : [], $connection_id );
+			$result = $client::list_templates( '' !== $task_type ? [ 'task_type' => $task_type ] : [], $connection_id );
 			if ( is_wp_error( $result ) ) {
 				$errors[] = $result;
 				continue;
@@ -341,7 +343,7 @@ class Comfy_Catalog {
 				$template['task_type'] = $candidates[0];
 			}
 
-			$entry = Comfy_Manifest::normalize_entry( $template, $connection_id );
+			$entry = Comfy_Manifest::normalize_entry( $template, $connection_id, $client );
 			if ( null !== $entry ) {
 				$entries[ $entry['id'] ] = $entry;
 			}

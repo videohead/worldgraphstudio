@@ -35,24 +35,53 @@ class Adapter_Registry {
 	 */
 	public static function all(): array {
 		$adapters = [
-			'comfyui' => [
-				'label'         => 'ComfyUI',
-				'description'   => 'Generate media through Comfy Cloud MCP or a local ComfyUI installation.',
-				'icon'          => 'dashicons-format-image',
+			'comfy_cloud' => [
+				'label'         => 'Comfy Cloud',
+				'description'   => 'Generate media through the commercial Comfy Cloud MCP service using its URL and API key.',
+				'icon'          => 'dashicons-cloud',
 				'endpoint'      => 'https://cloud.comfy.org/mcp',
 				'setup_options' => [
-					'cloud'     => [
+					'cloud' => [
 						'label'       => 'Comfy Cloud MCP',
 						'environment' => 'production',
 					],
+				],
+				'files'         => [
+					'includes/utils/comfy-cloud-mcp.php',
+					'includes/utils/local-comfyui.php',
+					'includes/utils/comfy-provider.php',
+					'includes/utils/comfy-manifest.php',
+					'includes/utils/comfy-graph.php',
+					'includes/utils/comfy-template-registry.php',
+					'includes/utils/comfy-catalog.php',
+					'includes/utils/comfy-bootstrap.php',
+				],
+				'callbacks'     => [
+					'test' => [ Builtin_Connection_Tests::class, 'test_comfy_cloud' ],
+				],
+				'generation'    => [
+					'client'             => 'WorldGraph\\Utils\\Comfy_Cloud_MCP',
+					'poll'               => true,
+					'poll_with_template' => false,
+					'poll_error_limit'   => 10,
+					'adapter'            => 'comfy_mcp',
+					'media_inputs'       => true,
+				],
+			],
+			'comfyui' => [
+				'label'         => 'ComfyUI',
+				'description'   => 'Generate media through a self-hosted local ComfyUI installation, with optional local MCP workflow discovery and downloads.',
+				'icon'          => 'dashicons-format-image',
+				'setup_options' => [
 					'local_mcp' => [
 						'label'       => 'Local ComfyUI HTTP API + MCP',
 						'environment' => 'local',
 					],
 				],
 				'files'         => [
-					'includes/utils/comfy-cloud-mcp.php',
 					'includes/utils/local-comfyui.php',
+					'includes/utils/local-comfy-mcp.php',
+					'includes/utils/comfy-provider.php',
 					'includes/utils/comfy-manifest.php',
 					'includes/utils/comfy-graph.php',
 					'includes/utils/comfy-template-registry.php',
@@ -63,11 +92,11 @@ class Adapter_Registry {
 					'test' => [ Builtin_Connection_Tests::class, 'test_comfyui' ],
 				],
 				'generation'    => [
-					'client_resolver'    => [ Builtin_Adapter_Runtime::class, 'comfy_client' ],
+					'client'             => 'WorldGraph\\Utils\\Local_ComfyUI',
 					'poll'               => true,
 					'poll_with_template' => false,
 					'poll_error_limit'   => 10,
-					'adapter_resolver'   => [ Builtin_Adapter_Runtime::class, 'comfy_adapter' ],
+					'adapter'            => 'local_comfyui',
 					'media_inputs'       => true,
 				],
 			],

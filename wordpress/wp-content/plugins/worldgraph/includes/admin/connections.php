@@ -375,7 +375,7 @@ class Connections {
 			];
 		}
 
-		if ( 'comfyui' === $provider ) {
+		if ( in_array( $provider, [ 'comfyui', 'comfy_cloud' ], true ) ) {
 			$snapshot = json_decode( (string) get_post_meta( $connection_id, 'comfy_template_catalog', true ), true );
 			$snapshot = is_array( $snapshot ) ? $snapshot : [];
 			$entries  = array_values( array_filter( (array) ( $snapshot['entries'] ?? [] ), 'is_array' ) );

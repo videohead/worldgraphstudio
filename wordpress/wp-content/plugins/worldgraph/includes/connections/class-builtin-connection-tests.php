@@ -25,7 +25,24 @@ final class Builtin_Connection_Tests {
 	private const TIMEOUT = 30;
 
 	/**
-	 * Test Comfy Cloud MCP credentials or a local ComfyUI HTTP endpoint.
+	 * Test Comfy Cloud API credentials.
+	 *
+	 * @param int                  $connection_id Connection post ID.
+	 * @param array<string, mixed> $record        Connection record.
+	 * @return array{success:bool,message:string,health:array}
+	 */
+	public static function test_comfy_cloud( int $connection_id, array $record ): array {
+		unset( $connection_id );
+
+		$has_key = '' !== trim( (string) ( $record['credential_reference'] ?? '' ) );
+		return self::outcome(
+			$has_key,
+			$has_key ? 'Comfy Cloud credentials configured.' : 'Comfy Cloud API key is not configured.'
+		);
+	}
+
+	/**
+	 * Test a local ComfyUI HTTP endpoint.
 	 *
 	 * @param int                  $connection_id Connection post ID.
 	 * @param array<string, mixed> $record        Connection record.
@@ -34,16 +51,7 @@ final class Builtin_Connection_Tests {
 	public static function test_comfyui( int $connection_id, array $record ): array {
 		unset( $connection_id );
 
-		$endpoint = untrailingslashit( (string) ( $record['endpoint_url'] ?? '' ) );
-		if ( '' !== $endpoint && \WorldGraph\Utils\Comfy_Cloud_MCP::ENDPOINT !== $endpoint ) {
-			return self::test_local_comfyui( $record );
-		}
-
-		$has_key = '' !== trim( (string) ( $record['credential_reference'] ?? '' ) );
-		return self::outcome(
-			$has_key,
-			$has_key ? 'Comfy Cloud MCP credentials configured.' : 'Comfy Cloud MCP API key is not configured.'
-		);
+		return self::test_local_comfyui( $record );
 	}
 
 	/** Test a fal Streamable HTTP MCP connection and required generation tools. */

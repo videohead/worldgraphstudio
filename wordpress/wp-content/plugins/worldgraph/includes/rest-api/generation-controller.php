@@ -364,7 +364,7 @@ class Generation_Controller extends Base_Controller {
 		// Local ComfyUI needs its nodes/models physically installed; refuse the
 		// request here (consulting the Connection's MCP server to auto-fetch
 		// what it can) instead of letting it queue and fail in the WP-Cron worker.
-		$use_local_comfyui = 'comfyui' === $connection['provider_type'] && 'local' === ( $connection['environment'] ?? '' );
+		$use_local_comfyui = 'comfyui' === $connection['provider_type'];
 		if ( $use_local_comfyui ) {
 			$ready = \WorldGraph\Utils\Comfy_Manifest::ensure_ready( $template->ID, $connection_id );
 			if ( is_wp_error( $ready ) ) {

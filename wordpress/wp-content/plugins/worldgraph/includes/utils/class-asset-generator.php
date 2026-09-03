@@ -241,7 +241,7 @@ class Asset_Generator {
 		if ( 'fal' === $provider && '' === $provider_template_id ) {
 			$provider_template_id = sanitize_text_field( (string) ( $connection['model'] ?? '' ) );
 		}
-		$use_local_template = 'comfyui' === $provider && 'local' === ( $connection['environment'] ?? '' );
+		$use_local_template = 'comfyui' === $provider;
 		if ( ! Connection_Adapters::supports_generation( (string) $provider ) ) {
 			return new WP_Error( 'worldgraph_asset_provider_unsupported', __( 'This provider has no World Graph Studio asset generation adapter yet.', 'worldgraph' ), [ 'status' => 501 ] );
 		}
@@ -252,7 +252,7 @@ class Asset_Generator {
 		if ( $use_local_template && ! Local_ComfyUI::is_configured( $connection_id ) ) {
 			return new WP_Error( 'worldgraph_local_comfyui_unconfigured', __( 'The Template Connection has no configured local ComfyUI API endpoint.', 'worldgraph' ), [ 'status' => 400 ] );
 		}
-		if ( 'comfyui' === $provider && 'local' !== $connection['environment'] && ! Comfy_Cloud_MCP::is_configured( $connection_id ) ) {
+		if ( 'comfy_cloud' === $provider && ! Comfy_Cloud_MCP::is_configured( $connection_id ) ) {
 			return new WP_Error( 'worldgraph_comfy_mcp_unconfigured', __( 'The Template Connection has no configured Comfy Cloud API key.', 'worldgraph' ), [ 'status' => 400 ] );
 		}
 
@@ -739,13 +739,15 @@ class Asset_Generator {
 	 * parent Connection. Mirrors the connection lookup fallback used by
 	 * Local_ComfyUI and the Setup Wizard's managed "generation" connection.
 	 *
-	 * @param string $provider 'local_comfyui' or 'comfy_cloud_mcp'.
+	 * @param string $provider 'local_comfyui' or 'comfy_mcp'.
 	 * @return int Connection post ID, or 0 when none is configured.
 	 */
 	private static function resolve_connection_id( string $provider ): int {
-		$environment = 'local_comfyui' === $provider ? 'local' : 'production';
+		if ( 'local_comfyui' === $provider ) {
+			return (int) ( Connection_Repository::get_default( 'comfyui', 'local' ) ?? 0 );
+		}
 
-		return (int) ( Connection_Repository::get_default( 'comfyui', $environment ) ?? 0 );
+		return (int) ( Connection_Repository::get_default( 'comfy_cloud', 'production' ) ?? 0 );
 	}
 
 	/**

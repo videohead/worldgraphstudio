@@ -49,6 +49,18 @@ if ( ! function_exists( 'wp_json_encode' ) ) {
 	}
 }
 
+if ( ! function_exists( 'trailingslashit' ) ) {
+	function trailingslashit( $value ): string {
+		return rtrim( (string) $value, '/\\' ) . '/';
+	}
+}
+
+if ( ! function_exists( 'wp_normalize_path' ) ) {
+	function wp_normalize_path( $path ): string {
+		return str_replace( '\\', '/', (string) $path );
+	}
+}
+
 require_once dirname( __DIR__ ) . '/includes/utils/connection-adapters.php';
 require_once dirname( __DIR__ ) . '/includes/utils/connection_tester.php';
 require_once dirname( __DIR__ ) . '/includes/templates/class-template-manager.php';
@@ -84,6 +96,7 @@ class Test_Connection_Template_Extension_Contract extends TestCase {
 		$comfy = Connection_Adapters::get( 'comfyui' );
 
 		$this->assertIsArray( $fal );
+		$this->assertIsArray( $comfy );
 		$this->assertTrue( Connection_Adapters::supports( 'fal', 'test' ) );
 		$this->assertTrue( Connection_Adapters::supports( 'fal', 'templates.provision' ) );
 		$this->assertTrue( Connection_Adapters::supports( 'fal', 'generation.poll' ) );
@@ -94,9 +107,12 @@ class Test_Connection_Template_Extension_Contract extends TestCase {
 		$this->assertSame( 10, $fal['generation']['poll_error_limit'] );
 		$this->assertSame( 'fal_mcp', Connection_Adapters::generation_adapter( 'fal' ) );
 		$this->assertSame( 'fal_catalog', $fal['templates']['status_meta_prefix'] );
-		$this->assertIsArray( $comfy['generation']['adapter_resolver'] ?? null );
-		$this->assertSame( 'comfy_mcp', \WorldGraph\Connections\Builtin_Adapter_Runtime::comfy_adapter() );
-		$this->assertSame( 'local_comfyui', \WorldGraph\Connections\Builtin_Adapter_Runtime::comfy_adapter( [ 'environment' => 'local' ] ) );
+		$this->assertSame( 'local_comfyui', Connection_Adapters::generation_adapter( 'comfyui' ) );
+		$this->assertSame( 'comfy_mcp', Connection_Adapters::generation_adapter( 'comfy_cloud' ) );
+		$this->assertSame( 'WorldGraph\\Utils\\Local_ComfyUI', $comfy['generation']['client'] );
+		$comfy_cloud = Connection_Adapters::get( 'comfy_cloud' );
+		$this->assertIsArray( $comfy_cloud );
+		$this->assertSame( 'WorldGraph\\Utils\\Comfy_Cloud_MCP', $comfy_cloud['generation']['client'] );
 	}
 
 	/** Disabled Connections remain an explicit operational stop during testing. */

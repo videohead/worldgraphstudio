@@ -211,7 +211,8 @@ class Comfy_Manifest {
 			return true;
 		}
 
-		if ( ! empty( $report['missing_models'] ) && Comfy_Cloud_MCP::supports_tool( 'download_models', $connection_id ) ) {
+		$mcp_client = Comfy_Provider::client_for( $connection_id );
+		if ( ! empty( $report['missing_models'] ) && $mcp_client::supports_tool( 'download_models', $connection_id ) ) {
 			$download = self::request_downloads( $template_id, $endpoint );
 			if ( ! is_wp_error( $download ) ) {
 				self::flush_catalog( $endpoint );
@@ -344,7 +345,8 @@ class Comfy_Manifest {
 	 */
 	public static function discover( string $modality, int $connection_id = 0 ) {
 		$modality = Generation_Modality::sanitize( $modality );
-		$result   = Comfy_Cloud_MCP::list_templates( [
+		$client   = Comfy_Provider::client_for( $connection_id );
+		$result   = $client::list_templates( [
 			'task_type' => (string) Generation_Modality::get( $modality )['task_type'],
 		], $connection_id );
 		if ( is_wp_error( $result ) ) {
@@ -386,11 +388,12 @@ class Comfy_Manifest {
 	 *
 	 * @param string $search Optional provider template name or ID.
 	 * @param int    $connection_id Comfy Connection post ID.
+	 * @param string $client MCP client class to call, resolved from the Connection's provider type.
 	 * @return array|WP_Error
 	 */
-	public static function discover_provider_templates( string $search = '', int $connection_id = 0 ) {
+	public static function discover_provider_templates( string $search = '', int $connection_id = 0, string $client = Comfy_Cloud_MCP::class ) {
 		$filters = '' !== trim( $search ) ? [ 'search' => sanitize_text_field( $search ) ] : [];
-		$result  = Comfy_Cloud_MCP::list_templates( $filters, $connection_id );
+		$result  = $client::list_templates( $filters, $connection_id );
 		if ( is_wp_error( $result ) ) {
 			return $result;
 		}
@@ -416,8 +419,8 @@ class Comfy_Manifest {
 				: $template;
 		}
 
-		return array_values( array_filter( array_map( static function ( array $template ) use ( $connection_id ) {
-			return self::normalize_entry( $template, $connection_id );
+		return array_values( array_filter( array_map( static function ( array $template ) use ( $connection_id, $client ) {
+			return self::normalize_entry( $template, $connection_id, $client );
 		}, $descriptors ) ) );
 	}
 
@@ -432,15 +435,17 @@ class Comfy_Manifest {
 	 * `get_template()` when a template is actually materialized.
 	 *
 	 * @param array $template Raw MCP template descriptor.
+	 * @param int   $connection_id Connection post ID.
+	 * @param string $client MCP client class to call, resolved from the Connection's provider type.
 	 * @return array|null Catalog entry, or null when the descriptor has no usable ID.
 	 */
-	public static function normalize_entry( array $template, int $connection_id = 0 ): ?array {
+	public static function normalize_entry( array $template, int $connection_id = 0, string $client = Comfy_Cloud_MCP::class ): ?array {
 		$id = (string) ( $template['id'] ?? $template['template_id'] ?? $template['name'] ?? '' );
 		if ( '' === trim( $id ) ) {
 			return null;
 		}
 
-		$template = self::enrich_template_descriptor( $template, $connection_id );
+		$template = self::enrich_template_descriptor( $template, $connection_id, $client );
 
 		$workflow  = is_array( $template['workflow'] ?? null ) ? $template['workflow'] : [];
 		$task_type = (string) ( $template['task_type'] ?? '' );
@@ -533,7 +538,8 @@ class Comfy_Manifest {
 	 * @return array|WP_Error
 	 */
 	public static function request_provider_template_downloads( string $provider_template_id, int $connection_id = 0 ) {
-		$template = Comfy_Cloud_MCP::get_template( $provider_template_id, [], $connection_id );
+		$client   = Comfy_Provider::client_for( $connection_id );
+		$template = $client::get_template( $provider_template_id, [], $connection_id );
 		if ( is_wp_error( $template ) ) {
 			return $template;
 		}
@@ -567,7 +573,7 @@ class Comfy_Manifest {
 			return new WP_Error( 'worldgraph_comfy_template_no_downloads', $message );
 		}
 
-		$result = Comfy_Cloud_MCP::download_models( $urls, $connection_id );
+		$result = $client::download_models( $urls, $connection_id );
 		if ( is_wp_error( $result ) ) {
 			return $result;
 		}
@@ -584,6 +590,7 @@ class Comfy_Manifest {
 	 */
 	public static function request_downloads( int $template_id, string $endpoint = '' ) {
 		$connection_id = self::template_connection_id( $template_id );
+		$client         = Comfy_Provider::client_for( $connection_id );
 		$report        = self::validate( $template_id, $endpoint );
 		if ( is_wp_error( $report ) ) {
 			return $report;
@@ -613,7 +620,7 @@ class Comfy_Manifest {
 			);
 		}
 
-		$result = Comfy_Cloud_MCP::download_models( $urls, $connection_id );
+		$result = $client::download_models( $urls, $connection_id );
 		if ( is_wp_error( $result ) ) {
 			return $result;
 		}
@@ -782,9 +789,10 @@ class Comfy_Manifest {
 	 *
 	 * @param array $template Raw MCP list_templates entry.
 	 * @param int   $connection_id Connection post ID.
+	 * @param string $client MCP client class to call, resolved from the Connection's provider type.
 	 * @return array
 	 */
-	private static function enrich_template_descriptor( array $template, int $connection_id ): array {
+	private static function enrich_template_descriptor( array $template, int $connection_id, string $client = Comfy_Cloud_MCP::class ): array {
 		$has_workflow = is_array( $template['workflow'] ?? null ) && ! empty( $template['workflow'] );
 		$has_requirements = is_array( $template['requirements'] ?? null ) || is_array( $template['required_nodes'] ?? null );
 		if ( $has_workflow || $has_requirements ) {
@@ -798,7 +806,7 @@ class Comfy_Manifest {
 
 		$cache_key = $connection_id . ':' . $id;
 		if ( ! array_key_exists( $cache_key, self::$provider_descriptor_cache ) ) {
-			$resolved = Comfy_Cloud_MCP::get_template( $id, [], $connection_id );
+			$resolved = $client::get_template( $id, [], $connection_id );
 			self::$provider_descriptor_cache[ $cache_key ] = is_wp_error( $resolved ) || ! is_array( $resolved )
 				? null
 				: $resolved;

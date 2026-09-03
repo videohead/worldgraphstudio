@@ -28,9 +28,9 @@ class Capability_Sync {
 	 */
 	public static function sync(): array {
 		$providers = [ [
-			'provider_type' => 'comfy_cloud_mcp',
-			'label'         => 'Comfy Cloud MCP',
-			'endpoint'      => Connection_Adapters::endpoint( 'comfyui' ),
+			'provider_type' => 'comfy_cloud',
+			'label'         => 'Comfy Cloud',
+			'endpoint'      => Connection_Adapters::endpoint( 'comfy_cloud' ),
 			'capabilities'  => [ 'image', 'video', 'audio', '3d', 'template_execution' ],
 		], [
 			'provider_type' => 'fal',

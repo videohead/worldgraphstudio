@@ -51,9 +51,9 @@ class Test_Template_Provider_Authorization extends TestCase {
 		$this->assertStringContainsString( "'worldgraph_template' !== \$post->post_type", $method );
 		$this->assertStringContainsString( "current_user_can( 'edit_post', \$post_id )", $method );
 		$this->assertStringContainsString( 'Connection_Repository::current_user_can_manage( $connection_id )', $method );
-		$this->assertStringContainsString( "'comfyui' !== (string) ( \$connection['provider_type'] ?? '' )", $method );
+		$this->assertStringContainsString( "! in_array( \$provider_type, [ 'comfyui', 'comfy_cloud' ], true )", $method );
 		$this->assertLessThan(
-			strpos( $method, "Connection_Adapters::load( 'comfyui' )" ),
+			strpos( $method, 'Connection_Adapters::load( $provider_type )' ),
 			strpos( $method, 'Connection_Repository::current_user_can_manage( $connection_id )' )
 		);
 	}

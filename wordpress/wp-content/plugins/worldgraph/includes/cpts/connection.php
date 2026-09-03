@@ -326,7 +326,7 @@ class Connection {
 				'label'       => 'Provider Type',
 				'required'    => true,
 				'options'     => array_combine( $provider_types, $provider_types ),
-				'description' => 'Provider adapter used by the paired Templates, such as ComfyUI, fal, Higgsfield, ElevenLabs, Suno, or MidJourney.',
+				'description' => 'Provider adapter used by the paired Templates, such as ComfyUI (local), Comfy Cloud, fal, Higgsfield, ElevenLabs, Suno, or MidJourney.',
 			],
 			'environment'          => [
 				'type'        => 'select',
@@ -365,19 +365,19 @@ class Connection {
 				'type'        => 'text',
 				'label'       => 'Endpoint URL',
 				'required'    => true,
-				'description' => 'Provider endpoint. For MidJourney REST use https://api.midjourney-api.com; for Higgsfield use https://platform.higgsfield.ai; for SunoAPI.org use https://api.sunoapi.org; for ElevenLabs use https://api.elevenlabs.io/v1; for local ComfyUI use its HTTP API base URL.',
+				'description' => 'Provider endpoint. For MidJourney REST use https://api.midjourney-api.com; for Higgsfield use https://platform.higgsfield.ai; for SunoAPI.org use https://api.sunoapi.org; for ElevenLabs use https://api.elevenlabs.io/v1; for Comfy Cloud use its MCP URL (defaults to https://cloud.comfy.org/mcp); for local ComfyUI use its own HTTP API base URL.',
 			],
 			'mcp_endpoint_url'     => [
 				'type'        => 'text',
 				'label'       => 'MCP Endpoint URL',
 				'required'    => false,
-				'description' => 'Streamable HTTP MCP endpoint. Required for fal; use https://midjourney.mcp.acedata.cloud/mcp for MidJourney, https://mcp.higgsfield.ai/mcp for Higgsfield, or https://suno.mcp.acedata.cloud/mcp for Suno; optional for local ComfyUI discovery and downloads.',
+				'description' => 'Streamable HTTP MCP endpoint. Required for fal; use https://midjourney.mcp.acedata.cloud/mcp for MidJourney, https://mcp.higgsfield.ai/mcp for Higgsfield, or https://suno.mcp.acedata.cloud/mcp for Suno; optional for a separately run local ComfyUI MCP process used for discovery and downloads. Not used by Comfy Cloud, which sets its MCP URL as the Endpoint URL above.',
 			],
 			'credential_reference' => [
 				'type'        => 'text',
 				'label'       => 'API Key / OAuth (Reference)',
 				'required'    => false,
-				'description' => 'REST/API credential or environment reference, e.g. env://MIDJOURNEY_API_KEY, env://HIGGSFIELD_API_CREDENTIAL, env://SUNO_API_KEY, env://ELEVENLABS_API_KEY, or env://COMFYUI_API_KEY. Higgsfield expects KEY_ID:KEY_SECRET.',
+				'description' => 'REST/API credential or environment reference, e.g. env://MIDJOURNEY_API_KEY, env://HIGGSFIELD_API_CREDENTIAL, env://SUNO_API_KEY, env://ELEVENLABS_API_KEY, or env://COMFY_CLOUD_API_KEY. Required for Comfy Cloud. Higgsfield expects KEY_ID:KEY_SECRET. Not required for local ComfyUI.',
 			],
 			'mcp_credential_reference' => [
 				'type'        => 'text',
@@ -549,8 +549,8 @@ class Connection {
 			'message'   => '',
 			'entries'   => [],
 		];
-		if ( $post_id && 'comfyui' === sanitize_key( (string) \WorldGraph\Utils\worldgraph_get_field_value( $post_id, 'provider_type' ) ) ) {
-			\WorldGraph\Utils\Connection_Adapters::load( 'comfyui' );
+		if ( $post_id && in_array( sanitize_key( (string) \WorldGraph\Utils\worldgraph_get_field_value( $post_id, 'provider_type' ) ), [ 'comfyui', 'comfy_cloud' ], true ) ) {
+			\WorldGraph\Utils\Connection_Adapters::load( sanitize_key( (string) \WorldGraph\Utils\worldgraph_get_field_value( $post_id, 'provider_type' ) ) );
 			if ( class_exists( '\\WorldGraph\\Utils\\Comfy_Catalog' ) ) {
 				$initial_catalog            = \WorldGraph\Utils\Comfy_Catalog::get( $post_id );
 				$initial_catalog['entries'] = array_values( (array) ( $initial_catalog['entries'] ?? [] ) );
@@ -712,6 +712,7 @@ class Connection {
 			'connection_setup'   => __( 'Workflow setup', 'worldgraph' ),
 			'comfy_catalog'      => __( 'Workflow setup', 'worldgraph' ),
 			'comfy_cloud_mcp'    => __( 'Provider workflow service', 'worldgraph' ),
+			'local_comfy_mcp'    => __( 'ComfyUI', 'worldgraph' ),
 			'local_comfyui'      => __( 'ComfyUI', 'worldgraph' ),
 			'connection_tester'  => __( 'Connection check', 'worldgraph' ),
 			'fal_catalog'        => __( 'Workflow setup', 'worldgraph' ),
@@ -856,11 +857,11 @@ class Connection {
 			return;
 		}
 
-		if ( 'comfyui' !== $provider_type ) {
+		if ( ! in_array( $provider_type, [ 'comfyui', 'comfy_cloud' ], true ) ) {
 			echo '<p>' . esc_html__( 'This provider does not require additional workflow setup here. Save the Connection, check that it can be reached, and use any provider-specific integration controls shown elsewhere in Studio.', 'worldgraph' ) . '</p>';
 			return;
 		}
-		\WorldGraph\Utils\Connection_Adapters::load( 'comfyui' );
+		\WorldGraph\Utils\Connection_Adapters::load( $provider_type );
 
 		$snapshot = \WorldGraph\Utils\Comfy_Catalog::get( (int) $post->ID );
 		?>
@@ -1038,7 +1039,7 @@ class Connection {
 	 * @return array|\WP_Error
 	 */
 	public static function catalog_materialize_entry( int $connection_id, string $entry_id ) {
-		\WorldGraph\Utils\Connection_Adapters::load( 'comfyui' );
+		\WorldGraph\Utils\Connection_Adapters::load( (string) \WorldGraph\Utils\worldgraph_get_field_value( $connection_id, 'provider_type' ) );
 
 		$template_id = self::materialize_catalog_entry( $connection_id, $entry_id );
 		if ( is_wp_error( $template_id ) ) {
@@ -1084,7 +1085,7 @@ class Connection {
 	 * @return array|\WP_Error
 	 */
 	public static function catalog_download_entry( int $connection_id, string $entry_id ) {
-		\WorldGraph\Utils\Connection_Adapters::load( 'comfyui' );
+		\WorldGraph\Utils\Connection_Adapters::load( (string) \WorldGraph\Utils\worldgraph_get_field_value( $connection_id, 'provider_type' ) );
 
 		if ( \WorldGraph\Utils\Comfy_Template_Registry::owns( $entry_id ) ) {
 			$result = self::catalog_download_registry_entry( $connection_id, $entry_id );
@@ -1145,7 +1146,7 @@ class Connection {
 		}
 
 		if ( ! empty( $urls ) ) {
-			$result = \WorldGraph\Utils\Comfy_Cloud_MCP::download_models( $urls, $connection_id );
+			$result = \WorldGraph\Utils\Comfy_Provider::client_for( $connection_id )::download_models( $urls, $connection_id );
 			if ( ! is_wp_error( $result ) ) {
 				return [
 					'message' => sprintf(
@@ -1283,12 +1284,13 @@ class Connection {
 			}
 			$entry = self::registry_requirements( $connection_id, $entry_id, $entry );
 		} else {
-			$raw = \WorldGraph\Utils\Comfy_Cloud_MCP::get_template( $entry_id, [], $connection_id );
+			$mcp_client = \WorldGraph\Utils\Comfy_Provider::client_for( $connection_id );
+			$raw = $mcp_client::get_template( $entry_id, [], $connection_id );
 			if ( is_wp_error( $raw ) ) {
 				return $raw;
 			}
 			$raw = is_array( $raw ) ? $raw : [];
-			$normalized = \WorldGraph\Utils\Comfy_Manifest::normalize_entry( array_merge( $entry, $raw ), $connection_id );
+			$normalized = \WorldGraph\Utils\Comfy_Manifest::normalize_entry( array_merge( $entry, $raw ), $connection_id, $mcp_client );
 			if ( is_array( $normalized ) ) {
 				$entry = array_merge( $entry, $normalized );
 			}
@@ -1318,7 +1320,7 @@ class Connection {
 		}
 
 		\WorldGraph\Utils\worldgraph_update_field_value( (int) $template_id, 'template_name', (string) ( $entry['name'] ?? $entry_id ) );
-		\WorldGraph\Utils\worldgraph_update_field_value( (int) $template_id, 'provider_type', 'comfyui' );
+		\WorldGraph\Utils\worldgraph_update_field_value( (int) $template_id, 'provider_type', (string) \WorldGraph\Utils\worldgraph_get_field_value( $connection_id, 'provider_type' ) );
 		\WorldGraph\Utils\worldgraph_update_field_value( (int) $template_id, 'status', 'active' );
 		\WorldGraph\Utils\worldgraph_update_field_value( (int) $template_id, 'modality', (string) $entry['modality'] );
 		\WorldGraph\Utils\worldgraph_update_field_value( (int) $template_id, 'generation_structure', \WorldGraph\Utils\Generation_Modality::output_type( (string) $entry['modality'] ) );

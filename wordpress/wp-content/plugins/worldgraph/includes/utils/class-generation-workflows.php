@@ -2694,8 +2694,7 @@ class Generation_Workflows {
 			}
 			$requires_media       = ! empty( Generation_Modality::media_inputs( $modality ) );
 			$provider_template_id = trim( (string) ( worldgraph_get_field_value( $template->ID, 'provider_template_id' ) ?: get_post_meta( $template->ID, 'comfy_template_id', true ) ) );
-			$media_supported      = Connection_Adapters::supports_media_inputs( $provider )
-				&& ( 'comfyui' !== $provider || 'local' === ( $connection['environment'] ?? '' ) );
+			$media_supported      = Connection_Adapters::supports_media_inputs( $provider );
 			if ( $requires_media && ! $media_supported ) {
 				continue;
 			}
@@ -2703,7 +2702,7 @@ class Generation_Workflows {
 			// cannot actually run, so it must not appear as a choice until it
 			// is verified ready. A catalog read failure (connectivity) is left
 			// to surface at submission rather than hiding every Template here.
-			if ( 'comfyui' === $provider && 'local' === ( $connection['environment'] ?? '' ) ) {
+			if ( 'comfyui' === $provider ) {
 				Connection_Adapters::load( 'comfyui' );
 				$report = Comfy_Manifest::validate( $template->ID, Local_ComfyUI::endpoint( $connection_id ) );
 				if ( ! is_wp_error( $report ) && empty( $report['ok'] ) ) {

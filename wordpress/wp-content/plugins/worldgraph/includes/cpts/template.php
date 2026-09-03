@@ -755,7 +755,7 @@ class Template {
 	public static function ajax_discover_comfy_templates(): void {
 		$post_id = self::authorize_requirements_request();
 		$connection_id = absint( \WorldGraph\Utils\worldgraph_get_field_value( $post_id, 'connection_id' ) );
-		$result = \WorldGraph\Utils\Comfy_Manifest::discover_provider_templates( sanitize_text_field( wp_unslash( $_POST['search'] ?? '' ) ), $connection_id ); // phpcs:ignore WordPress.Security.NonceVerification.Missing -- authorize_requirements_request() verified this AJAX request.
+		$result = \WorldGraph\Utils\Comfy_Manifest::discover_provider_templates( sanitize_text_field( wp_unslash( $_POST['search'] ?? '' ) ), $connection_id, \WorldGraph\Utils\Comfy_Provider::client_for( $connection_id ) ); // phpcs:ignore WordPress.Security.NonceVerification.Missing -- authorize_requirements_request() verified this AJAX request.
 		if ( is_wp_error( $result ) ) {
 			wp_send_json_error( [ 'message' => $result->get_error_message() ] );
 		}
@@ -796,7 +796,8 @@ class Template {
 		}
 
 		$connection_id = absint( \WorldGraph\Utils\worldgraph_get_field_value( $post_id, 'connection_id' ) );
-		$raw = \WorldGraph\Utils\Comfy_Cloud_MCP::get_template( $provider_template_id, [], $connection_id );
+		$mcp_client = \WorldGraph\Utils\Comfy_Provider::client_for( $connection_id );
+		$raw = $mcp_client::get_template( $provider_template_id, [], $connection_id );
 		if ( is_wp_error( $raw ) ) {
 			wp_send_json_error( [ 'message' => $raw->get_error_message() ] );
 		}
@@ -901,10 +902,11 @@ class Template {
 		}
 
 		$connection = \WorldGraph\Utils\Connection_Repository::get( $connection_id );
-		if ( ! is_array( $connection ) || 'comfyui' !== (string) ( $connection['provider_type'] ?? '' ) ) {
-			wp_send_json_error( [ 'message' => __( 'This Template is not paired with a ComfyUI Connection.', 'worldgraph' ) ], 400 );
+		$provider_type = is_array( $connection ) ? (string) ( $connection['provider_type'] ?? '' ) : '';
+		if ( ! in_array( $provider_type, [ 'comfyui', 'comfy_cloud' ], true ) ) {
+			wp_send_json_error( [ 'message' => __( 'This Template is not paired with a ComfyUI or Comfy Cloud Connection.', 'worldgraph' ) ], 400 );
 		}
-		\WorldGraph\Utils\Connection_Adapters::load( 'comfyui' );
+		\WorldGraph\Utils\Connection_Adapters::load( $provider_type );
 
 		return $post_id;
 	}

@@ -295,7 +295,12 @@ class Plugins {
 						return \WorldGraphGenerationEngine\Settings::is_configured();
 				}
 					foreach ( \WorldGraph\Utils\Connection_Repository::get_all( [ 'provider_type' => 'comfyui' ] ) as $connection ) {
-						if ( 'local' === $connection['environment'] || '' !== trim( (string) $connection['credential_reference'] ) ) {
+						if ( '' !== trim( (string) ( $connection['endpoint_url'] ?? '' ) ) ) {
+							return true;
+						}
+					}
+					foreach ( \WorldGraph\Utils\Connection_Repository::get_all( [ 'provider_type' => 'comfy_cloud' ] ) as $connection ) {
+						if ( '' !== trim( (string) ( $connection['credential_reference'] ?? '' ) ) ) {
 							return true;
 						}
 					}

@@ -301,7 +301,7 @@ class Test_Generation_Authorization extends TestCase {
 	public function test_generic_generation_allows_local_comfy_template_without_provider_id(): void {
 		$source = (string) file_get_contents( dirname( __DIR__ ) . '/includes/rest-api/generation-controller.php' );
 
-		$this->assertStringContainsString( "'comfyui' === \$connection['provider_type'] && 'local' === ( \$connection['environment'] ?? '' )", $source );
+		$this->assertStringContainsString( "'comfyui' === \$connection['provider_type']", $source );
 		$this->assertStringContainsString( "'' === \$provider_template_id && ! \$use_local_comfyui", $source );
 		$this->assertStringContainsString( "\$workflow = '' !== \$provider_template_id ? \$provider_template_id : (string) \$template->ID;", $source );
 		$this->assertStringContainsString( 'Connection_Adapters::generation_adapter(', $source );

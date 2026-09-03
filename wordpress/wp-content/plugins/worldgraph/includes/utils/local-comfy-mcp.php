@@ -1,6 +1,12 @@
 <?php
 /**
- * Streamable HTTP client for the commercial Comfy Cloud MCP service.
+ * Streamable HTTP client for an operator's own local ComfyUI MCP server.
+ *
+ * A local ComfyUI is reached over its own plain HTTP API for generation
+ * (see Local_ComfyUI). This client only speaks to an optional, separately
+ * run local MCP process for workflow discovery and model downloads; it is
+ * never used to submit or poll a generation job. It has no fixed endpoint
+ * and no commercial credential, unlike the hosted Comfy_Cloud_MCP.
  *
  * @package WorldGraph
  */
@@ -13,66 +19,34 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-/**
- * Comfy Cloud is a separate hosted commercial provider, distinct from a
- * self-hosted local ComfyUI installation (see Local_Comfy_MCP). It always
- * requires an API key and defaults to the hosted endpoint, but an operator
- * may override the URL on the Connection.
- */
-class Comfy_Cloud_MCP {
-	/** Default Comfy Cloud MCP endpoint, overridable per Connection. */
-	const ENDPOINT = 'https://cloud.comfy.org/mcp';
+class Local_Comfy_MCP {
 	const PROTOCOL_VERSIONS = [ '2026-07-28', '2025-03-26' ];
 
 	/**
 	 * Transient holding the MCP server's advertised tool names.
 	 */
-	const TOOLS_TRANSIENT = 'worldgraph_comfy_cloud_mcp_tools';
+	const TOOLS_TRANSIENT = 'worldgraph_local_comfy_mcp_tools';
 
 	/**
 	 * Transient holding full MCP tool descriptors (name, input schema, output schema).
 	 */
-	const TOOL_DEFS_TRANSIENT = 'worldgraph_comfy_cloud_mcp_tool_defs';
+	const TOOL_DEFS_TRANSIENT = 'worldgraph_local_comfy_mcp_tool_defs';
 
 	/**
-	 * Whether an API key is configured for this Comfy Cloud Connection.
+	 * Tools required for World Graph Studio to discover and provision templates without
+	 * operator intervention.
+	 *
+	 * @var array<int, string>
+	 */
+	const TEMPLATE_TOOLS = [ 'list_templates', 'get_template', 'download_models' ];
+
+	/**
+	 * Whether a local MCP endpoint is configured for this Connection.
 	 *
 	 * @return bool
 	 */
 	public static function is_configured( int $connection_id = 0 ): bool {
-		$connection = $connection_id ? Connection_Repository::get( $connection_id ) : null;
-		$api_key = is_array( $connection ) ? (string) ( $connection['credential_reference'] ?? '' ) : '';
-
-		return '' !== trim( (string) $api_key );
-	}
-
-	public static function run_template( string $template, string $prompt, array $parameters, int $connection_id = 0 ) {
-		$arguments = array_filter( $parameters, static function ( $value ) {
-			return null !== $value;
-		} );
-		$arguments['template_name'] = $template;
-		$arguments['prompt'] = $prompt;
-
-		Generation_Log::add( 'info', 'comfy_cloud_mcp', 'Calling run_template tool.', [ 'template' => $template, 'prompt' => $prompt ], '', $connection_id );
-		$result = self::call_tool( 'run_template', $arguments, $connection_id );
-		if ( is_wp_error( $result ) ) {
-			Generation_Log::add( 'error', 'comfy_cloud_mcp', $result->get_error_message(), [], '', $connection_id );
-		} else {
-			Generation_Log::add( 'info', 'comfy_cloud_mcp', 'run_template tool call succeeded.', $result, (string) ( $result['job_id'] ?? $result['id'] ?? '' ), $connection_id );
-		}
-
-		return $result;
-	}
-
-	public static function get_job_status( string $job_id, int $connection_id = 0 ) {
-		$result = self::call_tool( 'get_job_status', [ 'job_id' => $job_id ], $connection_id );
-		if ( is_wp_error( $result ) ) {
-			Generation_Log::add( 'error', 'comfy_cloud_mcp', $result->get_error_message(), [], $job_id, $connection_id );
-		} else {
-			Generation_Log::add( 'debug', 'comfy_cloud_mcp', 'get_job_status tool call returned status: ' . (string) ( $result['status'] ?? 'unknown' ), $result, $job_id, $connection_id );
-		}
-
-		return $result;
+		return '' !== self::endpoint( $connection_id );
 	}
 
 	/**
@@ -119,19 +93,8 @@ class Comfy_Cloud_MCP {
 	}
 
 	/**
-	 * Tools required for World Graph Studio to discover and provision templates without
-	 * operator intervention.
-	 *
-	 * @var array<int, string>
-	 */
-	const TEMPLATE_TOOLS = [ 'list_templates', 'get_template', 'download_models' ];
-
-	/**
-	 * Classify what a Connection's MCP server can actually do, so callers can
-	 * offer the right affordances instead of failing deep inside a job.
-	 *
-	 * `a` exposes the whole template system, `b` exposes part of it, `c` has no
-	 * MCP endpoint at all, and `unreachable` could not be probed.
+	 * Classify what a Connection's local MCP server can actually do, so callers
+	 * can offer the right affordances instead of failing deep inside a job.
 	 *
 	 * @param int $connection_id Connection post ID.
 	 * @return array{tier: string, tools: array<int, string>, endpoint: string, message: string}
@@ -143,7 +106,7 @@ class Comfy_Cloud_MCP {
 				'tier'     => 'c',
 				'tools'    => [],
 				'endpoint' => '',
-				'message'  => __( 'No MCP endpoint is configured, so template discovery falls back to the built-in modalities.', 'worldgraph' ),
+				'message'  => __( 'No local MCP endpoint is configured, so template discovery falls back to the built-in modalities.', 'worldgraph' ),
 			];
 		}
 
@@ -180,7 +143,7 @@ class Comfy_Cloud_MCP {
 	}
 
 	/**
-	 * Discover ComfyUI workflow templates the MCP template system knows about.
+	 * Discover ComfyUI workflow templates the local MCP template system knows about.
 	 *
 	 * @param array $filters Optional `model_type` / `task_type` filters.
 	 * @param int   $connection_id Connection post ID, for log correlation.
@@ -207,14 +170,14 @@ class Comfy_Cloud_MCP {
 		$arguments = [
 			'parameters' => (object) $parameters,
 		];
-		$argument_name = self::tool_argument_name( 'get_template', [ 'templateId', 'template_id', 'id', 'name' ], $connection_id );
-		$arguments[ $argument_name ?: 'templateId' ] = $template_id;
+		$argument_name = self::tool_argument_name( 'get_template', [ 'template_id', 'templateId', 'id', 'name' ], $connection_id );
+		$arguments[ $argument_name ?: 'template_id' ] = $template_id;
 
 		return self::call_discovery_tool( 'get_template', $arguments, $connection_id );
 	}
 
 	/**
-	 * Ask the MCP server to fetch model files into the ComfyUI workspace.
+	 * Ask the local MCP server to fetch model files into the ComfyUI workspace.
 	 *
 	 * @param array $urls Model download URLs.
 	 * @param int   $connection_id Connection post ID, for log correlation.
@@ -247,8 +210,8 @@ class Comfy_Cloud_MCP {
 		}
 		if ( ! in_array( $name, $tools, true ) ) {
 			return new WP_Error(
-				'comfy_mcp_tool_unavailable',
-				sprintf( 'The connected Comfy MCP server does not expose the "%s" tool.', $name ),
+				'local_comfy_mcp_tool_unavailable',
+				sprintf( 'The connected local Comfy MCP server does not expose the "%s" tool.', $name ),
 				[ 'available_tools' => $tools ]
 			);
 		}
@@ -284,8 +247,8 @@ class Comfy_Cloud_MCP {
 			}
 
 			return new WP_Error(
-				'comfy_mcp_tool_error',
-				'' !== $message ? $message : __( 'Comfy Cloud MCP reported a tool error.', 'worldgraph' ),
+				'local_comfy_mcp_tool_error',
+				'' !== $message ? $message : __( 'The local Comfy MCP server reported a tool error.', 'worldgraph' ),
 				is_array( $result ) ? $result : []
 			);
 		}
@@ -305,7 +268,7 @@ class Comfy_Cloud_MCP {
 			}
 		}
 
-		return is_array( $result ) ? $result : new WP_Error( 'comfy_mcp_invalid_response', 'Comfy Cloud MCP returned an invalid tool response.' );
+		return is_array( $result ) ? $result : new WP_Error( 'local_comfy_mcp_invalid_response', 'The local Comfy MCP server returned an invalid tool response.' );
 	}
 
 	private static function initialize( int $connection_id = 0 ) {
@@ -326,27 +289,24 @@ class Comfy_Cloud_MCP {
 			}
 
 			if ( empty( $result['_session_id'] ) ) {
-				$last_error = new WP_Error( 'comfy_mcp_session_missing', 'Comfy Cloud MCP did not establish a session.' );
+				$last_error = new WP_Error( 'local_comfy_mcp_session_missing', 'The local Comfy MCP server did not establish a session.' );
 				continue;
 			}
 
 			return $result['_session_id'];
 		}
 
-		return $last_error ?: new WP_Error( 'comfy_mcp_initialize_failed', 'Comfy MCP initialization failed.' );
+		return $last_error ?: new WP_Error( 'local_comfy_mcp_initialize_failed', 'Local Comfy MCP initialization failed.' );
 	}
 
 	private static function request( string $method, array $params, string $session_id = '', int $connection_id = 0 ) {
-		$connection = $connection_id ? Connection_Repository::get( $connection_id ) : null;
-		$api_key = is_array( $connection ) ? (string) ( $connection['credential_reference'] ?? '' ) : '';
 		if ( ! self::is_configured( $connection_id ) ) {
-			return new WP_Error( 'comfy_mcp_connection_credential_missing', 'Set the Comfy Cloud API key on the selected Connection before submitting generations.' );
+			return new WP_Error( 'local_comfy_mcp_connection_missing', 'Set a local Comfy MCP URL on the selected Connection before discovering workflows.' );
 		}
 
 		$headers = [
-			'Accept'        => 'application/json, text/event-stream',
-			'Content-Type'  => 'application/json',
-			'X-API-Key'     => sanitize_text_field( $api_key ),
+			'Accept'       => 'application/json, text/event-stream',
+			'Content-Type' => 'application/json',
 		];
 		if ( '' !== $session_id ) {
 			$headers['Mcp-Session-Id'] = $session_id;
@@ -367,24 +327,24 @@ class Comfy_Cloud_MCP {
 		] );
 
 		if ( is_wp_error( $response ) ) {
-			Generation_Log::add( 'error', 'comfy_cloud_mcp', 'Unreachable: ' . $response->get_error_message(), [ 'method' => $method ], '', $connection_id );
-			return new WP_Error( 'comfy_mcp_unreachable', $response->get_error_message() );
+			Generation_Log::add( 'error', 'local_comfy_mcp', 'Unreachable: ' . $response->get_error_message(), [ 'method' => $method ], '', $connection_id );
+			return new WP_Error( 'local_comfy_mcp_unreachable', $response->get_error_message() );
 		}
 
 		$status = wp_remote_retrieve_response_code( $response );
 		$payload = self::decode_response( wp_remote_retrieve_body( $response ) );
 		if ( $status < 200 || $status >= 300 ) {
-			$message = is_array( $payload ) ? ( $payload['error']['message'] ?? 'Comfy Cloud MCP request failed.' ) : 'Comfy Cloud MCP request failed.';
-			Generation_Log::add( 'error', 'comfy_cloud_mcp', sprintf( 'HTTP %d on %s: %s', $status, $method, $message ), [ 'method' => $method, 'params' => $params ], '', $connection_id );
-			return new WP_Error( 'comfy_mcp_request_failed', $message, [ 'status' => $status ] );
+			$message = is_array( $payload ) ? ( $payload['error']['message'] ?? 'Local Comfy MCP request failed.' ) : 'Local Comfy MCP request failed.';
+			Generation_Log::add( 'error', 'local_comfy_mcp', sprintf( 'HTTP %d on %s: %s', $status, $method, $message ), [ 'method' => $method, 'params' => $params ], '', $connection_id );
+			return new WP_Error( 'local_comfy_mcp_request_failed', $message, [ 'status' => $status ] );
 		}
 		if ( ! is_array( $payload ) ) {
-			Generation_Log::add( 'error', 'comfy_cloud_mcp', 'Non-JSON response on ' . $method, [ 'method' => $method ], '', $connection_id );
-			return new WP_Error( 'comfy_mcp_invalid_response', 'Comfy Cloud MCP returned non-JSON content.' );
+			Generation_Log::add( 'error', 'local_comfy_mcp', 'Non-JSON response on ' . $method, [ 'method' => $method ], '', $connection_id );
+			return new WP_Error( 'local_comfy_mcp_invalid_response', 'Local Comfy MCP returned non-JSON content.' );
 		}
 		if ( isset( $payload['error'] ) ) {
-			Generation_Log::add( 'error', 'comfy_cloud_mcp', sprintf( 'MCP error on %s: %s', $method, (string) ( $payload['error']['message'] ?? '' ) ), [ 'method' => $method, 'error' => $payload['error'] ], '', $connection_id );
-			return new WP_Error( 'comfy_mcp_tool_error', (string) ( $payload['error']['message'] ?? 'Comfy Cloud MCP returned an error.' ), $payload['error'] );
+			Generation_Log::add( 'error', 'local_comfy_mcp', sprintf( 'MCP error on %s: %s', $method, (string) ( $payload['error']['message'] ?? '' ) ), [ 'method' => $method, 'error' => $payload['error'] ], '', $connection_id );
+			return new WP_Error( 'local_comfy_mcp_tool_error', (string) ( $payload['error']['message'] ?? 'Local Comfy MCP returned an error.' ), $payload['error'] );
 		}
 
 		$result = $payload['result'] ?? $payload;
@@ -397,17 +357,16 @@ class Comfy_Cloud_MCP {
 	}
 
 	/**
-	 * Resolve the Comfy Cloud endpoint, preferring an operator override on the
-	 * Connection over the hosted default.
+	 * Resolve the local MCP endpoint configured on the Connection.
 	 *
 	 * @param int $connection_id Connection post ID.
 	 * @return string
 	 */
 	private static function endpoint( int $connection_id = 0 ): string {
 		$connection = $connection_id ? Connection_Repository::get( $connection_id ) : null;
-		$endpoint = is_array( $connection ) ? (string) ( $connection['endpoint_url'] ?? '' ) : '';
+		$endpoint = is_array( $connection ) ? (string) ( $connection['mcp_endpoint_url'] ?? '' ) : '';
 
-		return untrailingslashit( esc_url_raw( $endpoint ?: self::ENDPOINT ) );
+		return untrailingslashit( esc_url_raw( $endpoint ?: (string) get_option( 'worldgraph_comfy_local_mcp_url', '' ) ) );
 	}
 
 	private static function decode_response( string $body ) {
@@ -460,9 +419,9 @@ class Comfy_Cloud_MCP {
 	/**
 	 * Pick the first candidate argument name a tool's input schema advertises.
 	 *
-	 * @param string            $tool_name Tool name.
+	 * @param string             $tool_name Tool name.
 	 * @param array<int, string> $candidates Candidate argument names in preference order.
-	 * @param int               $connection_id Connection post ID.
+	 * @param int                $connection_id Connection post ID.
 	 * @return string|null
 	 */
 	private static function tool_argument_name( string $tool_name, array $candidates, int $connection_id ): ?string {

@@ -72,7 +72,7 @@ class Template_Smoke_Check {
 		$connection_id = absint( worldgraph_get_field_value( $template_id, 'connection_id' ) );
 		$connection    = $connection_id ? Connection_Repository::get( $connection_id ) : null;
 		$provider      = sanitize_key( (string) worldgraph_get_field_value( $template_id, 'provider_type' ) );
-		if ( is_array( $connection ) && 'comfyui' === $provider && 'local' === ( $connection['environment'] ?? '' ) ) {
+		if ( is_array( $connection ) && 'comfyui' === $provider ) {
 			Connection_Adapters::load( 'comfyui' );
 			$ready = Comfy_Manifest::ensure_ready( $template_id, $connection_id );
 			if ( is_wp_error( $ready ) ) {

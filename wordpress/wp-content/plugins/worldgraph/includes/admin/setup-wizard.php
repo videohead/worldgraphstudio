@@ -203,7 +203,7 @@ class Setup_Wizard {
 		$comfy_local_mcp_url = esc_url_raw( wp_unslash( $_POST['worldgraph_comfy_local_mcp_url'] ?? '' ) );
 		if ( 'none' !== $comfy_mode ) {
 			$provider_type = sanitize_key( (string) ( $generation_choice['provider_type'] ?? '' ) );
-			$is_local_comfy = 'comfyui' === $provider_type && 'local' === ( $generation_choice['environment'] ?? '' );
+			$is_local_comfy = 'comfyui' === $provider_type;
 			$provider_endpoint = \WorldGraph\Utils\Connection_Adapters::endpoint( $provider_type );
 			$provider_mcp_endpoint = \WorldGraph\Utils\Connection_Adapters::mcp_endpoint( $provider_type );
 			if ( '' === $provider_mcp_endpoint && ! empty( $generation_choice['mcp_endpoint'] ) ) {
@@ -387,6 +387,15 @@ class Setup_Wizard {
 				wp_send_json_error( [ 'message' => sprintf( 'VideoDraft is missing required generation or sync tools: %s.', implode( ', ', $missing ) ) ] );
 			}
 			wp_send_json_success( [ 'message' => sprintf( 'Connected to VideoDraft; %d tools available. Saving provisions image, video, and audio Templates.', count( $tools ) ) ] );
+		}
+
+		if ( 'cloud' === $mode ) {
+			\WorldGraph\Utils\Connection_Adapters::load( 'comfy_cloud' );
+			$key = self::resolve_generation_credential_input( sanitize_text_field( wp_unslash( $_POST['api_key'] ?? '' ) ), 'credential_reference' );
+			if ( '' === trim( $key ) ) {
+				wp_send_json_error( [ 'message' => 'Enter a Comfy Cloud API key first.' ] );
+			}
+			wp_send_json_success( [ 'message' => 'Comfy Cloud API key saved. Save this section, then test the Connection from World Graph Studio > Connections.' ] );
 		}
 
 		$url = untrailingslashit( esc_url_raw( wp_unslash( $_POST['url'] ?? '' ) ) );

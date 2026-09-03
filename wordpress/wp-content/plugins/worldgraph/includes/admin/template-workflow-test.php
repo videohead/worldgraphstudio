@@ -202,7 +202,7 @@ class Template_Workflow_Test {
 	 */
 	private static function fixed_selections( int $template_id ): array {
 		$provider = sanitize_key( (string) \WorldGraph\Utils\worldgraph_get_field_value( $template_id, 'provider_type' ) );
-		if ( 'comfyui' !== $provider ) {
+		if ( ! in_array( $provider, [ 'comfyui', 'comfy_cloud' ], true ) ) {
 			return [];
 		}
 
