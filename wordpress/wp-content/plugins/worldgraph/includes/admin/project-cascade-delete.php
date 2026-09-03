@@ -28,14 +28,11 @@ class Project_Cascade_Delete {
 	/** Provenance meta key that ties generated Media Library attachments to a Story Graph entity. */
 	private const GENERATED_FROM_META_KEY = '_worldgraph_generated_from';
 
-	/** Editorial CPT keys that may exist in legacy datasets. */
+	/** Editorial CPT keys that may exist in older data. */
 	private const EDITORIAL_POST_TYPES = [
 		'worldgraph_editorial',
 		'worldgraph_editorial_artifact',
 		'worldgraph_editorial_ar',
-		'storyos_editorial_artifact',
-		'storyos_editorial_ar',
-		'storyos_editorial',
 	];
 
 	/** Register hooks. */

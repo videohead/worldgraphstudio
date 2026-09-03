@@ -233,7 +233,6 @@ function init(): void {
 	// Load dependencies.
 	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/utils/helpers.php';
 	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/utils/class-credential-store.php';
-	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/utils/cpt-key-migration.php';
 	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/utils/generation-log.php';
 	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/utils/template-smoke-check.php';
 	require_once WORLDGRAPH_PLUGIN_DIR . 'includes/utils/generation-modality.php';
@@ -290,7 +289,6 @@ function init(): void {
 	CPT\Connection::init();
 	Utils\worldgraph_register_generation_record_type();
 	CPT\Generation_Job::init();
-	Utils\worldgraph_maybe_migrate_cpt_keys();
 	Utils\Template_Smoke_Check::init();
 	Templates\Template_Manager::init();
 	Utils\Connection_Adapters::load_configured();

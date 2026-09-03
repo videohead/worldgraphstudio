@@ -1,4 +1,0 @@
-.env
-wordpress/wp-config.php
-.venv/
-db-data/

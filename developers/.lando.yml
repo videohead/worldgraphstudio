@@ -19,6 +19,9 @@ services:
       - echo "be928f6b8ca1e8dfb9d2f4b75a13aa4aee0896f8a9a0a1c45cd5d2c98605e6172e6d014dda2e27f88c98befc16c040cbb2bd1bfa121510ea5cdf5f6a30fe8832  /tmp/wp-cli.phar" | sha512sum --check --strict
       - install -m 0755 /tmp/wp-cli.phar /usr/local/bin/wp
     overrides:
+      ports:
+        - "8000:80"
+        - "8443:443"
       extra_hosts:
         - "host.docker.internal:host-gateway"
     environment:
@@ -62,17 +65,18 @@ services:
   headless:
     type: node:20
     port: 3000
+    moreHttpPorts:
+      - 3000
     build:
       - cd /app/headless && npm install
     command: npm --prefix /app/headless run dev -- --hostname 0.0.0.0 --port 3000
     overrides:
+      ports:
+        - "3000:3000"
       environment:
         WORDPRESS_URL: https://worldgraph.lndo.site
         WORDPRESS_HOSTNAME: worldgraph.lndo.site
         WORDPRESS_WEBHOOK_SECRET: ${WORDPRESS_WEBHOOK_SECRET:-change-me}
-proxy:
-  headless:
-    - headless.worldgraph.lndo.site:3000
 tooling:
   wp:
     service: appserver

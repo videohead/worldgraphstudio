@@ -164,6 +164,3 @@ commitments, and they do not reopen the closed roadmap category.
 - PHP namespace: `WorldGraph`
 - Constants and environment-variable prefix: `WORLDGRAPH_`
 - REST namespace: `worldgraph/v1`
-
-Legacy `storyos` identifiers may remain inside the one-time compatibility
-migration and its tests. They are migration inputs, not current public names.

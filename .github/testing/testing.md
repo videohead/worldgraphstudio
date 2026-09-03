@@ -78,7 +78,7 @@ done
 ### Shell syntax
 
 ```bash
-bash -n scripts/interactive-start.sh scripts/setup-db.sh start-worldgraph.sh
+bash -n scripts/interactive-start.sh scripts/setup-db.sh
 ```
 
 ### Patch hygiene

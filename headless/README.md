@@ -29,13 +29,14 @@ actions.
 
 ## Setup
 
-Container-first workflow (recommended): use the Lando services that already
-ship with Node/npm for this project. Do not install or upgrade Node on the host
+Container-first workflow (recommended): use the Lando or Docker Compose
+services that already ship with Node/npm for this project (see
+[`developers/`](../developers/)). Do not install or upgrade Node on the host
 unless you are intentionally running headless standalone.
 
 ```bash
 cd headless
-cp .env.example .env.local   # point WORDPRESS_URL at your Lando site
+cp .env.example .env.local   # point WORDPRESS_URL at your Lando or Docker site
 ```
 
 For the headless Connections manager, also configure admin credentials using a
@@ -62,6 +63,15 @@ lando exec cli -- sh -lc 'cd /app/headless && npm run build'
 ```
 
 The dev server is proxied at `http://headless.worldgraph.lndo.site`.
+
+Via Docker Compose (no Lando required):
+
+```bash
+cd developers
+docker compose up -d headless   # runs `npm install && next dev` on port 3000
+```
+
+The dev server is available at `http://localhost:3000`.
 
 Standalone (optional, outside Lando):
 

@@ -28,7 +28,6 @@ final class Data_Purge_Test extends TestCase {
 			'worldgraph_gen',
 			'worldgraph_agent',
 			'worldgraph_board',
-			'storyos_connection',
 		] as $post_type ) {
 			$this->assertContains( $post_type, $post_types );
 		}
@@ -38,20 +37,19 @@ final class Data_Purge_Test extends TestCase {
 		$this->assertNotContains( 'acf-field', $post_types );
 	}
 
-	/** All nine current plugin taxonomies and their predecessor names are covered. */
+	/** All nine current plugin taxonomies are covered. */
 	public function test_taxonomy_inventory_is_complete(): void {
 		$taxonomies = Data_Purge::known_taxonomies();
 
-		$this->assertCount( 18, $taxonomies );
+		$this->assertCount( 9, $taxonomies );
 		$this->assertContains( 'worldgraph_asset_type', $taxonomies );
 		$this->assertContains( 'worldgraph_sequence', $taxonomies );
 		$this->assertContains( 'worldgraph_template_category', $taxonomies );
-		$this->assertContains( 'storyos_sequence', $taxonomies );
 	}
 
-	/** Prefixes cover current and migrated plugin data without matching WordPress core. */
+	/** Prefix covers current plugin data without matching WordPress core. */
 	public function test_owned_prefix_inventory_is_narrow(): void {
-		$this->assertSame( [ 'worldgraph_', 'storyos_' ], Data_Purge::data_prefixes() );
+		$this->assertSame( [ 'worldgraph_' ], Data_Purge::data_prefixes() );
 		$this->assertSame( 'PURGE WORLDGRAPH DATA', Data_Purge::CONFIRMATION );
 		$this->assertSame( 'worldgraph_purge_data', Data_Purge::ACTION );
 	}

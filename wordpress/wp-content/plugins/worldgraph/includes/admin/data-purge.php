@@ -43,10 +43,10 @@ class Data_Purge {
 	private const UPLOAD_SUBDIRECTORY = 'worldgraph';
 
 	/**
-	 * Current, internal, retired, and compatibility post types owned by the plugin.
+	 * Current, internal, and retired post types owned by the plugin.
 	 *
-	 * The purge query also matches the reserved worldgraph_ and legacy storyos_
-	 * post-type prefixes so an unregistered or future plugin record cannot remain.
+	 * The purge query also matches the reserved worldgraph_ post-type prefix so
+	 * an unregistered or future plugin record cannot remain.
 	 *
 	 * @var array<int, string>
 	 */
@@ -70,23 +70,6 @@ class Data_Purge {
 		'worldgraph_board',
 		'worldgraph_editorial_artifact',
 		'worldgraph_editorial_ar',
-		'storyos_project',
-		'storyos_story_world',
-		'storyos_character',
-		'storyos_location',
-		'storyos_prop',
-		'storyos_organization',
-		'storyos_episode',
-		'storyos_scene',
-		'storyos_shot',
-		'storyos_sound',
-		'storyos_asset',
-		'storyos_editorial_artifact',
-		'storyos_editorial_ar',
-		'storyos_editorial',
-		'storyos_template',
-		'storyos_connection',
-		'storyos_generation',
 	];
 
 	/** Current taxonomies owned by the plugin. */
@@ -102,34 +85,19 @@ class Data_Purge {
 		'worldgraph_template_category',
 	];
 
-	/** Historical taxonomy names owned by the predecessor plugin. */
-	private const LEGACY_TAXONOMIES = [
-		'storyos_asset_type',
-		'storyos_character_relation',
-		'storyos_character_role',
-		'storyos_genre',
-		'storyos_status',
-		'storyos_scene_tag',
-		'storyos_sequence',
-		'storyos_sound_type',
-		'storyos_template_category',
-	];
-
-	/** Prefixes reserved for plugin options, transients, metadata, and cron hooks. */
-	private const DATA_PREFIXES = [ 'worldgraph_', 'storyos_' ];
+	/** Prefix reserved for plugin options, transients, metadata, and cron hooks. */
+	private const DATA_PREFIXES = [ 'worldgraph_' ];
 
 	/** Plugin-owned options that predate the World Graph Studio prefix. */
 	private const EXACT_OPTIONS = [
 		'celtx_credentials',
 		'celtx_enabled',
 		'widget_worldgraph_search',
-		'widget_storyos_search',
 	];
 
-	/** Provenance keys that unequivocally identify plugin-generated attachments. */
+	/** Provenance key that unequivocally identifies plugin-generated attachments. */
 	private const GENERATED_ATTACHMENT_META_KEYS = [
 		'_worldgraph_generated_from',
-		'_storyos_generated_from',
 	];
 
 	/** Register the menu and POST endpoint. */
@@ -379,9 +347,9 @@ class Data_Purge {
 		return self::KNOWN_POST_TYPES;
 	}
 
-	/** @return array<int, string> Current and historical taxonomies. */
+	/** @return array<int, string> Current taxonomies. */
 	public static function known_taxonomies(): array {
-		return array_merge( self::TAXONOMIES, self::LEGACY_TAXONOMIES );
+		return self::TAXONOMIES;
 	}
 
 	/** @return array<int, string> Reserved data prefixes removed by the purge. */
@@ -481,11 +449,10 @@ class Data_Purge {
 					FROM {$wpdb->posts} p
 					INNER JOIN {$wpdb->postmeta} pm ON pm.post_id = p.ID
 					WHERE p.ID > %d AND p.post_type = 'attachment'
-					AND pm.meta_key IN ( %s, %s )
+					AND pm.meta_key IN ( %s )
 					ORDER BY p.ID ASC LIMIT %d",
 					$cursor,
 					self::GENERATED_ATTACHMENT_META_KEYS[0],
-					self::GENERATED_ATTACHMENT_META_KEYS[1],
 					self::BATCH_SIZE
 				)
 			);
@@ -515,11 +482,10 @@ class Data_Purge {
 			$ids = $wpdb->get_col( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- unregistered retired CPTs cannot be comprehensively selected with WP_Query.
 				$wpdb->prepare(
 					"SELECT ID FROM {$wpdb->posts}
-					WHERE ID > %d AND ( post_type LIKE %s OR post_type LIKE %s )
+					WHERE ID > %d AND post_type LIKE %s
 					ORDER BY ID ASC LIMIT %d",
 					$cursor,
 					$wpdb->esc_like( self::DATA_PREFIXES[0] ) . '%',
-					$wpdb->esc_like( self::DATA_PREFIXES[1] ) . '%',
 					self::BATCH_SIZE
 				)
 			);
@@ -752,7 +718,7 @@ class Data_Purge {
 				array_filter(
 					$widgets,
 					static function ( $widget_id ) use ( &$removed ): bool {
-						$owned = is_string( $widget_id ) && ( str_starts_with( $widget_id, 'worldgraph_search-' ) || str_starts_with( $widget_id, 'storyos_search-' ) );
+						$owned = is_string( $widget_id ) && str_starts_with( $widget_id, 'worldgraph_search-' );
 						if ( $owned ) {
 							$removed++;
 						}

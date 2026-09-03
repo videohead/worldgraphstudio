@@ -28,19 +28,6 @@ class Test_WorldGraph_Generation_Record extends TestCase {
 		$this->assertSame( [ 'title' ], $args['supports'] );
 	}
 
-	/** Existing legacy jobs must be registered before their post type is migrated. */
-	public function test_generation_record_type_registers_before_namespace_migration(): void {
-		$source = file_get_contents( dirname( __DIR__ ) . '/worldgraph.php' );
-
-		$this->assertNotFalse( $source );
-		$registration = strpos( $source, 'Utils\\worldgraph_register_generation_record_type();' );
-		$migration    = strpos( $source, 'Utils\\worldgraph_maybe_migrate_cpt_keys();' );
-
-		$this->assertNotFalse( $registration );
-		$this->assertNotFalse( $migration );
-		$this->assertLessThan( $migration, $registration );
-	}
-
 	/** The Job list should not present WordPress Draft as generation state. */
 	public function test_generation_record_list_hides_native_draft_state(): void {
 		$source = file_get_contents( dirname( __DIR__ ) . '/includes/cpts/class-generation-job.php' );

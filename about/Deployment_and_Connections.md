@@ -21,6 +21,9 @@ are classified separately in [Delivery Status](Delivery_Status.md).
 Every World Graph Studio user needs:
 
 1. A WordPress.org-capable host, WP Local, or a local Docker/Lando deployment.
+   Developers can use either the Lando config or the plain Docker Compose
+   stack in [`developers/`](../developers/); both start the same WordPress,
+   PHP, and MariaDB services.
 2. Optionally, a local ComfyUI installation, Comfy Cloud account, fal account,
    ElevenLabs account, separate SunoAPI.org and Ace Data Cloud accounts,
    separate midjourney-api.com and Ace Data Cloud MidJourney credentials, a
@@ -38,37 +41,6 @@ credentials. ChatGPT, Claude, and Claude Code subscriptions without an API
 credential do not authenticate the hosted LLM integrations. Hosted LLM
 providers require an API key; a local LLM must expose an OpenAI-compatible API
 endpoint and any credential it requires.
-
-## Upgrading a renamed installation
-
-Back up the WordPress database and uploads before upgrading from StoryOS. The
-old plugin basename is `storyos/storyos.php`; the new basename is
-`worldgraph/worldgraph.php`. Because WordPress cannot load a file after its
-directory has moved, explicitly activate `worldgraph` after restoring the
-database. Its activation path runs the serialization-aware compatibility
-migration for supported post types, taxonomies, options, metadata,
-relationships, SCF identities, capabilities, cron hooks, and plugin entries.
-
-The Lando app name changed from `storyos` to `worldgraph`. Named database
-volumes are scoped to the app identity and are not renamed automatically. With
-the old Landofile still active, export first:
-
-```bash
-lando db-export scripts/pre-worldgraph-upgrade.sql.gz
-```
-
-After switching to the renamed checkout and starting the new app, import and
-activate:
-
-```bash
-lando db-import scripts/pre-worldgraph-upgrade.sql.gz
-lando wp plugin install secure-custom-fields --activate
-lando wp plugin activate worldgraph
-```
-
-Do not use a raw SQL search-and-replace for this rename; WordPress options,
-metadata, and SCF values can be serialized.
-
 ## Core Runtime
 
 The standard deployment contains WordPress, MariaDB, and the World Graph Studio plugin. WordPress stores generation jobs and uses WP-Cron to process bounded batches.

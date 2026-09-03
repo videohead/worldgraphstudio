@@ -154,26 +154,47 @@ services are replaceable connections; they do not own the Story Graph.
 
 ## Quick start (for Developers and people looking to get into the guts)
 
+All developer tooling, including the Lando config and a plain Docker Compose
+alternative, lives in [`developers/`](developers/). Pick whichever option
+matches your local setup; both start the same WordPress + PHP 8.2 + MariaDB +
+phpMyAdmin stack.
+
 ### Requirements
 
 - Docker Desktop or Docker Engine
-- [Lando](https://docs.lando.dev/getting-started/installation.html)
+- [Lando](https://docs.lando.dev/getting-started/installation.html) (only if
+  you choose the Lando option)
 - Git
 - An API-connected LLM only if you want AI Editor or specialist-agent features
 - ComfyUI, Comfy Cloud, VideoDraft, or another configured provider only if you
   want automated asset generation
 
-### Start the local site
+### Option A: Lando
 
 ```bash
 git clone <repository-url> worldgraph
-cd worldgraph
+cd worldgraph/developers
 lando start
 lando info
 ```
 
 Lando starts WordPress, PHP 8.2, MariaDB, and phpMyAdmin. The default local URL
 is `https://worldgraph.lndo.site`.
+
+### Option B: Docker Compose (no Lando required)
+
+```bash
+git clone <repository-url> worldgraph
+cd worldgraph/developers
+cp .env.example .env
+docker compose up -d
+```
+
+See [`developers/docker-compose.yml`](developers/docker-compose.yml) for
+service details. WordPress is served at `http://localhost:8080` and phpMyAdmin
+at `http://localhost:8081`. Swap `lando wp ...` for
+`docker compose exec appserver wp ...` in the commands below when using this
+option.
 
 WordPress core and Secure Custom Fields are deployment dependencies rather than
 tracked source in this repository. For a fresh checkout and database, install
@@ -197,17 +218,11 @@ lando wp plugin install secure-custom-fields --activate
 lando wp plugin activate worldgraph
 ```
 
+With Docker Compose, run the equivalent commands through
+`docker compose exec appserver wp ...`, using `--url=http://localhost:8080`.
+
 World Graph Studio works with ordinary WordPress themes; no particular theme is
 required by the plugin.
-
-If you are restoring an existing database instead, import a serialization-safe
-WordPress backup before activating `worldgraph`. Activation migrates supported
-legacy StoryOS identifiers to the `worldgraph` namespace.
-
-The Lando app name also changed to `worldgraph`. Lando uses that name when it
-identifies services and database volumes, so an existing database from the old
-app name is not moved automatically. Export it before switching Landofiles,
-then import the archive into the new app and activate `worldgraph`.
 
 Open **World Graph Studio > Setup** to configure an LLM and any optional
 generation connections. Core story and production planning work without those
