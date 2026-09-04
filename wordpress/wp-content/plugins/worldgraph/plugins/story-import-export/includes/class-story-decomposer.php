@@ -11,6 +11,7 @@ defined( 'ABSPATH' ) || exit;
 
 /** Build and validate a candidate v1.2 import document from unstructured text. */
 class Story_Decomposer {
+	private const LLM_TYPES = [ 'openai_compatible', 'openai', 'anthropic' ];
 	private const MAX_ATTEMPTS      = 2;
 	private const MAX_PART_ATTEMPTS = 3;
 	private const MAX_PROMPT_CHARS  = 300_000;
@@ -57,6 +58,18 @@ class Story_Decomposer {
 	/** @param object|null $llm Injectable test double or AI_LLM_Client. */
 	public function __construct( $llm = null ) {
 		$this->llm = $llm ?: new \WorldGraph\AI\AI_LLM_Client();
+	}
+
+	/** Resolve the first usable LLM Connection for automatic decomposition. */
+	public static function default_connection_id(): int {
+		foreach ( self::LLM_TYPES as $provider_type ) {
+			$connection_id = \WorldGraph\Utils\Connection_Repository::get_default( $provider_type );
+			if ( $connection_id ) {
+				return (int) $connection_id;
+			}
+		}
+
+		return 0;
 	}
 
 	/** Decompose, normalize, and dry-run validate one story source. */

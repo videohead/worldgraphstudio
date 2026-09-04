@@ -228,10 +228,20 @@ class Import_Controller extends Base_Controller {
 		}
 
 		if ( ! $connection_id ) {
+			$connection_id = \WorldGraphStoryIO\Story_Decomposer::default_connection_id();
+		}
+		if ( ! $connection_id ) {
 			return new WP_Error(
 				'worldgraph_story_connection_required',
-				'Choose an LLM Connection to decompose this story source.',
+				'No usable LLM Connection is configured for story decomposition.',
 				[ 'status' => 400 ]
+			);
+		}
+		if ( ! \WorldGraph\Utils\Connection_Repository::current_user_can_manage( $connection_id ) ) {
+			return new WP_Error(
+				'worldgraph_story_connection_forbidden',
+				'You cannot use the configured LLM Connection for story decomposition.',
+				[ 'status' => 403 ]
 			);
 		}
 

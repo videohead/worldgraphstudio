@@ -123,6 +123,9 @@ class Import {
 		if ( ! empty( $source['is_json'] ) ) {
 			$json = (string) $source['text'];
 		} else {
+			if ( ! $connection_id ) {
+				$connection_id = \WorldGraphStoryIO\Story_Decomposer::default_connection_id();
+			}
 			$connection = self::validate_connection( $connection_id );
 			if ( is_wp_error( $connection ) ) {
 				self::mark_attachment( $attachment_id, 'preview_failed' );
@@ -464,6 +467,7 @@ class Import {
 	/** Render the initial source-selection form. */
 	private static function render_upload_form(): void {
 		$connections = self::llm_connections();
+		$default_connection_id = \WorldGraphStoryIO\Story_Decomposer::default_connection_id();
 		?>
 		<p><?php esc_html_e( 'Upload a canonical World Graph Studio JSON document or a story manuscript. Every source is retained in the WordPress Media Library and follows your site’s upload-access policy. Manuscripts are sent through the LLM Connection you select; canonical JSON is never sent to an LLM.', 'worldgraph' ); ?></p>
 		<form method="post" id="worldgraph-import-form" data-worldgraph-import-stage="preview" enctype="multipart/form-data" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
@@ -482,12 +486,12 @@ class Import {
 					<th scope="row"><label for="worldgraph_connection_id"><?php esc_html_e( 'LLM Connection', 'worldgraph' ); ?></label></th>
 					<td>
 						<select name="worldgraph_connection_id" id="worldgraph_connection_id">
-							<option value=""><?php esc_html_e( 'Select for manuscript decomposition…', 'worldgraph' ); ?></option>
+							<option value=""><?php esc_html_e( 'Use the configured application LLM', 'worldgraph' ); ?></option>
 							<?php foreach ( $connections as $connection ) : ?>
-								<option value="<?php echo esc_attr( (string) $connection['id'] ); ?>"><?php echo esc_html( self::connection_label( $connection ) ); ?></option>
+								<option value="<?php echo esc_attr( (string) $connection['id'] ); ?>" <?php selected( $default_connection_id, (int) $connection['id'] ); ?>><?php echo esc_html( self::connection_label( $connection ) ); ?></option>
 							<?php endforeach; ?>
 						</select>
-						<p class="description"><?php esc_html_e( 'Required for prose and non-canonical JSON. Not used for canonical World Graph Studio JSON.', 'worldgraph' ); ?></p>
+						<p class="description"><?php esc_html_e( 'Used automatically for prose and non-canonical JSON. Not used for canonical World Graph Studio JSON.', 'worldgraph' ); ?></p>
 						<?php if ( empty( $connections ) ) : ?>
 							<p class="notice notice-warning inline"><?php esc_html_e( 'No usable LLM Connections are available. Canonical JSON can still be previewed and imported.', 'worldgraph' ); ?></p>
 						<?php endif; ?>
