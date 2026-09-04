@@ -29,6 +29,8 @@ class Connections {
 	public static function init(): void {
 		add_action( 'admin_menu', [ __CLASS__, 'add_menu' ] );
 		add_action( 'admin_post_worldgraph_test_connection', [ __CLASS__, 'handle_test_connection' ] );
+		add_action( 'admin_post_worldgraph_test_llm_chat', [ __CLASS__, 'handle_test_llm_chat' ] );
+		add_action( 'admin_post_worldgraph_test_llm_decomposition', [ __CLASS__, 'handle_test_llm_decomposition' ] );
 		add_action( 'admin_post_worldgraph_sync_capabilities', [ __CLASS__, 'handle_sync_capabilities' ] );
 		add_action( 'admin_post_worldgraph_set_active_connection', [ __CLASS__, 'handle_set_active_connection' ] );
 		add_filter( 'redirect_post_location', [ __CLASS__, 'redirect_after_save' ], 10, 2 );
@@ -91,6 +93,60 @@ class Connections {
 			admin_url( 'admin.php?page=worldgraph-connections' )
 		);
 		wp_safe_redirect( $redirect );
+		exit;
+	}
+
+	/** Exercise the saved LLM Connection with a real chat-completion request. */
+	public static function handle_test_llm_chat(): void {
+		self::verify_action( 'worldgraph_test_llm_chat' );
+		$connection_id = isset( $_GET['connection_id'] ) ? absint( wp_unslash( $_GET['connection_id'] ) ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$connection    = Connection_Repository::get( $connection_id );
+		if ( ! $connection || ! Connection_Repository::current_user_can_manage( $connection_id ) ) {
+			self::redirect_test_result( $connection_id, false, __( 'The LLM Connection could not be found or used.', 'worldgraph' ) );
+		}
+
+		$result = ( new \WorldGraph\AI\AI_LLM_Client() )->chat_with_connection(
+			$connection_id,
+			'Reply with exactly: WORLDGRAPH_CONNECTION_OK',
+			[ 'max_tokens' => 64, 'temperature' => 0 ]
+		);
+		if ( is_wp_error( $result ) ) {
+			self::redirect_test_result( $connection_id, false, $result->get_error_message() );
+		}
+
+		self::redirect_test_result( $connection_id, is_array( $result ) && '' !== trim( (string) ( $result['content'] ?? '' ) ), __( 'The LLM Connection returned a chat response.', 'worldgraph' ) );
+	}
+
+	/** Exercise the saved LLM Connection through the real story decomposer. */
+	public static function handle_test_llm_decomposition(): void {
+		self::verify_action( 'worldgraph_test_llm_decomposition' );
+		$connection_id = isset( $_GET['connection_id'] ) ? absint( wp_unslash( $_GET['connection_id'] ) ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$connection    = Connection_Repository::get( $connection_id );
+		if ( ! $connection || ! Connection_Repository::current_user_can_manage( $connection_id ) ) {
+			self::redirect_test_result( $connection_id, false, __( 'The LLM Connection could not be found or used.', 'worldgraph' ) );
+		}
+
+		$result = ( new \WorldGraphStoryIO\Story_Decomposer() )->decompose(
+			'A traveler crosses a bridge at dawn, hears a distant bell, and reaches the far bank.',
+			'worldgraph-connection-test.txt',
+			$connection_id
+		);
+		if ( is_wp_error( $result ) ) {
+			self::redirect_test_result( $connection_id, false, $result->get_error_message() );
+		}
+
+		self::redirect_test_result( $connection_id, is_array( $result ) && ! empty( $result['document']['scenes'] ), __( 'The LLM Connection completed a demo story decomposition.', 'worldgraph' ) );
+	}
+
+	/** Redirect a live LLM test result back to the Connections screen. */
+	private static function redirect_test_result( int $connection_id, bool $success, string $message ): void {
+		\WorldGraph\Utils\Generation_Log::add( $success ? 'info' : 'error', 'llm_connection_test', $message, [], '', $connection_id );
+		wp_safe_redirect( add_query_arg( [
+			'worldgraph_conns' => 'tested',
+			'connection_id'    => $connection_id,
+			'message'          => rawurlencode( $message ),
+			'success'          => $success ? '1' : '0',
+		], admin_url( 'admin.php?page=worldgraph-connections' ) ) );
 		exit;
 	}
 
@@ -245,6 +301,14 @@ class Connections {
 								'worldgraph_set_active_connection'
 							);
 							$edit_url      = get_edit_post_link( $connection_id );
+							$llm_test_url = wp_nonce_url(
+								add_query_arg( [ 'action' => 'worldgraph_test_llm_chat', 'connection_id' => $connection_id ], admin_url( 'admin-post.php' ) ),
+								'worldgraph_test_llm_chat'
+							);
+							$decompose_test_url = wp_nonce_url(
+								add_query_arg( [ 'action' => 'worldgraph_test_llm_decomposition', 'connection_id' => $connection_id ], admin_url( 'admin-post.php' ) ),
+								'worldgraph_test_llm_decomposition'
+							);
 							$endpoint_host = $connection['endpoint_url'] ? (string) wp_parse_url( (string) $connection['endpoint_url'], PHP_URL_HOST ) : '';
 							?>
 							<tr>
@@ -275,6 +339,10 @@ class Connections {
 										<a class="button button-small" href="<?php echo esc_url( $test_url ); ?>"><?php esc_html_e( 'Check connection', 'worldgraph' ); ?></a>
 									<?php endif; ?>
 									<a class="button button-small" href="<?php echo esc_url( (string) $edit_url ); ?>"><?php esc_html_e( 'Manage setup', 'worldgraph' ); ?></a>
+									<?php if ( in_array( sanitize_key( (string) $connection['provider_type'] ), [ 'openai_compatible', 'openai', 'anthropic' ], true ) ) : ?>
+										<a class="button button-small" href="<?php echo esc_url( $llm_test_url ); ?>"><?php esc_html_e( 'Test chat', 'worldgraph' ); ?></a>
+										<a class="button button-small" href="<?php echo esc_url( $decompose_test_url ); ?>"><?php esc_html_e( 'Test decomposition', 'worldgraph' ); ?></a>
+									<?php endif; ?>
 								</td>
 							</tr>
 						<?php endforeach; ?>

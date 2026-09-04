@@ -261,11 +261,19 @@ class Test_AI_LLM_Client extends TestCase {
 	/** Qwen 3 decomposition requests disable reasoning so JSON can reach content. */
 	public function test_qwen_three_selected_connection_disables_thinking(): void {
 		$client = new Mock_Connection_AI_LLM_Client();
+		$client->delegate_chat = true;
 		$client->connection['model'] = 'Qwen 3.8';
+		$GLOBALS['worldgraph_ai_post_response']['body'] = json_encode( [
+			'choices' => [ [
+				'message' => [ 'content' => '{}' ],
+				'finish_reason' => 'stop',
+			] ],
+		] );
 
 		$client->chat_with_connection( 17, 'Return the story JSON.', [] );
 
 		$this->assertStringStartsWith( "/no_think\n", $client->captured_prompt );
+		$this->assertSame( [ 'enable_thinking' => false ], $this->last_request_body()['chat_template_kwargs'] );
 	}
 
 	/** A request may reduce, but not exceed, its selected Connection temperature. */

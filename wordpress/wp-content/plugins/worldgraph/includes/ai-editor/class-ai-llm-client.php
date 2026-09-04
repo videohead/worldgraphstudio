@@ -721,18 +721,23 @@ class AI_LLM_Client {
 		$messages = array_merge( $messages, $history );
 		$messages[] = [ 'role' => 'user', 'content' => $prompt ];
 
+		$body = [
+			'model'       => $model,
+			'messages'    => $messages,
+			'max_tokens'  => $max_tokens,
+			'temperature' => $temperature,
+		];
+		if ( preg_match( '/(?:^|[^a-z])qwen(?:[-_: ]?3)/i', $model ) ) {
+			$body['chat_template_kwargs'] = [ 'enable_thinking' => false ];
+		}
+
 		$args = [
 			'method'  => 'POST',
 			'headers' => [
 				'Content-Type'  => 'application/json',
 				'Authorization' => 'Bearer ' . ( '' !== $api_key ? $api_key : 'local-dev-key' ),
 			],
-			'body'    => wp_json_encode( [
-				'model'       => $model,
-				'messages'    => $messages,
-				'max_tokens'  => $max_tokens,
-				'temperature' => $temperature,
-			] ),
+			'body'    => wp_json_encode( $body ),
 			'timeout'             => 120,
 			'limit_response_size' => 2_097_152,
 		];
