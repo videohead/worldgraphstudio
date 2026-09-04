@@ -18,6 +18,7 @@ class Story_Decomposer {
 	private const DIRECT_PASS_CHARS = 20_000;
 	private const CHUNK_CHARS       = 50_000;
 	private const CHUNK_OVERLAP_CHARS = 800;
+	private const MAX_RETRIEVAL_CHARS = 8_000;
 	private const MAX_CHUNKS        = 24;
 	private const MIN_CHUNK_CHARS   = 1_500;
 	private const MIN_RETRY_CHARS   = 500;
@@ -201,7 +202,7 @@ class Story_Decomposer {
 	private function decompose_in_chunks( string $text, string $filename, int $connection_id, string $system_prompt, array $profile, string $source_title = '' ) {
 		$chunks = $this->split_story(
 			$text,
-			absint( $profile['chunk_chars'] ?? self::CHUNK_CHARS ),
+			min( self::MAX_RETRIEVAL_CHARS, absint( $profile['chunk_chars'] ?? self::CHUNK_CHARS ) ),
 			absint( $profile['max_chunks'] ?? self::MAX_CHUNKS )
 		);
 		if ( is_wp_error( $chunks ) ) {
