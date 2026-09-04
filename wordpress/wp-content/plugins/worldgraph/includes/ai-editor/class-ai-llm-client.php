@@ -270,6 +270,7 @@ class AI_LLM_Client {
 			$this->selected_connection_depth = max( 0, $this->selected_connection_depth - 1 );
 		}
 		if ( ! empty( $result['error'] ) ) {
+			$this->log_connection_failure( $connection_id, $backend, $model, $endpoint, $result );
 			return new \WP_Error(
 				'worldgraph_llm_request_failed',
 				sanitize_text_field( (string) ( $result['content'] ?? __( 'The selected LLM Connection could not complete the request.', 'worldgraph' ) ) )
@@ -279,6 +280,27 @@ class AI_LLM_Client {
 		$result['connection_id'] = $connection_id;
 		$result['model']         = $model;
 		return $result;
+	}
+
+	/** Record a non-secret selected-Connection failure for administrator diagnosis. */
+	private function log_connection_failure( int $connection_id, string $backend, string $model, string $endpoint, array $result ): void {
+		if ( ! class_exists( '\\WorldGraph\\Utils\\Generation_Log' ) || ! function_exists( 'current_time' ) ) {
+			return;
+		}
+
+		$host = (string) wp_parse_url( $endpoint, PHP_URL_HOST );
+		$context = [
+			'provider'      => sanitize_key( $backend ),
+			'model'         => sanitize_text_field( $model ),
+			'endpoint_host' => sanitize_text_field( $host ),
+			'error_code'    => sanitize_key( (string) ( $result['error'] ?? 'unknown' ) ),
+		];
+		if ( isset( $result['http_status'] ) ) {
+			$context['http_status'] = absint( $result['http_status'] );
+		}
+
+		$message = sanitize_text_field( (string) ( $result['content'] ?? 'The LLM Connection request failed.' ) );
+		\WorldGraph\Utils\Generation_Log::add( 'error', 'llm_connection', $message, $context, '', $connection_id );
 	}
 
 	/**
@@ -725,9 +747,10 @@ class AI_LLM_Client {
 		$status = wp_remote_retrieve_response_code( $response );
 		if ( $status < 200 || $status >= 300 ) {
 			return [
-				'content' => sprintf( 'The OpenAI-compatible endpoint returned HTTP %d.', $status ),
-				'backend' => $backend,
-				'error'   => 'http_error',
+				'content'     => sprintf( 'The OpenAI-compatible endpoint returned HTTP %d.', $status ),
+				'backend'     => $backend,
+				'http_status' => $status,
+				'error'       => 'http_error',
 			];
 		}
 
@@ -832,9 +855,10 @@ class AI_LLM_Client {
 		$status = wp_remote_retrieve_response_code( $response );
 		if ( $status < 200 || $status >= 300 ) {
 			return [
-				'content' => sprintf( 'The OpenAI endpoint returned HTTP %d.', $status ),
-				'backend' => 'openai',
-				'error'   => 'http_error',
+				'content'     => sprintf( 'The OpenAI endpoint returned HTTP %d.', $status ),
+				'backend'     => 'openai',
+				'http_status' => $status,
+				'error'       => 'http_error',
 			];
 		}
 
@@ -931,9 +955,10 @@ class AI_LLM_Client {
 		$status = wp_remote_retrieve_response_code( $response );
 		if ( $status < 200 || $status >= 300 ) {
 			return [
-				'content' => sprintf( 'The Anthropic endpoint returned HTTP %d.', $status ),
-				'backend' => 'anthropic',
-				'error'   => 'http_error',
+				'content'     => sprintf( 'The Anthropic endpoint returned HTTP %d.', $status ),
+				'backend'     => 'anthropic',
+				'http_status' => $status,
+				'error'       => 'http_error',
 			];
 		}
 
