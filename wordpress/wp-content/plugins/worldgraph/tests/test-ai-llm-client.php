@@ -143,6 +143,9 @@ class Mock_Connection_AI_LLM_Client extends AI_LLM_Client {
 	/** @var array<string,mixed> */
 	public $captured_chat_options = [];
 
+	/** @var string */
+	public $captured_prompt = '';
+
 	/** Exercise the real provider path when request-body behavior matters. */
 	public $delegate_chat = false;
 
@@ -170,6 +173,7 @@ class Mock_Connection_AI_LLM_Client extends AI_LLM_Client {
 	}
 
 	public function chat( string $prompt, array $options = [] ): array {
+		$this->captured_prompt = $prompt;
 		$this->captured_chat_options = $options;
 		if ( $this->delegate_chat ) {
 			return parent::chat( $prompt, $options );
@@ -252,6 +256,16 @@ class Test_AI_LLM_Client extends TestCase {
 		$this->assertSame( 128, $client->captured_chat_options['max_tokens'] );
 		$this->assertFalse( $client->captured_chat_options['allow_fallback'] );
 		$this->assertFalse( $client->captured_chat_options['cache'] );
+	}
+
+	/** Qwen 3 decomposition requests disable reasoning so JSON can reach content. */
+	public function test_qwen_three_selected_connection_disables_thinking(): void {
+		$client = new Mock_Connection_AI_LLM_Client();
+		$client->connection['model'] = 'Qwen 3.8';
+
+		$client->chat_with_connection( 17, 'Return the story JSON.', [] );
+
+		$this->assertStringStartsWith( "/no_think\n", $client->captured_prompt );
 	}
 
 	/** A request may reduce, but not exceed, its selected Connection temperature. */

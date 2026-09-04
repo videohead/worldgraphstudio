@@ -244,6 +244,9 @@ class AI_LLM_Client {
 		if ( '' === $model ) {
 			return new \WP_Error( 'worldgraph_llm_connection_model_missing', __( 'The selected LLM Connection has no model configured.', 'worldgraph' ) );
 		}
+		if ( preg_match( '/(?:^|[^a-z])qwen(?:[-_: ]?3)/i', $model ) ) {
+			$prompt = "/no_think\n" . $prompt;
+		}
 
 		$requested_max  = array_key_exists( 'max_tokens', $options ) ? $options['max_tokens'] : null;
 		$configured_max = $connection['max_tokens'] ?? 0;
