@@ -83,6 +83,7 @@ services:
         WORDPRESS_URL: http://appserver
         WORDPRESS_HOSTNAME: appserver
         WORDPRESS_WEBHOOK_SECRET: ${WORDPRESS_WEBHOOK_SECRET:-change-me}
+        NEXT_PUBLIC_BASE_PATH: /studio
 tooling:
   wp:
     service: appserver
