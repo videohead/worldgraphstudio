@@ -320,6 +320,13 @@ function init(): void {
 		require_once $story_io_plugin;
 	}
 
+	// Optional private vector retrieval for long-form decomposition. WPVDB is a
+	// separately installed dependency and this feature remains disabled by default.
+	$story_rag_plugin = WORLDGRAPH_PLUGIN_DIR . 'plugins/story-rag-decomposer/story-rag-decomposer.php';
+	if ( file_exists( $story_rag_plugin ) ) {
+		require_once $story_rag_plugin;
+	}
+
 	// Register REST API routes.
 	REST\Projects_Controller::init();
 	REST\StoryWorlds_Controller::init();
@@ -532,6 +539,7 @@ function activate(): void {
 	add_option( 'worldgraph_version', WORLDGRAPH_VERSION );
 	add_option( 'worldgraph_enabled', true );
 	add_option( 'worldgraph_story_io_enabled', true );
+	add_option( 'worldgraph_story_rag_enabled', false );
 	Utils\Generation_Batch::schedule();
 
 	// Send the admin to the connection setup wizard on first activation.

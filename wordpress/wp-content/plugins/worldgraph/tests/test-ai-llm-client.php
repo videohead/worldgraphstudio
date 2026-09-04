@@ -276,6 +276,45 @@ class Test_AI_LLM_Client extends TestCase {
 		$this->assertSame( [ 'enable_thinking' => false ], $this->last_request_body()['chat_template_kwargs'] );
 	}
 
+	/** Either trusted option alias opts a selected Qwen 3 request into thinking. */
+	public function test_qwen_three_selected_connection_can_enable_thinking(): void {
+		$GLOBALS['worldgraph_ai_post_response']['body'] = json_encode( [
+			'choices' => [ [
+				'message'       => [ 'content' => '{}' ],
+				'finish_reason' => 'stop',
+			] ],
+		] );
+
+		foreach ( [ 'reasoning', 'enable_thinking' ] as $option_name ) {
+			$client = new Mock_Connection_AI_LLM_Client();
+			$client->delegate_chat = true;
+			$client->connection['model'] = 'Qwen 3.8';
+
+			$client->chat_with_connection( 17, 'Analyze the story.', [ $option_name => true ] );
+
+			$this->assertStringStartsWith( "/think\n", $client->captured_prompt, $option_name );
+			$this->assertTrue( $client->captured_chat_options['enable_thinking'], $option_name );
+			$this->assertSame( [ 'enable_thinking' => true ], $this->last_request_body()['chat_template_kwargs'], $option_name );
+		}
+	}
+
+	/** Non-boolean truthy values cannot opt a selected Qwen request into thinking. */
+	public function test_qwen_three_thinking_opt_in_requires_a_boolean(): void {
+		$GLOBALS['worldgraph_ai_post_response']['body'] = json_encode( [
+			'choices' => [ [ 'message' => [ 'content' => '{}' ] ] ],
+		] );
+		$client = new Mock_Connection_AI_LLM_Client();
+		$client->delegate_chat = true;
+		$client->connection['model'] = 'Qwen 3.8';
+
+		$client->chat_with_connection( 17, 'Analyze the story.', [ 'reasoning' => 'true', 'enable_thinking' => 1 ] );
+
+		$this->assertStringStartsWith( "/no_think\n", $client->captured_prompt );
+		$this->assertArrayNotHasKey( 'reasoning', $client->captured_chat_options );
+		$this->assertArrayNotHasKey( 'enable_thinking', $client->captured_chat_options );
+		$this->assertSame( [ 'enable_thinking' => false ], $this->last_request_body()['chat_template_kwargs'] );
+	}
+
 	/** A request may reduce, but not exceed, its selected Connection temperature. */
 	public function test_connection_temperature_honors_request_beneath_configuration_ceiling(): void {
 		$client = new Mock_Connection_AI_LLM_Client();
@@ -326,6 +365,109 @@ class Test_AI_LLM_Client extends TestCase {
 		$this->assertSame( 900, $body['max_completion_tokens'] );
 		$this->assertArrayNotHasKey( 'max_tokens', $body );
 		$this->assertArrayNotHasKey( 'temperature', $body );
+		$this->assertArrayNotHasKey( 'reasoning_effort', $body );
+	}
+
+	/** OpenAI effort is allowlisted, normalized, and limited to reasoning models. */
+	public function test_openai_reasoning_effort_is_allowlisted_and_model_scoped(): void {
+		$GLOBALS['worldgraph_ai_post_response']['body'] = json_encode( [
+			'choices' => [ [
+				'message'       => [ 'content' => '{}' ],
+				'finish_reason' => 'stop',
+			] ],
+		] );
+
+		$client = new Mock_Connection_AI_LLM_Client();
+		$client->delegate_chat = true;
+		$client->connection['provider_type'] = 'openai';
+		$client->connection['endpoint_url']  = 'https://api.test/v1';
+		$client->connection['model']         = 'o3-mini';
+
+		foreach ( [ ' LOW ' => 'low', 'medium' => 'medium', 'HIGH' => 'high' ] as $input => $expected ) {
+			$client->chat_with_connection( 17, 'story', [ 'reasoning_effort' => $input ] );
+			$this->assertSame( $expected, $this->last_request_body()['reasoning_effort'] );
+		}
+
+		$client->chat_with_connection( 17, 'story', [ 'reasoning_effort' => 'maximum<script>' ] );
+		$this->assertArrayNotHasKey( 'reasoning_effort', $client->captured_chat_options );
+		$this->assertArrayNotHasKey( 'reasoning_effort', $this->last_request_body() );
+
+		$client->connection['model'] = 'gpt-4o';
+		$client->chat_with_connection( 17, 'story', [ 'reasoning_effort' => 'high' ] );
+		$this->assertArrayNotHasKey( 'reasoning_effort', $this->last_request_body() );
+	}
+
+	/** Effective reasoning controls form part of the response-cache identity. */
+	public function test_reasoning_controls_partition_response_cache(): void {
+		$GLOBALS['worldgraph_ai_post_response']['body'] = json_encode( [
+			'choices' => [ [ 'message' => [ 'content' => '{}' ] ] ],
+		] );
+		$client = new AI_LLM_Client();
+		$qwen_options = [
+			'backend'        => 'openai_compatible',
+			'model'          => 'Qwen 3.8',
+			'endpoint_url'   => 'http://models.test/v1',
+			'api_key'        => 'test-key',
+			'max_tokens'     => 512,
+			'temperature'    => 0.1,
+			'allow_fallback' => false,
+		];
+
+		$client->chat( 'same story', $qwen_options );
+		$client->chat( 'same story', array_merge( $qwen_options, [ 'enable_thinking' => true ] ) );
+		$client->chat( 'same story', array_merge( $qwen_options, [ 'reasoning' => true ] ) );
+
+		$this->assertCount( 2, $GLOBALS['worldgraph_ai_post_calls'] );
+		$default_body  = json_decode( $GLOBALS['worldgraph_ai_post_calls'][0]['args']['body'], true );
+		$thinking_body = json_decode( $GLOBALS['worldgraph_ai_post_calls'][1]['args']['body'], true );
+		$this->assertFalse( $default_body['chat_template_kwargs']['enable_thinking'] );
+		$this->assertTrue( $thinking_body['chat_template_kwargs']['enable_thinking'] );
+
+		$openai_options = [
+			'backend'        => 'openai',
+			'model'          => 'o3-mini',
+			'endpoint_url'   => 'https://api.test/v1',
+			'api_key'        => 'test-key',
+			'max_tokens'     => 512,
+			'allow_fallback' => false,
+		];
+		$client->chat( 'same synthesis', array_merge( $openai_options, [ 'reasoning_effort' => 'low' ] ) );
+		$client->chat( 'same synthesis', array_merge( $openai_options, [ 'reasoning_effort' => 'high' ] ) );
+
+		$this->assertCount( 4, $GLOBALS['worldgraph_ai_post_calls'] );
+		$low_body  = json_decode( $GLOBALS['worldgraph_ai_post_calls'][2]['args']['body'], true );
+		$high_body = json_decode( $GLOBALS['worldgraph_ai_post_calls'][3]['args']['body'], true );
+		$this->assertSame( 'low', $low_body['reasoning_effort'] );
+		$this->assertSame( 'high', $high_body['reasoning_effort'] );
+	}
+
+	/** Provider reasoning fields are neither returned nor persisted in caches. */
+	public function test_reasoning_content_is_not_exposed_or_cached(): void {
+		$GLOBALS['worldgraph_ai_post_response']['body'] = json_encode( [
+			'choices' => [ [
+				'message' => [
+					'content'           => '{"story":"safe"}',
+					'reasoning_content' => 'PRIVATE_MODEL_DELIBERATION',
+				],
+			] ],
+		] );
+
+		$result = ( new AI_LLM_Client() )->chat(
+			'story',
+			[
+				'backend'         => 'openai_compatible',
+				'model'           => 'Qwen 3.8',
+				'endpoint_url'    => 'http://models.test/v1',
+				'api_key'         => 'test-key',
+				'enable_thinking' => true,
+				'allow_fallback'  => false,
+			]
+		);
+
+		$this->assertSame( '{"story":"safe"}', $result['content'] );
+		$this->assertArrayNotHasKey( 'reasoning_content', $result );
+		$this->assertStringNotContainsString( 'PRIVATE_MODEL_DELIBERATION', json_encode( $result ) );
+		$this->assertStringNotContainsString( 'PRIVATE_MODEL_DELIBERATION', json_encode( $GLOBALS['worldgraph_ai_rate_transients'] ) );
 	}
 
 	/** New Anthropic models omit deprecated temperature; older models cap it. */
@@ -490,6 +632,22 @@ class Test_AI_LLM_Client extends TestCase {
 
 		$this->assertSame( 131072, $client->model_context_window( 17 ) );
 		$this->assertSame( [], $client->remote_calls );
+	}
+
+	/** Hosted Connections use explicit metadata without attempting /models discovery. */
+	public function test_context_window_reads_explicit_metadata_for_hosted_providers(): void {
+		foreach ( [ 'openai', 'anthropic' ] as $provider ) {
+			$client = new Mock_Connection_AI_LLM_Client();
+			$client->connection['provider_type'] = $provider;
+			$client->connection['capabilities'] = [
+				'models' => [
+					'chat-moe' => [ 'max_context_length' => 200000 ],
+				],
+			];
+
+			$this->assertSame( 200000, $client->model_context_window( 17 ), $provider );
+			$this->assertSame( [], $client->remote_calls, $provider );
+		}
 	}
 
 	/** Discovery matches the configured model, stays bounded, and caches one integer. */

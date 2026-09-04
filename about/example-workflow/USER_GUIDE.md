@@ -87,53 +87,65 @@ exact mapping, compatibility behavior, and expected record counts.
 
 The same screen accepts JSON, TXT, Markdown, Fountain, RTF, PDF, EPUB, DOCX,
 and ODT files up to 20 MB. Canonical JSON follows that upload-size boundary;
-other extracted sources are limited to 500,000 characters, and a non-canonical
-source sent for LLM decomposition is limited to 300,000 characters. When an
-OpenAI-compatible endpoint advertises the configured model's context window,
-the plugin uses that metadata to fit compact ordered parts within the model's
-input and output budget. It refuses advertised windows below 2,048 tokens,
-uses compact parts for constrained models, and can use the detailed
-whole-document contract for a short source when the advertised window is at
-least 32,768 tokens. Without usable metadata it uses conservative
-2,500-character parts. One preview can finish with at most 24 parts. Adaptive
-repair can inspect up to 47 parent/child excerpts and make up to 141 bounded
-model calls in the worst case; `attempts` reports calls while `chunks` reports
-only final ordered parts. A constrained model may exceed the part limit even
-for a source below 300,000 characters; split the source or choose a
-larger-context Connection when this happens. The decomposer's requested output
-allowance is also capped by the Connection's configured `max_tokens`.
-WordPress first saves the selected file as a Media Library attachment. If it is
-already canonical World Graph Studio JSON, the plugin validates it directly
-and makes no model request. Otherwise:
+other extracted sources are limited to 500,000 characters. WordPress first
+saves the selected file as a Media Library attachment. If it is already
+canonical World Graph Studio JSON, the plugin validates it directly and makes
+no model request. Otherwise:
 
-1. Select a published OpenAI-compatible, OpenAI, or Anthropic LLM Connection
-   that you are allowed to manage.
+The repository's [sample EPUB](pg28554-images-3.epub) can be used to exercise
+the spine-order extraction, heading-aware planning, and resumable path below.
+
+1. Ensure that a published OpenAI-compatible, OpenAI, or Anthropic LLM
+   Connection is configured as the default and that you may manage it.
 2. Choose the source file and select **Create Import Preview**.
-3. Wait while the plugin extracts text, asks only that selected Connection to
-   produce compact context-budgeted parts when needed, merges and normalizes
-   the version 1.2 response, and dry-run validates it with the canonical
-   importer. A constrained part can receive up to two JSON-only repair attempts;
-   if it remains invalid or reaches its output limit, only that part is halved
-   and retried within the 24-part limit. An unsplit whole-document candidate
-   receives at most one repair attempt. Generated Character, Location, Prop,
-   and Organization names without a matching phrase in the manuscript are
-   removed before the preview is validated. Typed references remain distinct
-   when the same evidenced label is legitimately used for different entity
-   kinds.
-4. Read the resulting Project, entity counts, source/preparation details, and
+3. Follow the progress view while the browser advances the decomposition one
+   bounded step at a time. PHP first plans the manuscript around EPUB spine,
+   chapter, section, Scene, paragraph, and sentence boundaries. The first model
+   pass gathers textual evidence; the second re-reads each span and reconciles
+   it with the compact graph assembled so far. Neighboring context is kept
+   separate from the span so it can clarify continuity without being duplicated
+   as a new Scene.
+4. If a model response is invalid or truncated, the job may request compact
+   JSON repair. A persistently invalid evidence span may be structurally
+   subdivided without repeating completed spans. Progress completed before an
+   interrupted browser request remains checkpointed; resume the same job from
+   its progress page. Cancel stops further model work but does not delete the
+   uploaded attachment. A source that exceeds the safe plan limit must be split
+   or processed through a Connection with a larger context window.
+5. Read the resulting Project, entity counts, source/preparation details, and
    JSON candidate.
    Model output is a draft; cancel and revise the source or retry if the
    candidate does not represent the source accurately.
-5. Enable **I reviewed this candidate and want to import it.**, then select
+6. Enable **I reviewed this candidate and want to import it.**, then select
    **Confirm and Import Project**. No Story Graph records are written before
    this step.
 
-Preview decomposition is synchronous: ordered parts and any repairs run while
-the browser request remains open. A small-context model can require many
-sequential provider calls, so a long preview can reach provider, PHP,
-web-server, or reverse-proxy timeouts. A timeout does not confirm or commit the
-candidate. Retry with a smaller source, a faster model, or a larger-context
-Connection.
+The progress view sends one request per analysis, synthesis, repair, or
+finalization step instead of holding one browser request open for the entire
+book. A provider, PHP, web-server, or reverse-proxy timeout does not confirm or
+commit the candidate. Retry the current step to resume from the saved
+checkpoint; persistent model failures can still require a smaller source, a
+faster model, or a larger-context Connection. The preparation job expires two
+hours after creation even when steps succeed. Once it finishes, the separate
+review preview remains available for 30 minutes.
+
+The story reaches the model as a JSON data envelope under separate server-owned
+instructions, not as chat history. Story text that resembles a command remains
+untrusted manuscript data. Compatible reasoning controls are chosen by the
+server, and model chain-of-thought is not shown or saved. Only the merged,
+normalized, dry-run-validated World Graph Studio version 1.2 document becomes
+the candidate you can confirm; intermediate evidence and partial graph objects
+cannot be imported.
+
+By default, related evidence is selected privately with lexical matching. A
+site operator can optionally enable the bundled **Story RAG Decomposer** under
+**World Graph Studio > Plugins**, but only after separately installing and
+activating WPVDB at `wp-content/plugins/wpvdb` and configuring its embedding
+provider/model. That provider receives bounded evidence and query input. The
+bridge stores only numeric vectors and bounded identifiers in private
+user/source-scoped transients for up to two hours and does not put manuscript,
+evidence, or query text in WPVDB's shared embeddings table. If WPVDB is
+unavailable or fails, preparation automatically retains the lexical result.
 
 The model is instructed to ignore publishing metadata, tables of contents,
 scan/OCR notices, legal boilerplate, and other front or back matter where the
@@ -250,7 +262,8 @@ The current release provides and catalogs these portable surfaces:
 - **World Graph Studio JSON export** for a deterministic canonical version 1.2
   snapshot of one live Project and its supported Story Graph.
 - **Story document import** for JSON, TXT, Markdown, Fountain, RTF, text-layer
-  PDF, EPUB, DOCX, and ODT through a selected-Connection preview/confirm flow.
+  PDF, EPUB, DOCX, and ODT through a default-Connection, resumable two-pass
+  preview/confirm flow.
 - **Final Draft FDX import** for screenplay scenes, locations, characters,
   action, and dialogue normalized into the Story Graph.
 - **Deterministic Fountain importer source** targeting the shared browser-side

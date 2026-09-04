@@ -22,7 +22,7 @@ not been configured.
 | Story intelligence | Search, optional semantic assistance, continuity checks, relationship analytics, summaries, and admin panels |
 | Generation | Connection and template records, validation, queued generation jobs, WP-Cron processing, job state, cancellation, result import, and provenance |
 | Provider adapters | A filterable, callback-driven Connection/Template/generation registry plus local ComfyUI HTTP workflows, Comfy Cloud MCP, fal MCP, ElevenLabs, SunoAPI.org REST, AceData Cloud Suno MCP, midjourney-api.com REST, Ace Data Cloud MidJourney MCP, Higgsfield reviewed REST generation with OAuth MCP catalog discovery, Seedance 2.5 generation through CyberBara REST, VideoDraft MCP, OpenRouter video generation REST, and manually managed external-generator workflows where configured |
-| Project interchange | Default-enabled Story Import & Export plugin with canonical World Graph Studio JSON import/export, Markdown screenplay/storyboard export, and preview/confirm LLM decomposition of supported persisted story documents; Final Draft FDX import; optional VideoDraft structural Project push/pull |
+| Project interchange | Default-enabled Story Import & Export plugin with canonical World Graph Studio JSON import/export, Markdown screenplay/storyboard export, and resumable preview/confirm LLM decomposition of supported persisted story documents through structural PHP plans, two model passes, and JavaScript-driven checkpoints; Final Draft FDX import; optional VideoDraft structural Project push/pull |
 | Synchronization | Optional bidirectional VideoDraft structural synchronization, with persistent remote-ID mappings |
 | Editorial format code | CMX 3600 and SMPTE 436m XML parsing, timecode, and format-generation functions; the bundled admin workflow remains incomplete |
 | Extension surfaces | Canonical import contract, bundled format and synchronization plugins, filterable Connection lifecycle/Template/generation adapters, reusable manifest-profile public-client OAuth with PKCE/token refresh, profile-driven agents, REST APIs, and WordPress Abilities |
@@ -74,10 +74,27 @@ automatically and completion is reconciled by polling. See
 The Story Import & Export feature is bundled at
 `plugins/story-import-export/` and enabled by default. JSON import/export and
 Markdown export are deterministic and need no model. For other supported story
-sources, an administrator selects a manageable OpenAI-compatible, OpenAI, or
-Anthropic Connection, reviews the generated canonical JSON preview, and must
+sources, PHP produces an ordered chapter/section/Scene/paragraph/sentence-aware
+plan with context kept separate from each primary span. The configured
+manageable OpenAI-compatible, OpenAI, or Anthropic Connection first extracts
+evidence, then synthesizes each span against bounded related observations and a
+compact evolving graph. The default related-evidence retrieval is private and
+lexical, with hooks for a bounded private index. The wp-admin JavaScript
+advances the user-scoped transient job one checkpoint at a time and can resume
+it after an interrupted request. Only the final normalized, dry-run-validated
+version 1.2 candidate is reviewable or importable, and the administrator must
 explicitly confirm before any Story Graph records are written. Uploaded source
 files remain in WordPress uploads.
+
+The bundled `plugins/story-rag-decomposer/` bridge is an optional,
+disabled-by-default enhancement to that evidence retrieval. It requires a
+separately installed and activated WPVDB plugin with a configured embedding
+provider and model. It sends bounded inputs to that provider, but stores only
+numeric vectors and bounded identifiers in private, user/source-scoped
+transients for at most two hours; it never inserts private manuscript or
+evidence text into WPVDB's shared embeddings table. Missing configuration and
+runtime errors fall back to the built-in lexical retriever and do not block
+story decomposition.
 
 ## Closed additional-script roadmap item
 
@@ -136,9 +153,14 @@ commitments, and they do not reopen the closed roadmap category.
   cancelling or completing an import does not delete the original file.
 - PDF ingestion requires an extractable text layer. Image-only or scanned PDFs
   return an OCR-required error and must be made searchable before retrying.
-- The compatibility REST routes for validation, import, decomposition preview,
+- The compatibility REST routes for validation, import, synchronous
+  decomposition preview, resumable decomposition-job status/step/cancellation,
   and export are delivered, but the optional headless application still lacks
   authenticated creator UI and therefore does not have interchange parity.
+- Story text is model input data, never conversational history: decomposition
+  uses an untrusted JSON story envelope under server-owned system instructions.
+  Optional provider reasoning controls are server-owned, and model
+  chain-of-thought is not requested as output, checkpointed, or exposed.
 - AAF, OMF, provider-specific NLE panels, and other possible integrations are
   extension points, not current-release commitments.
 - The bundled EDL PHP code parses and generates supported formats through a

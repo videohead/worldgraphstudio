@@ -62,6 +62,8 @@ class Source_Extractor {
 			);
 		}
 
+		$boundaries = [];
+		$normalized = false;
 		if ( in_array( $extension, self::TEXT_EXTENSIONS, true ) || 'json' === $extension || 'rtf' === $extension ) {
 			$raw = file_get_contents( $path );
 			if ( false === $raw ) {
@@ -81,8 +83,13 @@ class Source_Extractor {
 		if ( is_wp_error( $text ) ) {
 			return $text;
 		}
+		if ( is_array( $text ) ) {
+			$boundaries = is_array( $text['boundaries'] ?? null ) ? $text['boundaries'] : [];
+			$normalized = ! empty( $text['normalized'] );
+			$text       = (string) ( $text['text'] ?? '' );
+		}
 
-		$text       = self::normalize_text( (string) $text );
+		$text       = $normalized ? trim( (string) $text ) : self::normalize_text( (string) $text );
 		$characters = mb_strlen( $text, 'UTF-8' );
 		$is_json    = 'json' === $extension && $this->is_canonical_json( $text );
 		if ( $characters < 20 ) {
@@ -101,6 +108,7 @@ class Source_Extractor {
 			'filename'   => sanitize_file_name( $filename ),
 			'is_json'    => $is_json,
 			'characters' => $characters,
+			'boundaries' => self::decorate_boundaries( $boundaries, $text ),
 		];
 	}
 
@@ -457,23 +465,268 @@ class Source_Extractor {
 		return mb_convert_encoding( $bytes, 'UTF-8', 'UTF-16BE' );
 	}
 
-	/** Join EPUB markup entries with structural line breaks and no active markup. */
+
+	/** Join EPUB body entries while preserving trusted heading and scene-break metadata. */
 	private function join_markup_entries( Archive_Reader $archive, array $entries ) {
-		$parts = [];
+		$text       = '';
+		$boundaries = [];
+		$part_index = 0;
 		foreach ( array_slice( $entries, 0, 1000 ) as $entry ) {
 			$markup = $archive->get( $entry );
 			if ( is_wp_error( $markup ) ) {
 				continue;
 			}
-			$markup = preg_replace( '/<\s*br\s*\/?>/i', "\n", $markup );
-			$markup = preg_replace( '/<\/(?:p|div|h[1-6]|li|blockquote|section|article)>/i', "\n\n", (string) $markup );
-			$parts[] = html_entity_decode( wp_strip_all_tags( (string) $markup ), ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+
+			$part = $this->extract_markup_body( (string) $markup, (string) $entry );
+			if ( '' === trim( (string) ( $part['text'] ?? '' ) ) ) {
+				continue;
+			}
+
+			if ( '' !== $text ) {
+				$text .= "\n\n";
+			}
+			$part_start = mb_strlen( $text, 'UTF-8' );
+			$part_index++;
+			$part_boundaries = is_array( $part['boundaries'] ?? null ) ? $part['boundaries'] : [];
+			$first_heading    = '';
+			foreach ( $part_boundaries as $boundary ) {
+				if ( '' !== (string) ( $boundary['label'] ?? '' ) ) {
+					$first_heading = (string) $boundary['label'];
+					break;
+				}
+			}
+			$boundaries[] = [
+				'offset'       => $part_start,
+				'type'         => 'section',
+				'label'        => '' !== $first_heading ? $first_heading : sprintf( 'Section %d', $part_index ),
+				'source'       => 'epub_spine',
+				'source_entry' => (string) $entry,
+				'level'        => 0,
+			];
+			foreach ( $part_boundaries as $boundary ) {
+				$boundary['offset'] = $part_start + max( 0, (int) ( $boundary['offset'] ?? 0 ) );
+				$boundaries[]       = $boundary;
+			}
+			$text .= (string) $part['text'];
 		}
 
-		if ( empty( $parts ) ) {
+		if ( '' === trim( $text ) ) {
 			return new \WP_Error( 'worldgraph_story_epub_text_missing', __( 'The EPUB contains no readable spine documents.', 'worldgraph' ) );
 		}
-		return implode( "\n\n", $parts );
+
+		return [
+			'text'       => $text,
+			'boundaries' => $boundaries,
+			'normalized' => true,
+		];
+	}
+
+	/**
+	 * Extract one XHTML body without document-head or known distribution wrapper text.
+	 *
+	 * Structural markers exist only while offsets are calculated and are removed
+	 * before the source text leaves this method.
+	 */
+	private function extract_markup_body( string $markup, string $entry ): array {
+		$document = $this->load_xml( $markup );
+		if ( is_wp_error( $document ) ) {
+			$document = $this->load_html( $markup );
+		}
+		if ( is_wp_error( $document ) ) {
+			$without_head = preg_replace( '/<head\b[^>]*>.*?<\/head>/isu', '', $markup );
+			$without_head = preg_replace( '/<(?:script|style|nav|footer|svg)\b[^>]*>.*?<\/(?:script|style|nav|footer|svg)>/isu', '', (string) $without_head );
+			$without_head = preg_replace( '/<\s*br\s*\/?>/iu', "\n", (string) $without_head );
+			$without_head = preg_replace( '/<\/(?:p|div|h[1-6]|li|blockquote|section|article)>/iu', "\n\n", (string) $without_head );
+			return [
+				'text'       => self::normalize_text( html_entity_decode( wp_strip_all_tags( (string) $without_head ), ENT_QUOTES | ENT_HTML5, 'UTF-8' ) ),
+				'boundaries' => [],
+			];
+		}
+
+		$xpath = new \DOMXPath( $document );
+		$body  = $xpath->query( '//*[local-name()="body"]' );
+		if ( ! $body || 0 === $body->length ) {
+			return [ 'text' => '', 'boundaries' => [] ];
+		}
+
+		$prefix = '@@WORLDGRAPH_STRUCTURE_' . substr( hash( 'sha256', $entry . "\n" . $markup ), 0, 16 ) . '_';
+		$suffix = 0;
+		while ( str_contains( $markup, $prefix ) ) {
+			$prefix = '@@WORLDGRAPH_STRUCTURE_' . substr( hash( 'sha256', ++$suffix . "\n" . $entry . "\n" . $markup ), 0, 16 ) . '_';
+		}
+		$state = [
+			'text'       => '',
+			'boundaries' => [],
+			'prefix'     => $prefix,
+			'entry'      => $entry,
+			'next'       => 1,
+			'scene'      => 0,
+		];
+		foreach ( $body->item( 0 )->childNodes as $node ) {
+			$this->render_markup_node( $node, $state );
+		}
+
+		return $this->resolve_markup_boundaries( $state );
+	}
+
+	/** Render body text recursively, inserting temporary structural tokens. */
+	private function render_markup_node( \DOMNode $node, array &$state ): void {
+		if ( XML_TEXT_NODE === $node->nodeType || XML_CDATA_SECTION_NODE === $node->nodeType ) {
+			$state['text'] .= (string) $node->nodeValue;
+			return;
+		}
+		if ( XML_ELEMENT_NODE !== $node->nodeType ) {
+			return;
+		}
+
+		$name = strtolower( (string) ( $node->localName ?: $node->nodeName ) );
+		if ( $this->skip_markup_node( $node, $name ) ) {
+			return;
+		}
+		if ( 'br' === $name ) {
+			$state['text'] .= "\n";
+			return;
+		}
+		if ( 'hr' === $name ) {
+			$state['text'] .= "\n\n";
+			$state['scene']++;
+			$this->add_markup_boundary(
+				$state,
+				[
+					'type'         => 'scene',
+					'label'        => sprintf( 'Scene break %d', $state['scene'] ),
+					'source'       => 'epub_hr',
+					'source_entry' => (string) $state['entry'],
+					'level'        => 0,
+				]
+			);
+			$state['text'] .= "\n\n";
+			return;
+		}
+
+		$is_heading = 1 === preg_match( '/^h([1-6])$/', $name, $heading_match );
+		$is_block   = in_array( $name, [ 'address', 'article', 'aside', 'blockquote', 'dd', 'div', 'dl', 'dt', 'figcaption', 'figure', 'li', 'ol', 'p', 'pre', 'section', 'table', 'td', 'th', 'tr', 'ul' ], true );
+		if ( $is_heading || $is_block ) {
+			$state['text'] .= "\n\n";
+		}
+		if ( $is_heading ) {
+			$label = self::structural_label( (string) $node->textContent );
+			$this->add_markup_boundary(
+				$state,
+				[
+					'type'         => self::heading_type( $label ),
+					'label'        => $label,
+					'source'       => 'epub_heading',
+					'source_entry' => (string) $state['entry'],
+					'level'        => (int) $heading_match[1],
+				]
+			);
+		}
+
+		foreach ( $node->childNodes as $child ) {
+			$this->render_markup_node( $child, $state );
+		}
+		if ( $is_heading || $is_block ) {
+			$state['text'] .= "\n\n";
+		}
+	}
+
+	/** Whether an EPUB body node is non-narrative or active markup. */
+	private function skip_markup_node( \DOMNode $node, string $name ): bool {
+		if ( in_array( $name, [ 'footer', 'nav', 'noscript', 'script', 'style', 'svg' ], true ) ) {
+			return true;
+		}
+		if ( ! $node->hasAttributes() ) {
+			return false;
+		}
+
+		$id    = strtolower( (string) ( $node->attributes->getNamedItem( 'id' )?->nodeValue ?? '' ) );
+		$class = strtolower( (string) ( $node->attributes->getNamedItem( 'class' )?->nodeValue ?? '' ) );
+		return str_contains( $class, 'pg-boilerplate' )
+			|| preg_match( '/(?:^|\s)(?:trn|transnote|transcriber(?:s|\x{0027}s)?(?:-note)?)(?:\s|$)/u', $class )
+			|| in_array( $id, [ 'pg-header', 'pg-footer', 'pg-machine-header', 'pg-start-separator', 'pg-end-separator', 'project-gutenberg-license' ], true )
+			|| ( str_contains( $id, 'transcriber' ) && str_contains( $id, 'note' ) );
+	}
+
+	/** Append a temporary token and retain the metadata that it represents. */
+	private function add_markup_boundary( array &$state, array $boundary ): void {
+		$token = (string) $state['prefix'] . sprintf( '%05d@@', (int) $state['next']++ );
+		$state['text']              .= $token;
+		$state['boundaries'][ $token ] = $boundary;
+	}
+
+	/** Resolve temporary tokens to UTF-8 character offsets, then remove them. */
+	private function resolve_markup_boundaries( array $state ): array {
+		$marked = self::normalize_text( (string) $state['text'] );
+		$text   = '';
+		$cursor = 0;
+		$boundaries = [];
+		foreach ( (array) $state['boundaries'] as $token => $boundary ) {
+			$position = strpos( $marked, (string) $token, $cursor );
+			if ( false === $position ) {
+				continue;
+			}
+			$text            .= substr( $marked, $cursor, $position - $cursor );
+			$boundary['offset'] = mb_strlen( $text, 'UTF-8' );
+			$boundaries[]      = $boundary;
+			$cursor             = $position + strlen( (string) $token );
+		}
+		$text .= substr( $marked, $cursor );
+
+		$leading = 0;
+		if ( preg_match( '/^\s+/u', $text, $leading_match ) ) {
+			$leading = mb_strlen( (string) $leading_match[0], 'UTF-8' );
+		}
+		$text = trim( $text );
+		foreach ( $boundaries as &$boundary ) {
+			$boundary['offset'] = max( 0, (int) $boundary['offset'] - $leading );
+		}
+		unset( $boundary );
+
+		return [
+			'text'       => $text,
+			'boundaries' => $boundaries,
+		];
+	}
+
+	/** Classify a visible heading for chapter-first chunk planning. */
+	private static function heading_type( string $label ): string {
+		if ( preg_match( '/^(?:book|chapter|part)\b/iu', $label ) ) {
+			return 'chapter';
+		}
+		if ( preg_match( '/^scene\b/iu', $label ) ) {
+			return 'scene';
+		}
+		return 'section';
+	}
+
+	/** Normalize a visible structural label without retaining markup. */
+	private static function structural_label( string $label ): string {
+		$label = html_entity_decode( wp_strip_all_tags( $label ), ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+		$label = preg_replace( '/\s+/u', ' ', trim( $label ) );
+		return mb_substr( is_string( $label ) ? $label : '', 0, 180, 'UTF-8' );
+	}
+
+	/** Add bounded anchors so offsets can be remapped after safe preprocessing. */
+	private static function decorate_boundaries( array $boundaries, string $text ): array {
+		$length = mb_strlen( $text, 'UTF-8' );
+		$result = [];
+		foreach ( $boundaries as $boundary ) {
+			if ( ! is_array( $boundary ) ) {
+				continue;
+			}
+			$offset = max( 0, min( $length, (int) ( $boundary['offset'] ?? 0 ) ) );
+			$before = mb_substr( $text, max( 0, $offset - 72 ), min( 72, $offset ), 'UTF-8' );
+			$after  = mb_substr( $text, $offset, min( 72, $length - $offset ), 'UTF-8' );
+			$boundary['offset']        = $offset;
+			$boundary['anchor_before'] = $before;
+			$boundary['anchor_after']  = $after;
+			$boundary['anchor_hash']   = hash( 'sha256', $before . "\0" . $after );
+			$result[] = $boundary;
+		}
+
+		usort( $result, static fn( array $left, array $right ): int => ( $left['offset'] <=> $right['offset'] ) ?: strcmp( (string) $left['type'], (string) $right['type'] ) );
+		return $result;
 	}
 
 	/** Load untrusted package XML without network access or entity expansion. */
@@ -484,6 +737,19 @@ class Source_Extractor {
 		libxml_clear_errors();
 		libxml_use_internal_errors( $previous );
 		return $loaded ? $document : new \WP_Error( 'worldgraph_story_archive_xml_invalid', __( 'The uploaded book contains malformed package XML.', 'worldgraph' ) );
+	}
+
+	/** Recover a malformed XHTML content document without reading external resources. */
+	private function load_html( string $html ) {
+		$previous = libxml_use_internal_errors( true );
+		$document = new \DOMDocument();
+		$loaded   = $document->loadHTML(
+			'<?xml encoding="UTF-8">' . $html,
+			LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING | LIBXML_COMPACT
+		);
+		libxml_clear_errors();
+		libxml_use_internal_errors( $previous );
+		return $loaded ? $document : new \WP_Error( 'worldgraph_story_archive_html_invalid', __( 'The uploaded book contains malformed content markup.', 'worldgraph' ) );
 	}
 
 	/** Resolve a package-relative archive path without allowing traversal. */

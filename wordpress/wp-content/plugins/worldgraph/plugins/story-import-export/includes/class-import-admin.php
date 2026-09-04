@@ -55,14 +55,22 @@ class Import {
 			[
 				'maxUploadBytes'   => \WorldGraphStoryIO\Source_Extractor::MAX_UPLOAD_BYTES,
 				'allowedTypes'     => self::FILE_TYPES,
+				'restNonce'        => wp_create_nonce( 'wp_rest' ),
 				'chooseFile'       => __( 'Choose a supported story file.', 'worldgraph' ),
 				'unsupportedFile'  => __( 'Choose a JSON, text, Markdown, Fountain, RTF, PDF, EPUB, DOCX, or ODT file.', 'worldgraph' ),
 				'fileTooLarge'     => __( 'Story source files may not exceed 20 MB.', 'worldgraph' ),
-				'chooseConnection' => __( 'Select an LLM Connection for non-canonical story files.', 'worldgraph' ),
 				'previewing'       => __( 'Uploading and preparing preview…', 'worldgraph' ),
 				'confirmImport'    => __( 'Import the reviewed candidate now? This can create or update WordPress content.', 'worldgraph' ),
 				'confirmRequired'  => __( 'Check the confirmation box before importing.', 'worldgraph' ),
 				'importing'        => __( 'Importing reviewed candidate…', 'worldgraph' ),
+				'retrying'         => __( 'The connection was interrupted. Retrying this checkpoint in %d seconds…', 'worldgraph' ),
+				'resume'           => __( 'Resume preparation', 'worldgraph' ),
+				'cancel'           => __( 'Cancel preparation', 'worldgraph' ),
+				'cancelConfirm'    => __( 'Cancel story preparation? No Story Graph records have been imported.', 'worldgraph' ),
+				'cancelling'       => __( 'Cancelling after the active checkpoint…', 'worldgraph' ),
+				'networkError'     => __( 'Preparation paused after repeated connection errors. You can safely resume from the last checkpoint.', 'worldgraph' ),
+				'jobExpired'       => __( 'This preparation job expired. Upload the source again.', 'worldgraph' ),
+				'reviewError'      => __( 'The candidate is ready, but the review page could not be opened. Reload this page to continue.', 'worldgraph' ),
 			]
 		);
 	}
@@ -109,73 +117,83 @@ class Import {
 			self::redirect_with_notice( 'error', self::safe_error_message( $source ), $attachment_id );
 		}
 
-		$connection_id = isset( $_POST['worldgraph_connection_id'] )
-			? absint( wp_unslash( $_POST['worldgraph_connection_id'] ) )
-			: 0;
-		$decomposition = [
-			'generated'     => false,
-			'attempts'      => 0,
-			'tokens'        => 0,
-			'chunks'        => 0,
-			'connection_id' => 0,
-		];
-
 		if ( ! empty( $source['is_json'] ) ) {
-			$json = (string) $source['text'];
-		} else {
-			if ( ! $connection_id ) {
-				$connection_id = \WorldGraphStoryIO\Story_Decomposer::default_connection_id();
-			}
-			$connection = self::validate_connection( $connection_id );
-			if ( is_wp_error( $connection ) ) {
-				self::mark_attachment( $attachment_id, 'preview_failed' );
-				self::redirect_with_notice( 'error', self::safe_error_message( $connection ), $attachment_id );
-			}
-
-			$result = ( new \WorldGraphStoryIO\Story_Decomposer() )->decompose(
+			$preview = self::store_candidate_preview(
+				$attachment_id,
+				$source,
 				(string) $source['text'],
-				(string) $source['filename'],
-				$connection_id
+				$overwrite,
+				[
+					'generated'     => false,
+					'attempts'      => 0,
+					'tokens'        => 0,
+					'chunks'        => 0,
+					'connection_id' => 0,
+				]
 			);
-			if ( is_wp_error( $result ) ) {
+			if ( is_wp_error( $preview ) ) {
 				self::mark_attachment( $attachment_id, 'preview_failed' );
-				self::redirect_with_notice( 'error', self::safe_error_message( $result ), $attachment_id );
+				self::redirect_with_notice( 'error', self::safe_error_message( $preview ), $attachment_id );
 			}
+			self::redirect( [ 'preview' => (string) $preview['token'] ] );
+		}
 
-			$json          = (string) $result['json'];
-			$decomposition = [
-				'generated'       => true,
-				'attempts'        => absint( $result['attempts'] ?? 0 ),
-				'tokens'          => absint( $result['tokens'] ?? 0 ),
-				'chunks'          => max( 1, absint( $result['chunks'] ?? 1 ) ),
-				'backend'         => sanitize_key( (string) ( $result['backend'] ?? '' ) ),
-				'model'           => sanitize_text_field( (string) ( $result['model'] ?? '' ) ),
-				'connection_id'   => $connection_id,
-				'connection_name' => self::connection_name( $connection ),
-			];
+		$connection_id = \WorldGraphStoryIO\Story_Decomposer::default_connection_id();
+		$connection    = self::validate_connection( $connection_id );
+		if ( is_wp_error( $connection ) ) {
+			self::mark_attachment( $attachment_id, 'preview_failed' );
+			self::redirect_with_notice( 'error', self::safe_error_message( $connection ), $attachment_id );
+		}
+
+		$job = \WorldGraphStoryIO\Decomposition_Job::create(
+			$source,
+			$attachment_id,
+			$connection_id,
+			$overwrite,
+			self::connection_name( $connection )
+		);
+		if ( is_wp_error( $job ) ) {
+			self::mark_attachment( $attachment_id, 'preview_failed' );
+			self::redirect_with_notice( 'error', self::safe_error_message( $job ), $attachment_id );
+		}
+
+		$job_id = self::sanitize_token( (string) ( $job['job_id'] ?? '' ) );
+		if ( '' === $job_id ) {
+			self::mark_attachment( $attachment_id, 'preview_failed' );
+			self::redirect_with_notice( 'error', __( 'The story preparation job could not be started.', 'worldgraph' ), $attachment_id );
+		}
+		self::mark_attachment( $attachment_id, 'decomposition_pending', $job_id );
+		self::redirect( [ 'decomposition' => $job_id ] );
+	}
+
+	/** Validate and store an immutable candidate behind the shared review boundary. */
+	public static function store_candidate_preview( int $attachment_id, array $source, string $json, bool $overwrite, array $decomposition = [] ) {
+		if ( ! current_user_can( 'manage_options' ) || ! $attachment_id || '' === trim( $json ) ) {
+			return new \WP_Error( 'worldgraph_story_preview_invalid', __( 'The import preview could not be created.', 'worldgraph' ) );
+		}
+		$attachment = get_post( $attachment_id );
+		if ( ! $attachment instanceof \WP_Post || 'attachment' !== $attachment->post_type || ! current_user_can( 'read_post', $attachment_id ) ) {
+			return new \WP_Error( 'worldgraph_story_preview_attachment_unavailable', __( 'The persisted story source is no longer available.', 'worldgraph' ) );
 		}
 
 		$validation = ( new \WorldGraph\Importer\WorldGraph_Importer() )->import(
 			$json,
 			[
-				'dry_run'  => true,
+				'dry_run'   => true,
 				'overwrite' => $overwrite,
 			]
 		);
 		if ( is_wp_error( $validation ) ) {
-			self::mark_attachment( $attachment_id, 'preview_failed' );
-			self::redirect_with_notice( 'error', self::safe_error_message( $validation ), $attachment_id );
+			return $validation;
 		}
 
 		$document = json_decode( $json, true );
 		if ( ! is_array( $document ) ) {
-			self::mark_attachment( $attachment_id, 'preview_failed' );
-			self::redirect_with_notice( 'error', __( 'The canonical candidate could not be decoded.', 'worldgraph' ), $attachment_id );
+			return new \WP_Error( 'worldgraph_story_candidate_decode_failed', __( 'The canonical candidate could not be decoded.', 'worldgraph' ) );
 		}
 		$json = wp_json_encode( $document, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
 		if ( false === $json ) {
-			self::mark_attachment( $attachment_id, 'preview_failed' );
-			self::redirect_with_notice( 'error', __( 'The canonical candidate could not be encoded.', 'worldgraph' ), $attachment_id );
+			return new \WP_Error( 'worldgraph_story_candidate_encode_failed', __( 'The canonical candidate could not be encoded.', 'worldgraph' ) );
 		}
 
 		$token   = self::new_token();
@@ -198,12 +216,15 @@ class Import {
 		];
 
 		if ( ! set_transient( self::preview_key( $token ), $preview, self::PREVIEW_TTL ) ) {
-			self::mark_attachment( $attachment_id, 'preview_failed' );
-			self::redirect_with_notice( 'error', __( 'The import preview could not be stored. No project was imported.', 'worldgraph' ), $attachment_id );
+			return new \WP_Error( 'worldgraph_story_preview_store_failed', __( 'The import preview could not be stored. No project was imported.', 'worldgraph' ) );
 		}
 
 		self::mark_attachment( $attachment_id, 'awaiting_confirmation', $token );
-		self::redirect( [ 'preview' => $token ] );
+		return [
+			'token'      => $token,
+			'url'        => add_query_arg( 'preview', $token, self::page_url() ),
+			'expires_at' => $created + self::PREVIEW_TTL,
+		];
 	}
 
 	/** Revalidate and consume a preview, then perform the only mutating import. */
@@ -390,25 +411,25 @@ class Import {
 		return (int) $attachment_id;
 	}
 
-	/** Validate that the user deliberately selected a usable LLM Connection. */
+	/** Validate that the site's default decomposition Connection is usable. */
 	private static function validate_connection( int $connection_id ) {
 		if ( ! $connection_id ) {
-			return new \WP_Error( 'worldgraph_story_connection_required', __( 'Select an LLM Connection to decompose this story source.', 'worldgraph' ) );
+			return new \WP_Error( 'worldgraph_story_connection_required', __( 'Configure a default LLM Connection before decomposing story manuscripts.', 'worldgraph' ) );
 		}
 		if ( ! \WorldGraph\Utils\Connection_Repository::current_user_can_manage( $connection_id ) ) {
-			return new \WP_Error( 'worldgraph_story_connection_forbidden', __( 'You cannot use the selected LLM Connection.', 'worldgraph' ) );
+			return new \WP_Error( 'worldgraph_story_connection_forbidden', __( 'You cannot use the configured default LLM Connection.', 'worldgraph' ) );
 		}
 
 		$connection = \WorldGraph\Utils\Connection_Repository::get( $connection_id );
 		$provider   = sanitize_key( (string) ( $connection['provider_type'] ?? '' ) );
 		if ( ! is_array( $connection ) || 'publish' !== (string) ( $connection['status_wp'] ?? '' ) || ! in_array( $provider, self::LLM_TYPES, true ) ) {
-			return new \WP_Error( 'worldgraph_story_connection_invalid', __( 'Select a published OpenAI-compatible, OpenAI, or Anthropic LLM Connection.', 'worldgraph' ) );
+			return new \WP_Error( 'worldgraph_story_connection_invalid', __( 'Configure a published OpenAI-compatible, OpenAI, or Anthropic LLM Connection as the site default.', 'worldgraph' ) );
 		}
 		if ( 'disabled' === (string) ( $connection['status'] ?? '' ) ) {
-			return new \WP_Error( 'worldgraph_story_connection_disabled', __( 'The selected LLM Connection is disabled.', 'worldgraph' ) );
+			return new \WP_Error( 'worldgraph_story_connection_disabled', __( 'The configured default LLM Connection is disabled.', 'worldgraph' ) );
 		}
 		if ( '' === trim( (string) ( $connection['endpoint_url'] ?? '' ) ) || '' === trim( (string) ( $connection['model'] ?? '' ) ) ) {
-			return new \WP_Error( 'worldgraph_story_connection_incomplete', __( 'The selected LLM Connection needs an endpoint URL and model.', 'worldgraph' ) );
+			return new \WP_Error( 'worldgraph_story_connection_incomplete', __( 'The configured default LLM Connection needs an endpoint URL and model.', 'worldgraph' ) );
 		}
 
 		return $connection;
@@ -421,10 +442,12 @@ class Import {
 		}
 		nocache_headers();
 
-		$notice  = self::consume_notice();
-		$preview = null;
-		$report  = null;
-		$token   = '';
+		$notice    = self::consume_notice();
+		$preview   = null;
+		$report    = null;
+		$job       = null;
+		$token     = '';
+		$job_token = '';
 		if ( isset( $_GET['preview'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- User-scoped random read-only preview token.
 			$token   = self::sanitize_token( wp_unslash( $_GET['preview'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 			$preview = self::get_preview( $token );
@@ -442,19 +465,32 @@ class Import {
 				$notice = [ 'type' => 'error', 'message' => __( 'The import report expired or is unavailable.', 'worldgraph' ) ];
 			}
 		}
+		if ( isset( $_GET['decomposition'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- User-scoped random read-only job token.
+			$job_token = self::sanitize_token( wp_unslash( $_GET['decomposition'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			$job       = \WorldGraphStoryIO\Decomposition_Job::status( $job_token );
+			if ( is_wp_error( $job ) ) {
+				$notice = [ 'type' => 'error', 'message' => self::safe_error_message( $job ) ];
+				$job    = null;
+			} elseif ( 'complete' === (string) ( $job['status'] ?? '' ) && ! empty( $job['preview_url'] ) ) {
+				wp_safe_redirect( (string) $job['preview_url'] );
+				exit;
+			}
+		}
 		?>
 		<div class="wrap worldgraph-import-wrap">
 			<h1><?php esc_html_e( 'Import Story into World Graph Studio', 'worldgraph' ); ?></h1>
-			<p><?php esc_html_e( 'Use this tool to bring a complete World Graph Studio JSON export or a story manuscript into your Story Graph. The importer validates the source and shows a preview before anything is written; manuscripts are prepared with your selected LLM Connection, while canonical JSON is imported directly. You can choose whether matching external IDs should update existing entities or be skipped.', 'worldgraph' ); ?></p>
+			<p><?php esc_html_e( 'Use this tool to bring a complete World Graph Studio JSON export or a story manuscript into your Story Graph. The importer validates the source and shows a preview before anything is written; manuscripts are prepared with the site’s default compatible LLM Connection, while canonical JSON is imported directly. You can choose whether matching external IDs should update existing entities or be skipped.', 'worldgraph' ); ?></p>
 			<?php self::render_notice( $notice ); ?>
 			<?php if ( is_array( $report ) ) : ?>
 				<?php self::render_report_result( $report ); ?>
 			<?php elseif ( is_array( $preview ) ) : ?>
 				<?php self::render_preview( $preview, $token ); ?>
+			<?php elseif ( is_array( $job ) ) : ?>
+				<?php self::render_decomposition_progress( $job, $job_token ); ?>
 			<?php else : ?>
 				<?php self::render_upload_form(); ?>
 			<?php endif; ?>
-						<p>
+			<p>
 				<?php esc_html_e( 'Already have a project in your Story Graph?', 'worldgraph' ); ?>
 				<a class="button" href="<?php echo esc_url( admin_url( 'admin.php?page=worldgraph-export' ) ); ?>">
 					<?php esc_html_e( 'Export a project', 'worldgraph' ); ?>
@@ -464,10 +500,57 @@ class Import {
 		<?php
 	}
 
+	/** Render a resumable, text-free progress surface for one private job. */
+	private static function render_decomposition_progress( array $job, string $job_token ): void {
+		$progress = is_array( $job['progress'] ?? null ) ? $job['progress'] : [];
+		$percent  = min( 100, max( 0, absint( $progress['percent'] ?? 0 ) ) );
+		$endpoint = rest_url( 'worldgraph/v1/import/decompositions/' . rawurlencode( $job_token ) );
+		$status   = sanitize_key( (string) ( $job['status'] ?? 'ready' ) );
+		?>
+		<section
+			id="worldgraph-decomposition-progress"
+			data-worldgraph-decomposition
+			data-endpoint="<?php echo esc_url( $endpoint ); ?>"
+			data-status="<?php echo esc_attr( $status ); ?>"
+			style="max-width:760px"
+		>
+			<h2><?php esc_html_e( 'Preparing import preview', 'worldgraph' ); ?></h2>
+			<div class="notice notice-info"><p><?php esc_html_e( 'The manuscript is being analyzed in bounded sections and assembled into an evolving Story Graph. You can leave this page and return to its URL to resume from the last completed checkpoint. Nothing is imported until you review and explicitly confirm the finished candidate.', 'worldgraph' ); ?></p></div>
+			<p role="status" aria-live="polite"><strong data-worldgraph-job-stage><?php echo esc_html( (string) ( $job['stage_label'] ?? __( 'Preparing story graph', 'worldgraph' ) ) ); ?></strong></p>
+			<progress
+				data-worldgraph-job-progress
+				max="100"
+				value="<?php echo esc_attr( (string) $percent ); ?>"
+				aria-describedby="worldgraph-decomposition-detail"
+				style="width:100%;height:1.5rem"
+			><?php echo esc_html( $percent . '%' ); ?></progress>
+			<p id="worldgraph-decomposition-detail" data-worldgraph-job-section aria-live="polite"><?php echo esc_html( (string) ( $job['section'] ?? '' ) ); ?></p>
+			<p data-worldgraph-job-counts>
+				<?php esc_html_e( 'Analyzed', 'worldgraph' ); ?>
+				<span data-worldgraph-analysis-completed><?php echo esc_html( number_format_i18n( absint( $job['analysis']['completed'] ?? 0 ) ) ); ?></span>
+				<?php esc_html_e( 'of', 'worldgraph' ); ?>
+				<span data-worldgraph-analysis-total><?php echo esc_html( number_format_i18n( absint( $job['analysis']['total'] ?? 0 ) ) ); ?></span>
+				<?php esc_html_e( 'sections; assembled', 'worldgraph' ); ?>
+				<span data-worldgraph-synthesis-completed><?php echo esc_html( number_format_i18n( absint( $job['synthesis']['completed'] ?? 0 ) ) ); ?></span>
+				<?php esc_html_e( 'of', 'worldgraph' ); ?>
+				<span data-worldgraph-synthesis-total><?php echo esc_html( number_format_i18n( absint( $job['synthesis']['total'] ?? 0 ) ) ); ?></span>
+				<?php esc_html_e( 'graph sections.', 'worldgraph' ); ?>
+			</p>
+			<p data-worldgraph-job-error role="alert"><?php echo esc_html( (string) ( $job['error']['message'] ?? '' ) ); ?></p>
+			<p>
+				<button type="button" class="button button-primary" data-worldgraph-job-resume<?php echo ! empty( $job['can_step'] ) ? '' : ' hidden'; ?>><?php esc_html_e( 'Resume preparation', 'worldgraph' ); ?></button>
+				<button type="button" class="button" data-worldgraph-job-cancel<?php echo ! empty( $job['can_cancel'] ) ? '' : ' hidden'; ?>><?php esc_html_e( 'Cancel preparation', 'worldgraph' ); ?></button>
+				<a class="button" data-worldgraph-job-restart href="<?php echo esc_url( self::page_url() ); ?>"<?php echo in_array( $status, [ 'failed', 'cancelled' ], true ) ? '' : ' hidden'; ?>><?php esc_html_e( 'Start over', 'worldgraph' ); ?></a>
+			</p>
+			<noscript><p class="notice notice-warning"><?php esc_html_e( 'JavaScript is required to process and safely resume bounded story sections.', 'worldgraph' ); ?></p></noscript>
+		</section>
+		<?php
+	}
+
 	/** Render the initial source-selection form. */
 	private static function render_upload_form(): void {
 		?>
-		<p><?php esc_html_e( 'Upload a canonical World Graph Studio JSON document or a story manuscript. Every source is retained in the WordPress Media Library and follows your site’s upload-access policy. Manuscripts are sent through the LLM Connection you select; canonical JSON is never sent to an LLM.', 'worldgraph' ); ?></p>
+		<p><?php esc_html_e( 'Upload a canonical World Graph Studio JSON document or a story manuscript. Every source is retained in the WordPress Media Library and follows your site’s upload-access policy. Manuscripts use the site’s default compatible LLM Connection; canonical JSON is never sent to an LLM.', 'worldgraph' ); ?></p>
 		<form method="post" id="worldgraph-import-form" data-worldgraph-import-stage="preview" enctype="multipart/form-data" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
 			<input type="hidden" name="action" value="worldgraph_import_json" />
 			<input type="hidden" name="worldgraph_import_stage" value="preview" />
@@ -477,7 +560,7 @@ class Import {
 					<th scope="row"><label for="worldgraph_story_file"><?php esc_html_e( 'Story source file', 'worldgraph' ); ?></label></th>
 					<td>
 						<input type="file" required name="worldgraph_story_file" id="worldgraph_story_file" accept=".json,.txt,.text,.md,.markdown,.fountain,.rtf,.pdf,.epub,.docx,.odt" />
-						<p class="description"><?php esc_html_e( 'JSON, TXT, Markdown, Fountain, RTF, PDF, EPUB, DOCX, or ODT. Files may be up to 20 MB; manuscripts may contain up to 500,000 extracted characters and 300,000 characters per decomposition.', 'worldgraph' ); ?></p>
+						<p class="description"><?php esc_html_e( 'JSON, TXT, Markdown, Fountain, RTF, PDF, EPUB, DOCX, or ODT. Files may be up to 20 MB; manuscripts may contain up to 500,000 extracted characters.', 'worldgraph' ); ?></p>
 					</td>
 				</tr>
 				<tr>
@@ -508,7 +591,7 @@ class Import {
 			<tr><th><?php esc_html_e( 'Source', 'worldgraph' ); ?></th><td><?php echo esc_html( (string) ( $source['filename'] ?? '' ) ); ?> (<?php echo esc_html( strtoupper( (string) ( $source['format'] ?? '' ) ) ); ?>, <?php echo esc_html( number_format_i18n( absint( $source['characters'] ?? 0 ) ) ); ?> <?php esc_html_e( 'characters', 'worldgraph' ); ?>) <?php self::render_attachment_link( $attachment_id ); ?></td></tr>
 			<tr><th><?php esc_html_e( 'Preparation', 'worldgraph' ); ?></th><td>
 				<?php if ( ! empty( $decomposition['generated'] ) ) : ?>
-					<?php echo esc_html( sprintf( __( 'Generated with %1$s using %2$s (%3$d model pass(es) across %4$d part(s), %5$d reported tokens).', 'worldgraph' ), (string) ( $decomposition['connection_name'] ?? __( 'selected Connection', 'worldgraph' ) ), (string) ( $decomposition['model'] ?? __( 'configured model', 'worldgraph' ) ), absint( $decomposition['attempts'] ?? 0 ), max( 1, absint( $decomposition['chunks'] ?? 1 ) ), absint( $decomposition['tokens'] ?? 0 ) ) ); ?>
+					<?php echo esc_html( sprintf( __( 'Generated with %1$s using %2$s in %3$d analysis/assembly passes across %4$d sections (%5$d model request attempts; %6$d reported tokens).', 'worldgraph' ), (string) ( $decomposition['connection_name'] ?? __( 'configured Connection', 'worldgraph' ) ), (string) ( $decomposition['model'] ?? __( 'configured model', 'worldgraph' ) ), max( 2, absint( $decomposition['passes'] ?? 2 ) ), max( 1, absint( $decomposition['chunks'] ?? 1 ) ), absint( $decomposition['attempts'] ?? 0 ), absint( $decomposition['tokens'] ?? 0 ) ) ); ?>
 				<?php else : ?>
 					<?php esc_html_e( 'Canonical JSON validated directly; no LLM was called.', 'worldgraph' ); ?>
 				<?php endif; ?>
@@ -600,36 +683,6 @@ class Import {
 		];
 	}
 
-	/** List only manageable Connection records supported by Story_Decomposer. */
-	private static function llm_connections(): array {
-		$connections = [];
-		foreach ( \WorldGraph\Utils\Connection_Repository::get_all() as $connection ) {
-			$id       = absint( $connection['id'] ?? 0 );
-			$provider = sanitize_key( (string) ( $connection['provider_type'] ?? '' ) );
-			if (
-				$id &&
-				in_array( $provider, self::LLM_TYPES, true ) &&
-				'disabled' !== (string) ( $connection['status'] ?? '' ) &&
-				'' !== trim( (string) ( $connection['endpoint_url'] ?? '' ) ) &&
-				'' !== trim( (string) ( $connection['model'] ?? '' ) ) &&
-				\WorldGraph\Utils\Connection_Repository::current_user_can_manage( $id )
-			) {
-				$connections[] = $connection;
-			}
-		}
-		return $connections;
-	}
-
-	/** Format a safe Connection option label. */
-	private static function connection_label( array $connection ): string {
-		return sprintf(
-			'%1$s — %2$s / %3$s',
-			self::connection_name( $connection ),
-			(string) ( $connection['provider_type'] ?? '' ),
-			(string) ( $connection['model'] ?? __( 'model not set', 'worldgraph' ) )
-		);
-	}
-
 	/** Read the display name from a Connection record. */
 	private static function connection_name( array $connection ): string {
 		$name = ! empty( $connection['connection_name'] ) ? $connection['connection_name'] : ( $connection['title'] ?? '' );
@@ -705,13 +758,13 @@ class Import {
 	private static function safe_error_message( \WP_Error $error ): string {
 		$code = sanitize_key( (string) $error->get_error_code() );
 		if ( str_starts_with( $code, 'worldgraph_credential_' ) ) {
-			return __( 'The selected LLM Connection could not complete the request. Review the Connection and try again.', 'worldgraph' );
+			return __( 'The configured default LLM Connection could not complete the request. Review the Connection and try again.', 'worldgraph' );
 		}
 		$message = sanitize_text_field( (string) $error->get_error_message() );
 		if ( 'worldgraph_llm_request_failed' === $code && '' !== $message ) {
 			return sprintf(
 				/* translators: %s: sanitized provider diagnostic. */
-				__( 'The selected LLM Connection request failed: %s', 'worldgraph' ),
+				__( 'The configured default LLM Connection request failed: %s', 'worldgraph' ),
 				$message
 			);
 		}

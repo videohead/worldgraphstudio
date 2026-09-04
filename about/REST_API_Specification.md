@@ -17,8 +17,9 @@ See [Delivery Status](Delivery_Status.md) for the release boundary and
 credential setup.
 
 The API covers Story Graph resources, relationships, production/editorial
-views, canonical JSON import/export, uploaded-story decomposition preview,
-generation jobs, the AI Editor, search, and optional integrations. Final Draft
+views, canonical JSON import/export, uploaded-story decomposition preview and
+resumable checkpoints, generation jobs, the AI Editor, search, and optional
+integrations. Final Draft
 FDX is a delivered WordPress admin import workflow that normalizes into the
 canonical JSON importer; it does not register a `/scripts/*` REST route. The
 separate deterministic Fountain-to-FDX page has a current browser bootstrap
@@ -316,6 +317,9 @@ administrator-only compatibility routes are:
 POST /wp-json/worldgraph/v1/import/validate
 POST /wp-json/worldgraph/v1/import
 POST /wp-json/worldgraph/v1/import/decompose
+GET  /wp-json/worldgraph/v1/import/decompositions/{job_id}
+POST /wp-json/worldgraph/v1/import/decompositions/{job_id}
+DELETE /wp-json/worldgraph/v1/import/decompositions/{job_id}
 GET  /wp-json/worldgraph/v1/export/{project_id}?format=json
 GET  /wp-json/worldgraph/v1/export/{project_id}?format=screenplay
 GET  /wp-json/worldgraph/v1/export/{project_id}?format=storyboard
@@ -328,16 +332,72 @@ relationships, and reports resolved counts. Canonical JSON uses these routes
 and the WordPress Import screen without an LLM.
 
 `/import/decompose` is preview-only. It accepts an `attachment_id` for a real
-WordPress attachment stored inside the uploads tree. A `connection_id` for a
-manageable LLM Connection is required for a non-canonical source and may be
-omitted for canonical World Graph Studio JSON. The current source extractor
-accepts JSON, TXT, Markdown, Fountain, RTF, PDF, EPUB, DOCX, and ODT files up
-to 20 MB. PDFs must
-have an extractable text layer; encrypted PDFs are rejected, and scanned or
+WordPress attachment stored inside the uploads tree. An eligible
+`connection_id` may select the manageable LLM Connection for a non-canonical
+source; when omitted, the route resolves the site's default compatible
+Connection. Canonical World Graph Studio JSON requires no Connection. The
+current source extractor accepts JSON, TXT, Markdown, Fountain, RTF, PDF, EPUB,
+DOCX, and ODT files up
+to 20 MB; extracted non-canonical text is limited to 500,000 characters. PDFs
+must have an extractable text layer; encrypted PDFs are rejected, and scanned or
 image-only PDFs return an OCR-required error. Non-canonical sources are sent
 only to the selected OpenAI-compatible, OpenAI, or Anthropic Connection. The
-server normalizes and dry-run validates the candidate before returning. An
-abbreviated response shape is:
+route remains the synchronous compatibility operation: it performs the same
+bounded, two-pass plan in one request, then normalizes and dry-run validates the
+candidate before returning.
+
+PHP is authoritative for that plan. Boundary candidates include EPUB spine,
+heading, and horizontal-rule metadata plus detected Markdown/prose headings,
+Fountain Scene headings, separator lines, paragraphs, sentences, and
+whitespace. The cut cascade prefers chapter, then section, Scene, paragraph,
+sentence, and whitespace boundaries before a hard maximum. The primary spans
+cover the complete prepared UTF-8 source in order. Bounded text before and
+after a span is carried as separate context rather than duplicated into that
+span.
+
+With usable model metadata, a primary span targets at most 12,000 characters
+and has a 16,000-character hard maximum. Without metadata, it targets 2,500
+characters with a 3,000-character hard maximum. The initial plan allows up to
+192 spans; the synchronous route retains that ceiling, while a resumable job
+can retain at most 512 spans after targeted evidence-pass subdivision. Each
+span/pass has at most three model attempts. An advertised model context window
+below 2,048 tokens is rejected, and requested output remains capped both at
+4,096 tokens and by the selected Connection's lower configured `max_tokens`.
+
+Each model call contains a server-owned system contract and one JSON user data
+envelope. The envelope tags `story_text` as untrusted story-document data,
+marks it as non-conversational, and distinguishes read-only `source_context`
+from the primary span. It contains no interactive message history. The first
+pass extracts grounded observations; the second re-reads the span and resolves
+those observations against a compact representation of the evolving graph.
+Compatible provider reasoning may be enabled only through internal
+server-owned options: evidence requests medium effort and synthesis requests
+high effort, translated only when the provider/model supports a recognized
+control. No request parameter can override that choice. The contract requests
+structured JSON rather than model reasoning, and no chain-of-thought is
+persisted or returned.
+
+Before synthesis, the built-in private retriever selects the current evidence
+and at most three related observations by lexical overlap and source proximity.
+`worldgraph_story_decomposition_evidence_ready` is the bounded-evidence index
+hook, and `worldgraph_story_decomposition_retrieval_context` may replace the
+lexical bundle with another private retriever. A replacement must return
+bounded structured evidence and must not expose source text or vectors; the
+result is bounded again before it enters the model envelope.
+
+The optional bundled `plugins/story-rag-decomposer/` bridge is disabled by
+default (`worldgraph_story_rag_enabled`) and requires the separately installed
+and activated WPVDB plugin at `wp-content/plugins/wpvdb`, with a valid active
+embedding provider/model. It sends bounded evidence or query input to that
+embedding provider, but writes only numeric vectors and bounded identifiers to
+private user-and-source-scoped WordPress transients for at most two hours. It
+does not use WPVDB's shared/indexable embeddings table and does not persist
+manuscript, evidence, or query text. Same-user/same-source cosine lookup returns
+at most three neighbors; an unavailable dependency, configuration or provider
+error, or invalid/mismatched vector falls back to the incoming lexical result.
+This bridge adds no request parameter or raw response field.
+
+An abbreviated synchronous response shape is:
 
 ```json
 {
@@ -352,12 +412,13 @@ abbreviated response shape is:
   },
   "decomposition": {
     "generated": true,
-    "attempts": 1,
+    "attempts": 16,
     "tokens": 9210,
     "backend": "openai_compatible",
     "model": "configured-model",
     "connection_id": 45,
-    "chunks": 1
+    "chunks": 8,
+    "passes": 2
   }
 }
 ```
@@ -370,6 +431,64 @@ writes Story Graph records. The WordPress admin flow applies the same
 preview/confirm boundary and keeps the original source as a Media Library
 attachment after confirmation or cancellation.
 
+### Resumable decomposition jobs
+
+The WordPress Import screen creates a decomposition job when its upload is not
+already canonical JSON. Job creation remains behind the capability- and
+nonce-protected admin upload action; these routes operate on an existing job:
+
+| Method | Behavior |
+| --- | --- |
+| `GET /import/decompositions/{job_id}` | Return the current safe progress projection without advancing the job. |
+| `POST /import/decompositions/{job_id}` | Perform exactly one analysis, synthesis, repair/subdivision, or finalization checkpoint and return the new safe projection. |
+| `DELETE /import/decompositions/{job_id}` | Request cancellation; no Story Graph records are written and the source attachment is retained. |
+
+The `job_id` is an unguessable 256-bit base64url token, and the saved state is
+also scoped to the current WordPress user. All three methods require
+`manage_options`; the wp-admin client authenticates them with its logged-in
+cookie and REST nonce. A job has a fixed two-hour expiry that successful steps
+do not extend. A per-job lock rejects concurrent step requests. Completion
+creates the ordinary immutable import preview, which has its separate
+30-minute review window.
+
+An abbreviated job status is:
+
+```json
+{
+  "success": true,
+  "job": {
+    "job_id": "unguessable-job-token",
+    "status": "ready",
+    "stage": "analysis",
+    "stage_label": "Analyzing story evidence",
+    "section": "Analysis section 3 of 8.",
+    "progress": { "completed": 2, "total": 17, "percent": 11 },
+    "analysis": { "completed": 2, "total": 8 },
+    "synthesis": { "completed": 0, "total": 8 },
+    "attempts": 2,
+    "tokens": 1480,
+    "retrieval": { "backend": "", "indexed": 0, "retrieved": 0 },
+    "error": { "code": "", "message": "" },
+    "can_step": true,
+    "can_cancel": true,
+    "preview_url": "",
+    "preview_expires_at": 0,
+    "expires_at": 1788580800
+  }
+}
+```
+
+The optional `retrieval` member contains only a sanitized backend label and
+aggregate indexed/retrieved counts. The status projection never exposes
+manuscript or chunk text, neighboring context, prompts, evidence, partial
+documents, the compact graph, retrieval vectors, model reasoning,
+model/profile/Connection configuration, endpoints, credential references, or
+credentials. When `status` is `complete`, `preview_url` points to the existing
+review/confirm screen and `preview_expires_at` identifies that preview's
+deadline. Intermediate evidence and per-span graph objects are not valid import
+payloads; only the final canonical version 1.2 document behind that preview can
+be submitted to `/import`.
+
 `/export/{project_id}` requires a readable `worldgraph_project` and accepts
 `json`, `screenplay`, or `storyboard`. Its response includes `project_id`,
 `format`, suggested `filename`, `mime_type`, and `content`. JSON `content` is a
@@ -379,13 +498,14 @@ deterministic ordering and stable stored external IDs or deterministic fallback
 IDs. Connections, Templates, generation jobs, WordPress users/status, and
 fields outside the importer contract are excluded.
 
-Import and decomposition require `manage_options`. Decomposition additionally
-requires permission to read the attachment and, when a Connection is supplied,
-manage that selected Connection.
+Import and decomposition require `manage_options`. Synchronous decomposition
+additionally requires permission to read the attachment and manage the
+explicitly selected or default-resolved Connection. Decomposition jobs are
+scoped to the creating user as well as the unguessable job token.
 Export requires `manage_options` plus `read_post` for the named Project.
-Successful decomposition and export payloads carry no-store headers because
-they can contain private project material. Provider and credential failures
-are normalized before they are returned.
+Successful decomposition, decomposition-job status, and export payloads carry
+no-store headers because they can contain private project material. Provider
+and credential failures are normalized before they are returned.
 
 There is no `/scripts/import` or `/scripts/export` alias in v1. Clients use the
 routes above.

@@ -12,7 +12,8 @@ integration's exact contract.
 
 | Integration | Category | Direction | Current scope | Availability / setup |
 | --- | --- | --- | --- | --- |
-| [Story Import & Export](plugins/STORY_IMPORT_EXPORT.md) | Canonical project interchange and story decomposition | JSON ↔ Story Graph; supported text-bearing story file → validated JSON preview → Story Graph; Story Graph → Markdown | Owns canonical JSON import/export and Markdown screenplay/storyboard export; persists JSON/TXT/Markdown/Fountain/RTF/text-layer PDF/EPUB/DOCX/ODT uploads and uses a selected LLM Connection for preview/confirm decomposition when the source is not already canonical JSON | Bundled and enabled by default; an LLM Connection is required only for non-canonical sources |
+| [Story Import & Export](plugins/STORY_IMPORT_EXPORT.md) | Canonical project interchange and story decomposition | JSON ↔ Story Graph; supported text-bearing story file → validated JSON preview → Story Graph; Story Graph → Markdown | Owns canonical JSON import/export and Markdown screenplay/storyboard export; persists JSON/TXT/Markdown/Fountain/RTF/text-layer PDF/EPUB/DOCX/ODT uploads; non-canonical text is structurally planned in PHP, processed through evidence and evolving-graph synthesis passes, and advanced as a resumable job by wp-admin JavaScript | Bundled and enabled by default; an LLM Connection is required only for non-canonical sources |
+| Story RAG Decomposer | Optional private evidence retrieval | Bounded decomposition evidence → transient WPVDB embeddings → related evidence | Implements the Story Import & Export retrieval hooks with same-user/same-source cosine ranking; stores only numeric vectors and bounded IDs in private transients for at most two hours, never private text in WPVDB's shared embeddings table; every dependency, configuration, provider, or vector failure falls back to lexical retrieval | Bundled and disabled by default; requires separately installed and activated `wp-content/plugins/wpvdb` plus an active WPVDB embedding provider/model |
 | Final Draft FDX Import | Screenplay importer | FDX → Story Graph | Parses supported FDX screenplay structure in the browser, normalizes it to World Graph Studio JSON, and delegates validation and persistence to the Story Import & Export importer | Bundled; no external account |
 | Deterministic Fountain Import | Screenplay importer | Intended: Fountain → FDX → Story Graph | Parser and importer source are bundled, but the shared FDX script currently dereferences the absent FDX form before exposing its parser on the Fountain page; this is separate from accepting `.fountain` as an LLM story source above | Bootstrap-blocked scaffold; not currently delivered |
 | [Celtx Connector](plugins/CELTX.md) | Project synchronization | Intended: Story Graph → Celtx | Bundled mapping and REST source targets Projects, Characters, Locations, Scenes, and Shots, but response handling and Scene-call defects currently block a verified outbound sync | Runtime repair required; not currently delivered |
@@ -26,7 +27,8 @@ integration's exact contract.
 | Surface | Direction | Current scope | Access |
 | --- | --- | --- | --- |
 | World Graph Studio JSON import | JSON → Story Graph | Dry-run validation, entity creation or update, taxonomy assignment, relationship construction, and import reporting | WordPress Import screen and `POST worldgraph/v1/import/validate` / `POST worldgraph/v1/import` |
-| Story document decomposition | Persisted story upload → canonical JSON preview → Story Graph | Extracts bounded text from JSON/TXT/Markdown/Fountain/RTF/PDF/EPUB/DOCX/ODT; canonical JSON skips the LLM, while other sources use the selected manageable LLM Connection and require preview/confirm before commit; PDF requires a text layer | WordPress Import screen and `POST worldgraph/v1/import/decompose`; source attachment remains in uploads |
+| Story document decomposition | Persisted story upload → canonical JSON preview → Story Graph | Extracts bounded text from JSON/TXT/Markdown/Fountain/RTF/PDF/EPUB/DOCX/ODT; canonical JSON skips the LLM, while other sources use chapter/section/Scene-aware spans, separate neighbor context, evidence and evolving-graph synthesis passes, resumable checkpoints, and preview/confirm before commit; PDF requires a text layer | WordPress Import screen, synchronous `POST worldgraph/v1/import/decompose`, and resumable decomposition-job status/step/cancel routes; source attachment remains in uploads |
+| Optional vector evidence retrieval | Private transient evidence → related evidence bundle | Uses the active WPVDB provider/model for bounded embedding and top-three same-user/same-source cosine neighbors; no manuscript/evidence/query text enters the WPVDB embeddings table and failures retain the lexical bundle | Enable **Story RAG Decomposer** under World Graph Studio Plugins after separately installing, activating, and configuring WPVDB; no new REST route |
 | World Graph Studio JSON export | Story Graph → canonical JSON | Projects the selected live Project and its supported graph into a deterministic version 1.2 document suitable for validation and later import | WordPress Export screen and `GET worldgraph/v1/export/{project_id}?format=json` |
 | Markdown screenplay export | Story Graph → Markdown | Derives a screenplay-style view from the live Project, ordered Scenes, Scene summary/script content, linked Character names, and Shot headings; structured dialogue appears only when already represented in Scene script content | WordPress Export screen and `GET worldgraph/v1/export/{project_id}?format=screenplay` |
 | Markdown storyboard export | Story Graph → Markdown | Derives a storyboard view from live Scenes and Shots, including framing, lens, duration, and editorial notes | WordPress Export screen and `GET worldgraph/v1/export/{project_id}?format=storyboard` |
@@ -59,9 +61,10 @@ operating conditions. See
 ## AI Editor backends
 
 These are delivered model-access paths for the AI Editor and specialist agents;
-they are not media-generation adapters. Story decomposition can select the
-OpenAI-compatible, OpenAI, or Anthropic Connection types; it does not use the
-legacy option-backed Dual fallback.
+they are not media-generation adapters. Story decomposition resolves a
+configured default—or an eligible Connection ID supplied to the synchronous
+REST compatibility route—from the OpenAI-compatible, OpenAI, or Anthropic
+Connection types; it does not use the legacy option-backed Dual fallback.
 
 | Backend | Current scope | Required setup |
 | --- | --- | --- |

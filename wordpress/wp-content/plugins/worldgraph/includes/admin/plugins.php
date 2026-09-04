@@ -64,6 +64,25 @@ class Plugins {
 			);
 		}
 
+		// Optional WPVDB retrieval bridge for long-form story decomposition.
+		if ( file_exists( WORLDGRAPH_PLUGIN_DIR . 'plugins/story-rag-decomposer/story-rag-decomposer.php' ) ) {
+			self::register_plugin(
+				'story-rag-decomposer',
+				'World Graph Studio - Story RAG Decomposer',
+				[
+					'name'         => 'Story RAG Decomposer',
+					'description'  => 'Adds private, transient WPVDB similarity retrieval to long-form story decomposition. Requires the separately installed WPVDB plugin.',
+					'version'      => defined( 'WORLDGRAPH_STORY_RAG_VERSION' ) ? WORLDGRAPH_STORY_RAG_VERSION : '1.0.0',
+					'author'       => 'World Graph Studio Contributors',
+					'icon'         => 'dashicons-networking',
+					'file'         => 'plugins/story-rag-decomposer/story-rag-decomposer.php',
+					'has_settings' => true,
+					'settings_url' => admin_url( 'admin.php?page=wpvdb-settings' ),
+					'testable'     => false,
+				]
+			);
+		}
+
 		// Celtx connector.
 		if ( file_exists( WORLDGRAPH_PLUGIN_DIR . 'plugins/celtx/celtx-sync.php' ) ) {
 			self::register_plugin(
@@ -238,6 +257,9 @@ class Plugins {
 			case 'story-import-export':
 				return (bool) get_option( 'worldgraph_story_io_enabled', true );
 
+			case 'story-rag-decomposer':
+				return (bool) get_option( 'worldgraph_story_rag_enabled', false );
+
 			case 'celtx':
 				return (bool) get_option( 'celtx_enabled', false );
 
@@ -282,6 +304,9 @@ class Plugins {
 		switch ( $slug ) {
 			case 'story-import-export':
 				return true;
+
+			case 'story-rag-decomposer':
+				return function_exists( '\\WorldGraphStoryRAG\\is_configured' ) && \WorldGraphStoryRAG\is_configured();
 
 			case 'celtx':
 				if ( class_exists( '\\WorldGraphCeltx\\Settings' ) ) {
@@ -354,6 +379,10 @@ class Plugins {
 		switch ( $slug ) {
 			case 'story-import-export':
 				update_option( 'worldgraph_story_io_enabled', $enabled );
+				break;
+
+			case 'story-rag-decomposer':
+				update_option( 'worldgraph_story_rag_enabled', $enabled );
 				break;
 
 			case 'celtx':

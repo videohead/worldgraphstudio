@@ -14,6 +14,8 @@ use WP_REST_Request;
 use WP_REST_Response;
 use WP_Error;
 
+require_once __DIR__ . '/class-decomposition-job.php';
+
 /**
  * Import Controller class.
  */
@@ -92,6 +94,24 @@ class Import_Controller extends Base_Controller {
 						'default'     => 0,
 					],
 				],
+			],
+		] );
+
+		register_rest_route( 'worldgraph/v1', '/import/decompositions/(?P<job_id>[A-Za-z0-9_-]{32,86})', [
+			[
+				'methods'             => 'GET',
+				'callback'            => [ $this, 'get_decomposition_job' ],
+				'permission_callback' => [ $this, 'check_decomposition_job_permission' ],
+			],
+			[
+				'methods'             => 'POST',
+				'callback'            => [ $this, 'step_decomposition_job' ],
+				'permission_callback' => [ $this, 'check_decomposition_job_permission' ],
+			],
+			[
+				'methods'             => 'DELETE',
+				'callback'            => [ $this, 'cancel_decomposition_job' ],
+				'permission_callback' => [ $this, 'check_decomposition_job_permission' ],
 			],
 		] );
 
@@ -248,7 +268,8 @@ class Import_Controller extends Base_Controller {
 		$result = ( new \WorldGraphStoryIO\Story_Decomposer() )->decompose(
 			(string) $source['text'],
 			(string) $source['filename'],
-			$connection_id
+			$connection_id,
+			is_array( $source['boundaries'] ?? null ) ? $source['boundaries'] : []
 		);
 		if ( is_wp_error( $result ) ) {
 			$status = 'worldgraph_llm_request_failed' === (string) $result->get_error_code() ? 502 : 422;
@@ -268,8 +289,33 @@ class Import_Controller extends Base_Controller {
 				'model'         => sanitize_text_field( (string) ( $result['model'] ?? '' ) ),
 				'connection_id' => $connection_id,
 				'chunks'        => max( 1, absint( $result['chunks'] ?? 1 ) ),
+				'passes'         => max( 1, absint( $result['passes'] ?? 2 ) ),
+				'sections'       => array_values( array_map( 'sanitize_text_field', array_filter( (array) ( $result['sections'] ?? [] ), 'is_scalar' ) ) ),
+				'context_window' => absint( $result['context_window'] ?? 0 ),
+				'source_hash'    => sanitize_text_field( (string) ( $result['source_hash'] ?? '' ) ),
 			],
 		] );
+	}
+
+	/** Return the safe public projection of one private decomposition job. */
+	public function get_decomposition_job( WP_REST_Request $request ) {
+		return $this->decomposition_job_response(
+			\WorldGraphStoryIO\Decomposition_Job::status( (string) $request->get_param( 'job_id' ) )
+		);
+	}
+
+	/** Advance exactly one bounded analysis, synthesis, or finalization stage. */
+	public function step_decomposition_job( WP_REST_Request $request ) {
+		return $this->decomposition_job_response(
+			\WorldGraphStoryIO\Decomposition_Job::step( (string) $request->get_param( 'job_id' ) )
+		);
+	}
+
+	/** Request cancellation of one private decomposition job. */
+	public function cancel_decomposition_job( WP_REST_Request $request ) {
+		return $this->decomposition_job_response(
+			\WorldGraphStoryIO\Decomposition_Job::cancel( (string) $request->get_param( 'job_id' ) )
+		);
 	}
 
 	/**
@@ -325,6 +371,11 @@ class Import_Controller extends Base_Controller {
 			return new WP_Error( 'rest_forbidden', 'You must be an administrator to import World Graph Studio data.', [ 'status' => 403 ] );
 		}
 		return true;
+	}
+
+	/** Authorize private job endpoints; token and user scoping are enforced on load. */
+	public function check_decomposition_job_permission() {
+		return $this->check_import_permission();
 	}
 
 	/**
@@ -407,6 +458,28 @@ class Import_Controller extends Base_Controller {
 		$response->header( 'Pragma', 'no-cache' );
 		$response->header( 'X-Content-Type-Options', 'nosniff' );
 		return $response;
+	}
+
+	/** Return a no-store job response without forwarding private WP_Error data. */
+	private function decomposition_job_response( $result ) {
+		if ( is_wp_error( $result ) ) {
+			$data   = $result->get_error_data();
+			$status = is_array( $data ) ? absint( $data['status'] ?? 0 ) : 0;
+			$status = $status ?: 400;
+			$error  = $this->safe_error( $result, $status );
+			$response = $this->private_response( [
+				'code'    => (string) $error->get_error_code(),
+				'message' => (string) $error->get_error_message(),
+				'data'    => [ 'status' => $status ],
+			] );
+			$response->set_status( $status );
+			return $response;
+		}
+
+		return $this->private_response( [
+			'success' => true,
+			'job'     => is_array( $result ) ? $result : [],
+		] );
 	}
 
 	/** Rebuild a trusted REST error without carrying arbitrary provider data. */

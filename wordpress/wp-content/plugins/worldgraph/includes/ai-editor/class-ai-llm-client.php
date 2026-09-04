@@ -34,9 +34,8 @@ class AI_LLM_Client {
 	/**
 	 * Bounded selected-Connection calls permitted per user and minute.
 	 *
-	 * One story preview can make up to 141 bounded part/repair calls. Keeping
-	 * these calls in their own finite bucket lets one preview finish without
-	 * weakening the ten-per-minute limit used by ordinary interactive chat.
+	 * Resumable multi-pass jobs use this separate finite bucket so bounded
+	 * document work does not weaken the rate limit for interactive chat.
 	 */
 	private const CONNECTION_REQUEST_RATE_LIMIT = 144;
 
@@ -73,6 +72,8 @@ class AI_LLM_Client {
 		$api_key   = (string) ( $options['api_key'] ?? '' );
 		$use_cache = ! array_key_exists( 'cache', $options ) || ! empty( $options['cache'] );
 		$allow_fallback = ! array_key_exists( 'allow_fallback', $options ) || ! empty( $options['allow_fallback'] );
+		$enable_thinking = $this->reasoning_enabled( $options );
+		$reasoning_effort = $this->normalize_reasoning_effort( $options['reasoning_effort'] ?? '' );
 
 		// Multi-pass selected-Connection operations use a separate bounded bucket;
 		// ordinary chat retains its existing per-user limit.
@@ -87,7 +88,10 @@ class AI_LLM_Client {
 		}
 
 		// Check cache (both in-memory and transient).
-		$cache_key = md5( $backend . '|' . $endpoint . '|' . (string) ( $options['connection_id'] ?? 0 ) . '|' . $prompt . $model . $max_tokens . $temperature . $system_prompt . wp_json_encode( $context ) . wp_json_encode( $history ) );
+		$reasoning_cache_fragment = $enable_thinking || '' !== $reasoning_effort
+			? '|reasoning=' . wp_json_encode( [ $enable_thinking, $reasoning_effort ] )
+			: '';
+		$cache_key = md5( $backend . '|' . $endpoint . '|' . (string) ( $options['connection_id'] ?? 0 ) . '|' . $prompt . $model . $max_tokens . $temperature . $system_prompt . wp_json_encode( $context ) . wp_json_encode( $history ) . $reasoning_cache_fragment );
 		$cache_ttl = get_option( 'worldgraph_ai_cache_ttl', 3600 );
 
 		// First check in-memory cache.
@@ -128,7 +132,7 @@ class AI_LLM_Client {
 		}
 
 		// Try primary backend.
-		$result = $this->call_backend( $backend, $prompt, $model, $max_tokens, $temperature, $system_prompt, $context, $history, $api_key, $endpoint );
+		$result = $this->call_backend( $backend, $prompt, $model, $max_tokens, $temperature, $system_prompt, $context, $history, $api_key, $endpoint, $enable_thinking, $reasoning_effort );
 
 		if ( $result && empty( $result['error'] ) ) {
 			if ( $use_cache ) {
@@ -168,7 +172,7 @@ class AI_LLM_Client {
 		$fallback_enabled = get_option( 'worldgraph_ai_fallback_enabled', true );
 		if ( $allow_fallback && $fallback_enabled && 'dual' !== $backend ) {
 			$fallback_backend = get_option( 'worldgraph_ai_fallback_backend', 'openai' );
-			$result = $this->call_backend( $fallback_backend, $prompt, $model, $max_tokens, $temperature, $system_prompt, $context, $history, $this->fallback_api_key() );
+			$result = $this->call_backend( $fallback_backend, $prompt, $model, $max_tokens, $temperature, $system_prompt, $context, $history, $this->fallback_api_key(), '', $enable_thinking, $reasoning_effort );
 			if ( $result && empty( $result['error'] ) ) {
 				return $result;
 			}
@@ -177,7 +181,7 @@ class AI_LLM_Client {
 		// Dual mode: try both.
 		if ( $allow_fallback && 'dual' === $backend ) {
 			$fallback_backend = get_option( 'worldgraph_ai_fallback_backend', 'openai' );
-			$result = $this->call_backend( $fallback_backend, $prompt, $model, $max_tokens, $temperature, $system_prompt, $context, $history, $this->fallback_api_key() );
+			$result = $this->call_backend( $fallback_backend, $prompt, $model, $max_tokens, $temperature, $system_prompt, $context, $history, $this->fallback_api_key(), '', $enable_thinking, $reasoning_effort );
 			if ( $result && empty( $result['error'] ) ) {
 				return $result;
 			}
@@ -244,8 +248,18 @@ class AI_LLM_Client {
 		if ( '' === $model ) {
 			return new \WP_Error( 'worldgraph_llm_connection_model_missing', __( 'The selected LLM Connection has no model configured.', 'worldgraph' ) );
 		}
-		if ( preg_match( '/(?:^|[^a-z])qwen(?:[-_: ]?3)/i', $model ) ) {
-			$prompt = "/no_think\n" . $prompt;
+
+		$enable_thinking = $this->reasoning_enabled( $options );
+		$reasoning_effort = $this->normalize_reasoning_effort( $options['reasoning_effort'] ?? '' );
+		unset( $options['reasoning'], $options['enable_thinking'], $options['reasoning_effort'] );
+		if ( $enable_thinking ) {
+			$options['enable_thinking'] = true;
+		}
+		if ( '' !== $reasoning_effort ) {
+			$options['reasoning_effort'] = $reasoning_effort;
+		}
+		if ( $this->is_qwen_three_model( $model ) ) {
+			$prompt = ( $enable_thinking ? "/think\n" : "/no_think\n" ) . $prompt;
 		}
 
 		$requested_max  = array_key_exists( 'max_tokens', $options ) ? $options['max_tokens'] : null;
@@ -328,23 +342,30 @@ class AI_LLM_Client {
 		}
 
 		$connection = $this->connection_configuration( $connection_id );
-		if (
-			! is_array( $connection )
-			|| 'openai_compatible' !== sanitize_key( (string) ( $connection['provider_type'] ?? '' ) )
-			|| 'disabled' === (string) ( $connection['status'] ?? '' )
-		) {
+		if ( ! is_array( $connection ) || 'disabled' === (string) ( $connection['status'] ?? '' ) ) {
 			return 0;
 		}
 
-		$model    = trim( (string) ( $connection['model'] ?? '' ) );
-		$endpoint = trim( (string) ( $connection['endpoint_url'] ?? '' ) );
-		if ( '' === $model || '' === $endpoint ) {
+		$model = trim( (string) ( $connection['model'] ?? '' ) );
+		if ( '' === $model ) {
 			return 0;
 		}
 
 		$explicit = $this->explicit_context_window( $connection, $model );
 		if ( $explicit > 0 ) {
 			return $explicit;
+		}
+
+		// Only OpenAI-compatible servers have a portable bounded /models
+		// discovery contract. Hosted providers may still supply trusted explicit
+		// context metadata above without an outbound discovery request.
+		if ( 'openai_compatible' !== sanitize_key( (string) ( $connection['provider_type'] ?? '' ) ) ) {
+			return 0;
+		}
+
+		$endpoint = trim( (string) ( $connection['endpoint_url'] ?? '' ) );
+		if ( '' === $endpoint ) {
+			return 0;
 		}
 
 		$models_url = $this->models_endpoint_url( $endpoint );
@@ -465,6 +486,26 @@ class AI_LLM_Client {
 	private function is_openai_reasoning_model( string $model ): bool {
 		$model = strtolower( trim( $model ) );
 		return 1 === preg_match( '/^(?:o[1-9](?:[-_.]|$)|gpt-5(?:[-_.]|$)|codex-mini(?:[-_.]|$))/', $model );
+	}
+
+	/** Whether a model uses Qwen 3 thinking template controls. */
+	private function is_qwen_three_model( string $model ): bool {
+		return 1 === preg_match( '/(?:^|[^a-z])qwen(?:[-_: ]?3)/i', $model );
+	}
+
+	/** Require an explicit server-owned boolean opt-in for model reasoning. */
+	private function reasoning_enabled( array $options ): bool {
+		return true === ( $options['reasoning'] ?? false ) || true === ( $options['enable_thinking'] ?? false );
+	}
+
+	/** Allow only portable OpenAI reasoning-effort values. */
+	private function normalize_reasoning_effort( $effort ): string {
+		if ( ! is_scalar( $effort ) ) {
+			return '';
+		}
+
+		$effort = sanitize_key( (string) $effort );
+		return in_array( $effort, [ 'low', 'medium', 'high' ], true ) ? $effort : '';
 	}
 
 	/** Whether a current Anthropic model requires provider-default temperature. */
@@ -667,15 +708,19 @@ class AI_LLM_Client {
 	 * @param string $system_prompt System prompt.
 	 * @param array  $context Additional context.
 	 * @param array  $history Prior user and assistant messages.
+	 * @param string $api_key Provider credential.
+	 * @param string $endpoint Provider base URL.
+	 * @param bool   $enable_thinking Whether compatible Qwen models may think.
+	 * @param string $reasoning_effort Allowlisted OpenAI reasoning effort.
 	 * @return array|false Response array or false on failure.
 	 */
-	private function call_backend( string $backend, string $prompt, string $model, int $max_tokens, float $temperature, string $system_prompt, array $context, array $history, string $api_key = '', string $endpoint = '' ) {
+	private function call_backend( string $backend, string $prompt, string $model, int $max_tokens, float $temperature, string $system_prompt, array $context, array $history, string $api_key = '', string $endpoint = '', bool $enable_thinking = false, string $reasoning_effort = '' ) {
 		switch ( $backend ) {
 			case 'local':
 			case 'openai_compatible':
-				return $this->call_openai_compatible( $prompt, $model, $max_tokens, $temperature, $system_prompt, $context, $history, $api_key, $backend, $endpoint );
+				return $this->call_openai_compatible( $prompt, $model, $max_tokens, $temperature, $system_prompt, $context, $history, $api_key, $backend, $endpoint, $enable_thinking );
 			case 'openai':
-				return $this->call_openai( $prompt, $model, $max_tokens, $temperature, $system_prompt, $context, $history, $api_key, $endpoint );
+				return $this->call_openai( $prompt, $model, $max_tokens, $temperature, $system_prompt, $context, $history, $api_key, $endpoint, $reasoning_effort );
 			case 'anthropic':
 				return $this->call_anthropic( $prompt, $model, $max_tokens, $temperature, $system_prompt, $context, $history, $api_key, $endpoint );
 			default:
@@ -696,9 +741,13 @@ class AI_LLM_Client {
 	 * @param string $system_prompt System prompt.
 	 * @param array  $context Additional context.
 	 * @param array  $history Prior user and assistant messages.
+	 * @param string $api_key Provider credential.
+	 * @param string $backend Response backend label.
+	 * @param string $endpoint Provider base URL.
+	 * @param bool   $enable_thinking Whether Qwen 3 may think.
 	 * @return array Response array.
 	 */
-	private function call_openai_compatible( string $prompt, string $model, int $max_tokens, float $temperature, string $system_prompt, array $context, array $history, string $api_key = '', string $backend = 'openai_compatible', string $endpoint = '' ): array {
+	private function call_openai_compatible( string $prompt, string $model, int $max_tokens, float $temperature, string $system_prompt, array $context, array $history, string $api_key = '', string $backend = 'openai_compatible', string $endpoint = '', bool $enable_thinking = false ): array {
 		$url = rtrim( '' !== $endpoint ? $endpoint : get_option( 'worldgraph_ai_url', 'http://localhost:11434/v1' ), '/' );
 		if ( ! str_ends_with( $url, '/chat/completions' ) ) {
 			$url .= str_ends_with( $url, '/v1' ) ? '/chat/completions' : '/v1/chat/completions';
@@ -727,8 +776,8 @@ class AI_LLM_Client {
 			'max_tokens'  => $max_tokens,
 			'temperature' => $temperature,
 		];
-		if ( preg_match( '/(?:^|[^a-z])qwen(?:[-_: ]?3)/i', $model ) ) {
-			$body['chat_template_kwargs'] = [ 'enable_thinking' => false ];
+		if ( $this->is_qwen_three_model( $model ) ) {
+			$body['chat_template_kwargs'] = [ 'enable_thinking' => $enable_thinking ];
 		}
 
 		$args = [
@@ -843,10 +892,14 @@ class AI_LLM_Client {
 	 * @param string $system_prompt System prompt.
 	 * @param array  $context Additional context.
 	 * @param array  $history Prior user and assistant messages.
+	 * @param string $api_key Provider credential.
+	 * @param string $endpoint Provider base URL.
+	 * @param string $reasoning_effort Allowlisted reasoning effort.
 	 * @return array Response array.
 	 */
-	private function call_openai( string $prompt, string $model, int $max_tokens, float $temperature, string $system_prompt, array $context, array $history, string $api_key = '', string $endpoint = '' ): array {
+	private function call_openai( string $prompt, string $model, int $max_tokens, float $temperature, string $system_prompt, array $context, array $history, string $api_key = '', string $endpoint = '', string $reasoning_effort = '' ): array {
 		$api_key = '' !== $api_key ? $api_key : $this->primary_api_key();
+		$reasoning_effort = $this->normalize_reasoning_effort( $reasoning_effort );
 		if ( empty( $api_key ) ) {
 			return [
 				'content' => 'No OpenAI API key configured.',
@@ -882,6 +935,9 @@ class AI_LLM_Client {
 		];
 		if ( $reasoning_model ) {
 			$body['max_completion_tokens'] = $max_tokens;
+			if ( '' !== $reasoning_effort ) {
+				$body['reasoning_effort'] = $reasoning_effort;
+			}
 		} else {
 			$body['max_tokens']  = $max_tokens;
 			$body['temperature'] = $temperature;
