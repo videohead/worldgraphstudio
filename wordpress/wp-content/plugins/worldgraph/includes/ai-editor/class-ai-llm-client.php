@@ -707,7 +707,6 @@ class AI_LLM_Client {
 				'messages'    => $messages,
 				'max_tokens'  => $max_tokens,
 				'temperature' => $temperature,
-				'tool_choice' => 'none',
 			] ),
 			'timeout'             => 120,
 			'limit_response_size' => 2_097_152,

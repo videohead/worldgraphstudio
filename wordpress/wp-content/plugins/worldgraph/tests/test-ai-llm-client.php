@@ -389,7 +389,7 @@ class Test_AI_LLM_Client extends TestCase {
 		$body = $this->last_request_body();
 		$this->assertSame( 512, $body['max_tokens'] );
 		$this->assertSame( 0.1, $body['temperature'] );
-		$this->assertSame( 'none', $body['tool_choice'] );
+		$this->assertArrayNotHasKey( 'tool_choice', $body );
 	}
 
 	/** Hosted OpenAI success carries its finish reason. */
