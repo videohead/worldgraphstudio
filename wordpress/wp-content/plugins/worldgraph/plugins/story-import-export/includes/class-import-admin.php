@@ -721,10 +721,17 @@ class Import {
 	/** Normalize provider/upload failures before showing them in wp-admin. */
 	private static function safe_error_message( \WP_Error $error ): string {
 		$code = sanitize_key( (string) $error->get_error_code() );
-		if ( str_starts_with( $code, 'worldgraph_credential_' ) || 'worldgraph_llm_request_failed' === $code ) {
+		if ( str_starts_with( $code, 'worldgraph_credential_' ) ) {
 			return __( 'The selected LLM Connection could not complete the request. Review the Connection and try again.', 'worldgraph' );
 		}
 		$message = sanitize_text_field( (string) $error->get_error_message() );
+		if ( 'worldgraph_llm_request_failed' === $code && '' !== $message ) {
+			return sprintf(
+				/* translators: %s: sanitized provider diagnostic. */
+				__( 'The selected LLM Connection request failed: %s', 'worldgraph' ),
+				$message
+			);
+		}
 		return '' !== $message ? $message : __( 'The story import request failed.', 'worldgraph' );
 	}
 

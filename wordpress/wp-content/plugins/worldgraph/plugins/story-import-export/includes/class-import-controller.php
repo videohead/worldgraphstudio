@@ -413,7 +413,7 @@ class Import_Controller extends Base_Controller {
 	private function safe_error( WP_Error $error, int $status ): WP_Error {
 		$code    = sanitize_key( (string) $error->get_error_code() );
 		$message = sanitize_text_field( (string) $error->get_error_message() );
-		if ( str_starts_with( $code, 'worldgraph_credential_' ) || 'worldgraph_llm_request_failed' === $code ) {
+		if ( str_starts_with( $code, 'worldgraph_credential_' ) ) {
 			$message = 'The selected LLM Connection could not complete the request. Review the Connection and try again.';
 		}
 		return new WP_Error( $code ?: 'worldgraph_story_io_error', $message ?: 'The Story Import & Export request failed.', [ 'status' => $status ] );
