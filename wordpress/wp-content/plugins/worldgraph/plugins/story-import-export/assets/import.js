@@ -88,7 +88,6 @@
 		}
 
 		var fileInput = form.querySelector('#worldgraph_story_file, #worldgraph_json_file');
-		var connection = form.querySelector('#worldgraph_connection_id');
 		var submitting = false;
 
 		form.addEventListener('submit', function (event) {
@@ -112,14 +111,6 @@
 			}
 
 			readCanonicalJson(file).then(function (isCanonical) {
-				if (!isCanonical && (!connection || !connection.value)) {
-					window.alert(message('chooseConnection', 'Select an LLM Connection for this story source.'));
-					if (connection) {
-						connection.focus();
-					}
-					return;
-				}
-
 				submitting = true;
 				disableSubmit(form, message('previewing', 'Uploading and preparing preview…'));
 				HTMLFormElement.prototype.submit.call(form);
