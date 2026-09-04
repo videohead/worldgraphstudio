@@ -759,7 +759,7 @@ class AI_LLM_Client {
 
 		if ( ! isset( $data['choices'][0]['message']['content'] ) ) {
 			return [
-				'content'     => $this->invalid_openai_response_message( $body, $data ),
+				'content'     => $this->invalid_openai_response_message( $response, $body, $data ),
 				'backend'     => $backend,
 				'http_status' => $status,
 				'error'       => 'invalid_response',
@@ -779,21 +779,34 @@ class AI_LLM_Client {
 	}
 
 	/** Describe an unexpected OpenAI-compatible response without retaining its body. */
-	private function invalid_openai_response_message( string $body, $data ): string {
+	private function invalid_openai_response_message( $response, string $body, $data ): string {
+		$content_type = function_exists( 'wp_remote_retrieve_header' )
+			? sanitize_text_field( (string) wp_remote_retrieve_header( $response, 'content-type' ) )
+			: '';
+		$diagnostics  = [
+			'HTTP ' . absint( wp_remote_retrieve_response_code( $response ) ),
+			'body bytes=' . strlen( $body ),
+			'body sha256=' . substr( hash( 'sha256', $body ), 0, 12 ),
+		];
+		if ( '' !== $content_type ) {
+			$diagnostics[] = 'content-type=' . substr( $content_type, 0, 100 );
+		}
+
 		if ( ! is_array( $data ) ) {
 			$json_error = function_exists( 'json_last_error_msg' ) ? json_last_error_msg() : 'unknown JSON error';
-			return sprintf( 'Invalid response from OpenAI-compatible LLM: response was not valid JSON (%s).', sanitize_text_field( $json_error ) );
+			return sprintf( 'Invalid response from OpenAI-compatible LLM (%s): response was not valid JSON (%s).', implode( ', ', $diagnostics ), sanitize_text_field( $json_error ) );
 		}
 
 		if ( isset( $data['error'] ) ) {
 			$error = is_array( $data['error'] ) ? ( $data['error']['message'] ?? $data['error']['type'] ?? '' ) : $data['error'];
 			$error = sanitize_text_field( (string) $error );
 			if ( '' !== $error ) {
-				return sprintf( 'OpenAI-compatible LLM returned an error: %s.', substr( $error, 0, 300 ) );
+				return sprintf( 'OpenAI-compatible LLM returned an error (%s): %s.', implode( ', ', $diagnostics ), substr( $error, 0, 300 ) );
 			}
 		}
 
-		$details = [ 'response keys: ' . implode( ', ', array_slice( array_map( 'sanitize_key', array_keys( $data ) ), 0, 12 ) ) ];
+		$details = $diagnostics;
+		$details[] = 'response keys: ' . implode( ', ', array_slice( array_map( 'sanitize_key', array_keys( $data ) ), 0, 12 ) );
 		if ( isset( $data['choices'] ) ) {
 			$details[] = 'choices=' . ( is_array( $data['choices'] ) ? count( $data['choices'] ) : gettype( $data['choices'] ) );
 			$choice = is_array( $data['choices'] ) ? ( $data['choices'][0] ?? null ) : null;
@@ -1195,10 +1208,33 @@ class AI_LLM_Client {
 		}
 
 		if ( 'anthropic' === $backend ) {
+			if ( '' === $api_key ) {
+				return [
+					'healthy' => false,
+					'backend' => $backend,
+					'error'   => 'No Anthropic API key configured.',
+				];
+			}
+
+			$probe_options = [
+				'backend'        => $backend,
+				'model'          => $model,
+				'max_tokens'     => 64,
+				'temperature'    => 0,
+				'api_key'        => $api_key,
+				'allow_fallback' => false,
+				'cache'          => false,
+			];
+			if ( ! empty( $configuration['url'] ) ) {
+				$probe_options['endpoint_url'] = $configuration['url'];
+			}
+			$probe = $this->chat( 'Reply with exactly: WORLDGRAPH_CONNECTION_OK', $probe_options );
+
 			return [
-				'healthy' => '' !== $api_key,
+				'healthy' => is_array( $probe ) && empty( $probe['error'] ) && '' !== trim( (string) ( $probe['content'] ?? '' ) ),
 				'backend' => $backend,
-				'error'   => '' === $api_key ? 'No Anthropic API key configured.' : '',
+				'url'     => $configuration['url'] ?? 'https://api.anthropic.com',
+				'error'   => is_array( $probe ) ? (string) ( $probe['content'] ?? '' ) : 'Chat probe returned no response.',
 			];
 		}
 
@@ -1259,13 +1295,48 @@ class AI_LLM_Client {
 			];
 		}
 
+		if ( 200 !== $status ) {
+			return [
+				'healthy' => false,
+				'backend' => $backend,
+				'url'     => $url,
+				'status'  => $status,
+				'models'  => $models,
+				'error'   => sprintf( 'Endpoint returned HTTP %d.', $status ),
+			];
+		}
+
+		$probe_options = [
+			'backend'       => $backend,
+			'model'         => $model,
+			'max_tokens'    => 64,
+			'temperature'   => 0,
+			'api_key'       => $api_key,
+			'allow_fallback' => false,
+			'cache'         => false,
+		];
+		if ( 'openai' !== $backend ) {
+			$probe_options['endpoint_url'] = $configuration['url'] ?? $url;
+		}
+		$probe = $this->chat( 'Reply with exactly: WORLDGRAPH_CONNECTION_OK', $probe_options );
+		if ( ! is_array( $probe ) || ! empty( $probe['error'] ) || '' === trim( (string) ( $probe['content'] ?? '' ) ) ) {
+			return [
+				'healthy' => false,
+				'backend' => $backend,
+				'url'     => $url,
+				'status'  => $status,
+				'models'  => $models,
+				'error'   => is_array( $probe ) ? (string) ( $probe['content'] ?? 'Chat probe returned no content.' ) : 'Chat probe returned no response.',
+			];
+		}
+
 		return [
-			'healthy' => ( 200 === $status ),
+			'healthy' => true,
 			'backend' => $backend,
 			'url'     => $url,
 			'status'  => $status,
 			'models'  => $models,
-			'error'   => 200 === $status ? '' : sprintf( 'Endpoint returned HTTP %d.', $status ),
+			'error'   => '',
 		];
 	}
 }
