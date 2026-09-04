@@ -392,6 +392,29 @@ class Test_AI_LLM_Client extends TestCase {
 		$this->assertArrayNotHasKey( 'tool_choice', $body );
 	}
 
+	/** OpenAI-compatible failures explain provider errors and unexpected schemas safely. */
+	public function test_openai_compatible_invalid_response_reports_safe_shape_diagnostics(): void {
+		$GLOBALS['worldgraph_ai_post_response']['body'] = json_encode( [
+			'error' => [ 'type' => 'invalid_request_error', 'message' => 'Model does not support this request.' ],
+		] );
+		$error_response = $this->invoke_provider(
+			new AI_LLM_Client(),
+			'call_openai_compatible',
+			[ 'story', 'model', 512, 0.1, '', [], [], '', 'openai_compatible', 'http://models.test/v1' ]
+		);
+		$this->assertStringContainsString( 'Model does not support this request.', $error_response['content'] );
+
+		$GLOBALS['worldgraph_ai_post_response']['body'] = json_encode( [
+			'choices' => [ [ 'message' => [ 'reasoning_content' => 'thinking' ] ] ],
+		] );
+		$shape_response = $this->invoke_provider(
+			new AI_LLM_Client(),
+			'call_openai_compatible',
+			[ 'story', 'model', 512, 0.1, '', [], [], '', 'openai_compatible', 'http://models.test/v1' ]
+		);
+		$this->assertStringContainsString( 'message keys: reasoning_content', $shape_response['content'] );
+	}
+
 	/** Hosted OpenAI success carries its finish reason. */
 	public function test_openai_finish_reason_is_propagated(): void {
 		$GLOBALS['worldgraph_ai_post_response']['body'] = json_encode( [

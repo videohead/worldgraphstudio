@@ -759,9 +759,10 @@ class AI_LLM_Client {
 
 		if ( ! isset( $data['choices'][0]['message']['content'] ) ) {
 			return [
-				'content' => 'Invalid response from OpenAI-compatible LLM.',
-				'backend' => $backend,
-				'error'   => 'invalid_response',
+				'content'     => $this->invalid_openai_response_message( $body, $data ),
+				'backend'     => $backend,
+				'http_status' => $status,
+				'error'       => 'invalid_response',
 			];
 		}
 
@@ -775,6 +776,40 @@ class AI_LLM_Client {
 			$result['finish_reason'] = $finish_reason;
 		}
 		return $result;
+	}
+
+	/** Describe an unexpected OpenAI-compatible response without retaining its body. */
+	private function invalid_openai_response_message( string $body, $data ): string {
+		if ( ! is_array( $data ) ) {
+			$json_error = function_exists( 'json_last_error_msg' ) ? json_last_error_msg() : 'unknown JSON error';
+			return sprintf( 'Invalid response from OpenAI-compatible LLM: response was not valid JSON (%s).', sanitize_text_field( $json_error ) );
+		}
+
+		if ( isset( $data['error'] ) ) {
+			$error = is_array( $data['error'] ) ? ( $data['error']['message'] ?? $data['error']['type'] ?? '' ) : $data['error'];
+			$error = sanitize_text_field( (string) $error );
+			if ( '' !== $error ) {
+				return sprintf( 'OpenAI-compatible LLM returned an error: %s.', substr( $error, 0, 300 ) );
+			}
+		}
+
+		$details = [ 'response keys: ' . implode( ', ', array_slice( array_map( 'sanitize_key', array_keys( $data ) ), 0, 12 ) ) ];
+		if ( isset( $data['choices'] ) ) {
+			$details[] = 'choices=' . ( is_array( $data['choices'] ) ? count( $data['choices'] ) : gettype( $data['choices'] ) );
+			$choice = is_array( $data['choices'] ) ? ( $data['choices'][0] ?? null ) : null;
+			if ( is_array( $choice ) ) {
+				$details[] = 'choice keys: ' . implode( ', ', array_slice( array_map( 'sanitize_key', array_keys( $choice ) ), 0, 12 ) );
+				$message = $choice['message'] ?? null;
+				if ( is_array( $message ) ) {
+					$details[] = 'message keys: ' . implode( ', ', array_slice( array_map( 'sanitize_key', array_keys( $message ) ), 0, 12 ) );
+					if ( array_key_exists( 'content', $message ) ) {
+						$details[] = 'content type: ' . gettype( $message['content'] );
+					}
+				}
+			}
+		}
+
+		return 'Invalid response from OpenAI-compatible LLM (' . implode( '; ', $details ) . ').';
 	}
 
 	/**
