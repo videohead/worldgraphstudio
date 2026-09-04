@@ -515,6 +515,20 @@ class Test_Story_Import_Export extends TestCase {
 		$this->assertSame( str_repeat( 'x', 279000 ), str_replace( "\n", '', implode( '', $chunks ) ) );
 	}
 
+	/** Chapter headings are preferred over arbitrary paragraph cuts. */
+	public function test_split_story_prefers_heading_boundaries(): void {
+		$story = str_repeat( 'Opening narrative. ', 80 ) . "\n\nCHAPTER II\n\n" . str_repeat( 'Second narrative. ', 80 );
+		$decomposer = new Story_Decomposer( new stdClass() );
+		$method = new ReflectionMethod( Story_Decomposer::class, 'split_story' );
+		$method->setAccessible( true );
+		$chunks = $method->invoke( $decomposer, $story, 1600, 4 );
+
+		$this->assertIsArray( $chunks );
+		$this->assertGreaterThan( 1, count( $chunks ) );
+		$this->assertStringNotContainsString( 'CHAPTER II', $chunks[0] );
+		$this->assertStringContainsString( 'CHAPTER II', $chunks[1] );
+	}
+
 	/** Context-sized splitting avoids a tiny final fragment that loses narrative context. */
 	public function test_split_story_balances_the_final_part(): void {
 		$story      = trim( str_repeat( "A sustained narrative sentence continues through the excerpt. ", 260 ) );
@@ -729,6 +743,18 @@ class Test_Story_Import_Export extends TestCase {
 		$this->assertCount( 1, $first['shots'] );
 		$this->assertSame( 'voiceover', $first['sounds'][0]['type'] );
 		$this->assertArrayNotHasKey( 'shot', $first['sounds'][0] );
+	}
+
+	/** PHP promotes compact model evidence into the canonical scene script field. */
+	public function test_normalization_promotes_scene_evidence_to_script_content(): void {
+		$document = ( new Story_Decomposer( new stdClass() ) )->normalize_document(
+			[ 'scenes' => [ [ 'id' => 'scene', 'title' => 'Bridge', 'evidence' => 'A traveler crosses the bridge at dawn.' ] ] ],
+			'A traveler crosses the bridge at dawn.',
+			'evidence.txt'
+		);
+
+		$this->assertSame( 'A traveler crosses the bridge at dawn.', $document['scenes'][0]['script_content'] );
+		$this->assertArrayNotHasKey( 'evidence', $document['scenes'][0] );
 	}
 
 	/** A confident heading controls the title without deleting repeated, evidenced Character labels. */
