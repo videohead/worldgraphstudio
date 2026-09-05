@@ -83,6 +83,12 @@ function init(): void {
 	}
 	$initialized = true;
 
+	// Cleanup must remain available after an operator disables RAG or while
+	// WPVDB is temporarily unconfigured, otherwise an already-running job could
+	// only wait for its fixed transient deadline.
+	require_once WORLDGRAPH_STORY_RAG_PLUGIN_DIR . 'includes/class-story-rag-retrieval.php';
+	Story_RAG_Retrieval::init_cleanup();
+
 	if ( ! is_enabled() ) {
 		return;
 	}
@@ -92,7 +98,6 @@ function init(): void {
 		return;
 	}
 
-	require_once WORLDGRAPH_STORY_RAG_PLUGIN_DIR . 'includes/class-story-rag-retrieval.php';
 	Story_RAG_Retrieval::init();
 }
 

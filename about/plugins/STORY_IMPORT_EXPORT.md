@@ -11,6 +11,17 @@ from **World Graph Studio > Plugins**. Its saved option is
 feature's admin and REST surfaces; it does not delete imported Story Graph data
 or retained source attachments.
 
+> **Dependency boundary:** Story Import & Export, including its built-in
+> chapter-aware decomposer and lexical evidence retrieval, does **not** require
+> WPVDB. The separate, disabled-by-default **Story RAG Decomposer** enhancement
+> does require WPVDB. Before enabling that enhancement, install and activate
+> WPVDB as a separate top-level WordPress plugin at `wp-content/plugins/wpvdb`
+> in the target WordPress installation, alongside rather than inside
+> `worldgraph/`, and configure an active embedding provider and model in
+> WPVDB. The nested `worldgraph/plugins/story-rag-decomposer/`
+> directory does not include WPVDB. That embedding setup is additional to the
+> LLM Connection required to decompose a non-canonical story document.
+
 ## Delivered capability
 
 | Direction | Behavior | LLM required |
@@ -77,13 +88,16 @@ tokens and by the Connection's lower configured `max_tokens`.
 
 With usable context metadata, the target span grows only as far as 12,000
 characters and its hard maximum only as far as 16,000. Without metadata, the
-target is 2,500 characters with a 3,000-character maximum. The initial plan is
-limited to 192 spans. A synchronous compatibility request retains that ceiling;
-the resumable job may hold at most 512 spans after targeted evidence-pass
-subdivision. Each evidence or synthesis call can make an initial request plus
-at most two compact JSON repair requests. In the ordinary successful case this
-means two model calls per span. `attempts` reports actual model calls and
-`chunks` reports final primary spans after any subdivision.
+conservative profile targets 1,100 characters with a 1,400-character hard
+maximum, 128 characters of context on either side, and a 768-token output
+allowance. The planning engine and resumable job allow at most 1,000 primary
+spans, including targeted evidence-pass subdivision. The public synchronous
+REST compatibility route accepts non-canonical input only when the extracted
+text is at most 1,400 UTF-8 characters and the initial plan is exactly one span.
+Each evidence or synthesis call can make an initial request plus at most two
+compact JSON repair requests. In the ordinary successful case this means two
+model calls per span. `attempts` reports actual model calls and `chunks` reports
+final primary spans after any subdivision.
 
 ### Structural reading plan
 
@@ -156,9 +170,11 @@ page geometry, typography, images, comments, or application-specific layout.
    ordering, and asks the authoritative importer to dry-run validate the final
    document.
 5. An invalid or output-truncated response in either pass may receive bounded
-   JSON repair attempts. A persistently invalid evidence span may also receive
-   adaptive structural subdivision. Completed job steps remain checkpointed; a
-   final candidate that still fails validation is not offered for import.
+   JSON repair attempts. Multiple recognizable top-level story documents are
+   treated as ambiguous and repaired rather than trusted according to their
+   position. A persistently invalid evidence span may also receive adaptive
+   structural subdivision. Completed job steps remain checkpointed; a final
+   candidate that still fails validation is not offered for import.
 6. The administrator reviews the resulting canonical document. The plugin does
    not create or update Story Graph records until **I reviewed this candidate
    and want to import it.** and **Confirm and Import Project** are submitted.
@@ -195,34 +211,56 @@ sent to the LLM.
 #### Optional private WPVDB bridge
 
 The bundled nested plugin at `plugins/story-rag-decomposer/` implements the two
-retrieval hooks with WordPressVectorDB (WPVDB), but is disabled by default. Its
-option is `worldgraph_story_rag_enabled`. Enabling it also requires WPVDB to be
-installed and activated separately at `wp-content/plugins/wpvdb`, with a valid
-active embedding provider and model. If that dependency or configuration is
-missing, the bridge stays inactive and decomposition continues with lexical
-retrieval.
+retrieval hooks with [WordPressVectorDB (WPVDB)](https://github.com/Automattic/wpvdb),
+but is disabled by default. Its option is `worldgraph_story_rag_enabled`.
+**WPVDB is a requirement for this RAG enhancement:** it must be installed and
+activated separately as the top-level `wp-content/plugins/wpvdb` plugin, and it
+must have a valid active embedding provider and model. Installing or enabling
+World Graph Studio does not install WPVDB. If that dependency or configuration
+is missing, the bridge stays inactive and the base Story Import & Export
+decomposer continues with its built-in lexical retrieval. The World Graph
+Studio Plugins page displays this requirement and keeps the enhancement's
+Enable control unavailable until WPVDB reports a valid configuration.
 
 The bridge calls WPVDB's public embedding method with WPVDB's active provider
 and model, so WPVDB remains authoritative for provider selection and its own
 embedding extension filter. The bridge neither reads provider credentials nor
 calls WPVDB's database or REST storage APIs.
 
-For each accepted evidence object, the bridge sends at most 12,000 characters
-of bounded structured evidence to WPVDB's active embedding provider. A
-synthesis lookup sends at most 6,000 characters of transient query text, then
-cosine-ranks at most three evidence neighbors from the same WordPress user and
-prepared-source hash. The embedding provider therefore receives those bounded
+For an accepted evidence object selected for the bounded index, the bridge
+sends at most 12,000 characters of structured evidence to WPVDB's active
+embedding provider. A synthesis lookup sends at most 6,000 characters of
+transient query text, then cosine-ranks at most three evidence neighbors from
+the same WordPress user and decomposition-run scope; the prepared-source hash
+is also validated. The embedding provider therefore receives those bounded
 inputs; operators must apply that provider's privacy and retention terms.
 
 The bridge never writes the uploaded manuscript, evidence text, query text, or
-vectors to WPVDB's shared/publicly indexable embeddings table. It retains at
-most 128 numeric vectors plus opaque chunk, source, user, provider, model, and
-dimension identifiers in private user-and-source-scoped WordPress transients.
-Each stored vector expires within two hours. Missing vectors, provider errors,
-non-finite or oversized vectors, dimension/model/source mismatches, and every
-other bridge failure leave the built-in lexical result unchanged instead of
-failing story decomposition. Job status may report the sanitized retrieval
-backend `wpvdb-private-vector` and aggregate counts, never vectors or inputs.
+vectors to WPVDB's shared/indexable embeddings table. WPVDB Core does briefly
+use its shared `wpvdb` object-cache group while servicing each embedding call.
+The bridge prefixes that call with an installation-local HMAC scope for the
+current user and decomposition run, deletes the exact scoped cache key before
+the call, and makes a best-effort deletion again when the call ends. Operators
+should still apply their object-cache retention and access policy to that brief
+concurrent-use window.
+
+The bridge retains at most 128 uniformly sampled numeric evidence vectors from
+a corpus of up to 1,000 spans, plus opaque run, chunk, user, provider, model,
+and dimension identifiers in private user-and-run-scoped WordPress transients.
+Its transient TTL is capped by the owning run's absolute deadline and can never
+extend that deadline. A resumable run begins with a fixed 806,760-second
+deadline (9 days, 8 hours, and 6 minutes); a synchronous run receives its own
+bounded scope and deadline. For resumable jobs, completion, terminal failure,
+and cancellation request per-run cleanup only after the terminal core-job
+checkpoint has committed; cleanup is best effort and expiration is the
+backstop for an abandoned run or failed deletion. A synchronous run has its own
+scope and requests cleanup when it succeeds or fails. Separate runs by the
+same user over the same source do not share the RAG transient scope. Missing
+vectors, provider errors, non-finite or oversized vectors,
+dimension/model/run mismatches, and every other bridge failure leave the
+built-in lexical result unchanged instead of failing story decomposition. Job
+status may report the sanitized retrieval backend `wpvdb-private-vector` and
+aggregate counts, never vectors or inputs.
 
 The completed import preview is held in an immutable, user-scoped transient for
 30 minutes.
@@ -234,12 +272,15 @@ Non-canonical decomposition in wp-admin is resumable. JavaScript requests one
 bounded analysis, synthesis, repair, or finalization step, then renders the
 latest safe status before asking for the next step. A provider, PHP, web-server,
 or reverse-proxy timeout can fail one request without confirming or committing
-an import; submitting the next authorized step resumes from the last saved
-checkpoint. Explicit cancellation stops further model work and discards the
-job's private working text and intermediates, but retains its safe terminal
-status and the uploaded source. The existing synchronous decomposition
-REST operation remains available for compatibility clients that deliberately
-accept one long-running request.
+an import; submitting the next authorized step resumes from the last verified
+checkpoint. Temporary provider/transport failures leave that checkpoint ready
+for resume for up to three failed retries; a fourth failure at the same
+checkpoint stops the job. Explicit cancellation stops further model work and
+discards the job's private working text and intermediates, but retains its safe
+terminal status and the uploaded source. The existing synchronous decomposition
+REST operation remains available for compatibility clients only when a
+non-canonical source is no more than 1,400 UTF-8 characters and its initial
+plan is exactly one span; canonical JSON remains synchronous.
 
 LLM decomposition is a structured first draft, not a claim of perfect literary
 interpretation. The administrator is responsible for checking titles,
@@ -262,13 +303,26 @@ the Media Library when the site's retention policy requires it. Attachment
 access follows the site's WordPress media/upload policy; the administrator-only
 import screen does not by itself make an uploaded manuscript private.
 
-During a resumable run, the prepared chunks, evidence, and partial graph remain
-inside the user-scoped server transient. Completion and cancellation clear that
-core job material early; a failed job retains it only until the job's fixed
-two-hour expiry. Optional WPVDB vectors contain no raw story text and use their
-own two-hour maximum expiry unless an extension explicitly invokes the bridge's
-source-scoped cleanup action. Neither transient lifecycle deletes the separate
-Media Library source.
+During a resumable run, prepared chunks, evidence objects, partial graphs, and
+compact graph memory are kept in separate user-and-job-scoped transient shards;
+the small core state contains authenticated references and digests rather than
+one monolithic manuscript value. Each shard is capped at 512 KiB, and shard
+writes and reads are verified. Obsolete shards are deleted only after the state
+that stopped referencing them commits. A durable cleanup list retries deletion
+on a later authenticated job load when necessary.
+
+The active-job deadline is fixed at creation and is not extended by successful
+steps. It is 806,760 seconds (9 days, 8 hours, and 6 minutes): enough for two
+passes over the maximum 1,000 spans using the six-minute request window, plus a
+24-hour resume grace. Completion aligns the remaining job state to the
+separate 30-minute preview deadline. Completion, terminal failure, and
+cancellation remove core derivative shards early; if a deletion cannot finish,
+the shard's original active-job expiration is the backstop. Optional WPVDB
+vectors contain no raw story text, are capped by the owning run's fixed
+deadline so a later write cannot extend their retention, and receive
+best-effort per-run cleanup at those same terminal states. Synchronous runs use
+their own run scope and request cleanup when they succeed or fail. Neither
+transient lifecycle deletes the separate Media Library source.
 
 For canonical JSON, extraction and validation remain local to WordPress. For
 every other source, the extracted manuscript text is sent to the selected LLM
@@ -393,7 +447,8 @@ namespace:
 | --- | --- | --- | --- |
 | `POST /import/validate` | `json` | Dry-run validation only | `manage_options` |
 | `POST /import` | `json`, optional `overwrite` | Committed import report | `manage_options` |
-| `POST /import/decompose` | Persisted `attachment_id`; optional eligible `connection_id` for non-canonical sources | Synchronous compatibility operation returning a validated canonical preview and safe processing metadata; no writes | `manage_options`, attachment `read_post`, and permission to manage the resolved Connection |
+| `POST /import/decompose` | Persisted `attachment_id`; optional eligible `connection_id` for non-canonical sources | Synchronous canonical preview, or compatibility decomposition only for non-canonical text of at most 1,400 UTF-8 characters whose initial plan is exactly one span; larger/multi-span sources return HTTP 409 `worldgraph_story_decomposition_job_required`; no writes | `manage_options`, attachment `read_post`, and permission to manage the resolved Connection when an LLM is needed |
+| `POST /import/decompositions` | Persisted non-canonical `attachment_id`; optional/default-zero `connection_id`; optional `overwrite` defaulting to `false` | Create a private resumable job; HTTP 202 with safe `job` projection and item `Location`; canonical JSON returns HTTP 409 `worldgraph_story_decomposition_not_required` | `manage_options`, attachment `read_post`, and permission to manage the resolved Connection |
 | `GET /import/decompositions/{job_id}` | Existing user-scoped job token | Safe checkpoint status; does not advance work | `manage_options` and the same WordPress user that created the job |
 | `POST /import/decompositions/{job_id}` | Existing user-scoped job token | Advances exactly one bounded checkpoint and returns safe status | Same |
 | `DELETE /import/decompositions/{job_id}` | Existing user-scoped job token | Requests cancellation; source is retained | Same |
@@ -405,18 +460,26 @@ All decomposition routes are preview-only. A client must present the derived
 candidate for review, then send its confirmed JSON through `POST /import`.
 `POST /import/decompose` accepts an attachment already persisted inside
 WordPress uploads; it does not accept raw manuscript text in the request or
-echo that non-canonical source text in the response. The job routes operate on
-a job created by the capability- and nonce-protected wp-admin upload workflow;
-they do not create a second raw-text upload surface.
+echo that non-canonical source text in the response. REST clients can create a
+resumable job with `POST /import/decompositions`, but that collection operation
+also requires an existing persisted attachment and does not create a raw-text
+upload surface. `connection_id` defaults to `0` so the server resolves the
+default compatible Connection; `overwrite` defaults to `false` and is frozen
+into the eventual preview. A successful creation is no-store, returns HTTP 202
+as `{ "success": true, "job": { ... } }`, and supplies the item URL in the
+`Location` header. Canonical JSON returns HTTP 409 with
+`worldgraph_story_decomposition_not_required` from the collection route and
+should use `/import/decompose`, `/import/validate`, or `/import` instead.
 
 A job ID is an unguessable 256-bit base64url token whose transient state is
-additionally bound to the creating WordPress user. Its two-hour expiry is fixed
-at creation and is not extended by steps. Each POST claims a per-job lock,
-performs one checkpoint, and returns the phase, a safe current-section message,
-aggregate progress, analysis/synthesis counts, attempts/tokens, action flags, and an
-optional normalized error. A sanitized retrieval backend plus indexed/retrieved
-counts may be present, but never source excerpts or vectors. Only a completed
-job exposes its 30-minute import preview URL. No job response exposes
+additionally bound to the creating WordPress user. Its 806,760-second active
+deadline is fixed at creation and is not extended by steps. Each item POST
+claims a per-job lock, performs one checkpoint, and returns the phase, a safe
+current-section message, aggregate progress, analysis/synthesis counts,
+attempts/tokens, action flags, and an optional normalized error. A sanitized
+retrieval backend plus indexed/retrieved counts may be present, but never source
+excerpts or vectors. Only a completed job exposes its 30-minute import preview
+URL. No job response exposes
 manuscript/chunk text, context, evidence, partial graphs, prompts, model
 reasoning, model/profile/Connection details, or credentials.
 
@@ -425,9 +488,10 @@ reasoning, model/profile/Connection details, or credentials.
 The REST compatibility surface is delivered, but the optional Next.js
 application has no authenticated creator adapter or import/export interface.
 It does not yet provide browser-user authorization, upload and retained-source
-controls, safe job-status DTOs, step/retry/resume/cancel handling, explicit
-confirmation, or download handling. The capability is therefore **Partial —
-authentication-blocked**, not headless parity. See
+controls, collection-create/202/`Location` handling, safe job-status DTOs,
+step/retry/resume/cancel handling, explicit confirmation, or download handling.
+The capability is therefore **Partial — authentication-blocked**, not headless
+parity. See
 [Headless Parity](../../headless/PARITY.md).
 
 ## Related documents
@@ -437,3 +501,12 @@ authentication-blocked**, not headless parity. See
 - [Script and EDL Integration](../Script_EDL_Integration.md)
 - [REST API Specification](../REST_API_Specification.md)
 - [Example Workflow User Guide](../example-workflow/USER_GUIDE.md)
+
+## Design references
+
+The structure-aware chunk planner was informed by the general chunking approach
+demonstrated by [PHPTextChunker](https://github.com/EdouardCourty/PHPTextChunker),
+and the evidence-to-graph workflow was informed by Adaptive Recall's
+[Build a Knowledge Graph from Text](https://www.adaptiverecall.com/knowledge-graphs/build-from-text.php).
+These are design references, not runtime dependencies, and this implementation
+does not claim to copy either package's code.

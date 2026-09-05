@@ -229,6 +229,8 @@
 			} else if (status === 'failed' || status === 'cancelled') {
 				stopped = true;
 				clearTimer();
+			} else if (status === 'ready' && error.retryable) {
+				setPaused(error.message || message('retryableError', 'Preparation paused at the last safe checkpoint. Resume to retry.'));
 			} else if (status === 'cancelling') {
 				cancelling = true;
 				if (cancelButton) {

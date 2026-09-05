@@ -13,7 +13,9 @@ defined( 'ABSPATH' ) || exit;
 class Import {
 	private const PREVIEW_TTL = 30 * MINUTE_IN_SECONDS;
 	private const REPORT_TTL  = 5 * MINUTE_IN_SECONDS;
-	private const LOCK_TTL    = 5 * MINUTE_IN_SECONDS;
+	// A preview cannot outlive this lease, so no second request can treat an
+	// active lock as stale while the same preview remains consumable.
+	private const LOCK_TTL    = self::PREVIEW_TTL;
 	private const FILE_TYPES  = [ 'json', 'txt', 'text', 'md', 'markdown', 'fountain', 'rtf', 'pdf', 'epub', 'docx', 'odt' ];
 	private const LLM_TYPES   = [ 'openai_compatible', 'openai', 'anthropic' ];
 
@@ -229,22 +231,33 @@ class Import {
 
 	/** Revalidate and consume a preview, then perform the only mutating import. */
 	private static function confirm_preview(): void {
-		$token   = self::posted_token();
-		$preview = self::get_preview( $token );
-		if ( is_wp_error( $preview ) ) {
-			self::redirect_with_notice( 'error', self::safe_error_message( $preview ) );
-		}
+		$token = self::posted_token();
 		$confirmed = isset( $_POST['worldgraph_confirm_import'] )
 			? sanitize_text_field( wp_unslash( $_POST['worldgraph_confirm_import'] ) )
 			: '';
 		if ( '1' !== $confirmed ) {
 			self::redirect_with_notice( 'error', __( 'Review the candidate and check the confirmation box before importing.', 'worldgraph' ), 0, $token );
 		}
+		if ( '' === $token ) {
+			self::redirect_with_notice( 'error', __( 'The import preview token is missing.', 'worldgraph' ) );
+		}
+
+		// The preview must be read and consumed while holding the same lock. This
+		// makes confirmation and cancellation mutually exclusive and prevents two
+		// concurrent confirmations from importing one transient twice.
+		$lock = self::acquire_lock( $token );
+		if ( is_wp_error( $lock ) ) {
+			self::redirect_with_notice( 'error', self::safe_error_message( $lock ) );
+		}
+		$preview = self::get_preview( $token );
+		if ( is_wp_error( $preview ) ) {
+			self::release_lock_and_redirect( $lock, 'error', self::safe_error_message( $preview ) );
+		}
 
 		$json = (string) ( $preview['json'] ?? '' );
 		if ( empty( $preview['json_hash'] ) || ! hash_equals( (string) $preview['json_hash'], hash( 'sha256', $json ) ) ) {
 			delete_transient( self::preview_key( $token ) );
-			self::redirect_with_notice( 'error', __( 'The stored preview failed its integrity check. Upload the source again.', 'worldgraph' ) );
+			self::release_lock_and_redirect( $lock, 'error', __( 'The stored preview failed its integrity check. Upload the source again.', 'worldgraph' ) );
 		}
 
 		$validation = ( new \WorldGraph\Importer\WorldGraph_Importer() )->import(
@@ -255,12 +268,10 @@ class Import {
 			]
 		);
 		if ( is_wp_error( $validation ) ) {
-			self::redirect_with_notice( 'error', self::safe_error_message( $validation ), 0, $token );
+			self::release_lock_and_redirect( $lock, 'error', self::safe_error_message( $validation ), 0, $token );
 		}
-
-		$lock = self::acquire_lock( $token );
-		if ( is_wp_error( $lock ) ) {
-			self::redirect_with_notice( 'error', self::safe_error_message( $lock ) );
+		if ( ! self::owns_current_lock( $lock ) || time() >= absint( $preview['expires_at'] ?? 0 ) ) {
+			self::release_lock_and_redirect( $lock, 'error', __( 'The import preview expired while it was being validated. Upload the source again.', 'worldgraph' ) );
 		}
 
 		delete_transient( self::preview_key( $token ) );
@@ -271,7 +282,7 @@ class Import {
 				[ 'overwrite' => ! empty( $preview['overwrite'] ) ]
 			);
 		} finally {
-			delete_option( $lock );
+			self::release_lock( $lock );
 		}
 
 		$attachment_id = absint( $preview['attachment_id'] ?? 0 );
@@ -307,16 +318,23 @@ class Import {
 
 	/** Discard a candidate without deleting its Media Library source. */
 	private static function cancel_preview(): void {
-		$token   = self::posted_token();
+		$token = self::posted_token();
+		if ( '' === $token ) {
+			self::redirect_with_notice( 'error', __( 'The import preview token is missing.', 'worldgraph' ) );
+		}
+		$lock = self::acquire_lock( $token );
+		if ( is_wp_error( $lock ) ) {
+			self::redirect_with_notice( 'error', self::safe_error_message( $lock ) );
+		}
 		$preview = self::get_preview( $token );
 		if ( is_wp_error( $preview ) ) {
-			self::redirect_with_notice( 'error', self::safe_error_message( $preview ) );
+			self::release_lock_and_redirect( $lock, 'error', self::safe_error_message( $preview ) );
 		}
 
 		delete_transient( self::preview_key( $token ) );
 		$attachment_id = absint( $preview['attachment_id'] ?? 0 );
 		self::mark_attachment( $attachment_id, 'preview_cancelled' );
-		self::redirect_with_notice( 'info', __( 'Preview cancelled. The uploaded source remains in the Media Library.', 'worldgraph' ), $attachment_id );
+		self::release_lock_and_redirect( $lock, 'info', __( 'Preview cancelled. The uploaded source remains in the Media Library.', 'worldgraph' ), $attachment_id );
 	}
 
 	/** Persist the new upload field, its legacy alias, or legacy inline JSON. */
@@ -691,15 +709,54 @@ class Import {
 
 	/** Atomically serialize confirmation requests for one preview. */
 	private static function acquire_lock( string $token ) {
-		$key      = 'worldgraph_story_import_lock_' . substr( hash( 'sha256', get_current_user_id() . ':' . $token ), 0, 40 );
-		$existing = absint( get_option( $key, 0 ) );
-		if ( $existing && ( time() - $existing ) > self::LOCK_TTL ) {
+		$key         = 'worldgraph_story_import_lock_' . substr( hash( 'sha256', get_current_user_id() . ':' . $token ), 0, 40 );
+		$existing    = get_option( $key, [] );
+		$acquired_at = is_array( $existing ) ? absint( $existing['acquired_at'] ?? 0 ) : absint( $existing );
+		if ( $acquired_at && ( time() - $acquired_at ) > self::LOCK_TTL ) {
 			delete_option( $key );
 		}
-		if ( ! add_option( $key, time(), '', false ) ) {
+		$owner = self::new_token();
+		if ( ! add_option( $key, [ 'owner' => $owner, 'acquired_at' => time() ], '', false ) ) {
 			return new \WP_Error( 'worldgraph_story_import_locked', __( 'This preview is already being imported. Wait for the first request to finish.', 'worldgraph' ) );
 		}
-		return $key;
+		$lock = [ 'key' => $key, 'owner' => $owner ];
+		register_shutdown_function(
+			static function () use ( $lock ): void {
+				self::release_lock( $lock );
+			}
+		);
+		return $lock;
+	}
+
+	/** Confirm that this request still owns an unexpired preview lock. */
+	private static function owns_current_lock( $lock ): bool {
+		if ( ! is_array( $lock ) || ! is_string( $lock['key'] ?? null ) || ! is_string( $lock['owner'] ?? null ) ) {
+			return false;
+		}
+		$current     = get_option( $lock['key'], [] );
+		$acquired_at = is_array( $current ) ? absint( $current['acquired_at'] ?? 0 ) : 0;
+		return is_array( $current )
+			&& is_string( $current['owner'] ?? null )
+			&& hash_equals( $lock['owner'], $current['owner'] )
+			&& $acquired_at > 0
+			&& ( time() - $acquired_at ) <= self::LOCK_TTL;
+	}
+
+	/** Release only the exact preview lock owned by this request. */
+	private static function release_lock( $lock ): void {
+		if ( ! is_array( $lock ) || ! is_string( $lock['key'] ?? null ) || ! is_string( $lock['owner'] ?? null ) ) {
+			return;
+		}
+		$current = get_option( $lock['key'], [] );
+		if ( is_array( $current ) && is_string( $current['owner'] ?? null ) && hash_equals( $lock['owner'], $current['owner'] ) ) {
+			delete_option( $lock['key'] );
+		}
+	}
+
+	/** Release an import lock before a redirecting error or cancellation path. */
+	private static function release_lock_and_redirect( $lock, string $type, string $message, int $attachment_id = 0, string $preview_token = '' ): void {
+		self::release_lock( $lock );
+		self::redirect_with_notice( $type, $message, $attachment_id, $preview_token );
 	}
 
 	/** Resolve and authorize a user-scoped preview transient. */

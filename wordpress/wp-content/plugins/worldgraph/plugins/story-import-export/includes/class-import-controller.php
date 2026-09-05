@@ -20,6 +20,12 @@ require_once __DIR__ . '/class-decomposition-job.php';
  * Import Controller class.
  */
 class Import_Controller extends Base_Controller {
+	/** Provider types eligible for story decomposition. */
+	private const LLM_TYPES = [ 'openai_compatible', 'openai', 'anthropic' ];
+
+	/** Keep the legacy synchronous route confined to one small source section. */
+	private const MAX_SYNCHRONOUS_CHARACTERS = 1_400;
+	private const MAX_SYNCHRONOUS_CHUNKS     = 1;
 
 	/**
 	 * Rest base.
@@ -92,6 +98,34 @@ class Import_Controller extends Base_Controller {
 						'type'        => 'integer',
 						'minimum'     => 0,
 						'default'     => 0,
+					],
+				],
+			],
+		] );
+
+		register_rest_route( 'worldgraph/v1', '/import/decompositions', [
+			[
+				'methods'             => 'POST',
+				'callback'            => [ $this, 'create_decomposition_job' ],
+				'permission_callback' => [ $this, 'check_decomposition_permission' ],
+				'args'                => [
+					'attachment_id' => [
+						'description' => 'A persisted non-canonical story-source attachment to decompose in resumable checkpoints.',
+						'type'        => 'integer',
+						'minimum'     => 1,
+						'required'    => true,
+					],
+					'connection_id' => [
+						'description' => 'The manageable LLM Connection to use. When omitted, the site default compatible ' .
+							'Connection is selected.',
+						'type'        => 'integer',
+						'minimum'     => 0,
+						'default'     => 0,
+					],
+					'overwrite'     => [
+						'description' => 'Whether the eventual confirmed import may overwrite entities with matching external IDs.',
+						'type'        => 'boolean',
+						'default'     => false,
 					],
 				],
 			],
@@ -204,7 +238,7 @@ class Import_Controller extends Base_Controller {
 	public function decompose_story( WP_REST_Request $request ) {
 		$attachment_id = absint( $request->get_param( 'attachment_id' ) );
 		$connection_id = absint( $request->get_param( 'connection_id' ) );
-		$source        = ( new \WorldGraphStoryIO\Source_Extractor() )->extract_attachment( $attachment_id );
+		$source        = $this->extract_story_source( $attachment_id );
 		if ( is_wp_error( $source ) ) {
 			return $this->safe_error( $source, 400 );
 		}
@@ -213,7 +247,7 @@ class Import_Controller extends Base_Controller {
 			'attachment_id' => $attachment_id,
 			'filename'      => sanitize_file_name( (string) ( $source['filename'] ?? '' ) ),
 			'format'        => sanitize_key( (string) ( $source['format'] ?? '' ) ),
-			'characters'    => absint( $source['characters'] ?? 0 ),
+			'characters'    => mb_strlen( (string) ( $source['text'] ?? '' ), 'UTF-8' ),
 		];
 
 		if ( ! empty( $source['is_json'] ) ) {
@@ -248,24 +282,34 @@ class Import_Controller extends Base_Controller {
 		}
 
 		if ( ! $connection_id ) {
-			$connection_id = \WorldGraphStoryIO\Story_Decomposer::default_connection_id();
+			$connection_id = $this->default_decomposition_connection_id();
 		}
-		if ( ! $connection_id ) {
-			return new WP_Error(
-				'worldgraph_story_connection_required',
-				'No usable LLM Connection is configured for story decomposition.',
-				[ 'status' => 400 ]
-			);
-		}
-		if ( ! \WorldGraph\Utils\Connection_Repository::current_user_can_manage( $connection_id ) ) {
-			return new WP_Error(
-				'worldgraph_story_connection_forbidden',
-				'You cannot use the configured LLM Connection for story decomposition.',
-				[ 'status' => 403 ]
-			);
+		$connection = $this->validate_decomposition_connection( $connection_id );
+		if ( is_wp_error( $connection ) ) {
+			$status = 'worldgraph_story_connection_forbidden' === (string) $connection->get_error_code() ? 403 : 400;
+			return $this->safe_error( $connection, $status );
 		}
 
-		$result = ( new \WorldGraphStoryIO\Story_Decomposer() )->decompose(
+		if ( (int) $source_metadata['characters'] > self::MAX_SYNCHRONOUS_CHARACTERS ) {
+			return $this->decomposition_job_required_error();
+		}
+
+		$decomposer = $this->story_decomposer();
+		$planned    = $decomposer->create_plan(
+			(string) $source['text'],
+			(string) $source['filename'],
+			$connection_id,
+			is_array( $source['boundaries'] ?? null ) ? $source['boundaries'] : []
+		);
+		if ( is_wp_error( $planned ) ) {
+			return $this->safe_error( $planned, 422 );
+		}
+		$planned_chunks = is_array( $planned['plan']['chunks'] ?? null ) ? $planned['plan']['chunks'] : [];
+		if ( count( $planned_chunks ) > self::MAX_SYNCHRONOUS_CHUNKS ) {
+			return $this->decomposition_job_required_error();
+		}
+
+		$result = $decomposer->decompose(
 			(string) $source['text'],
 			(string) $source['filename'],
 			$connection_id,
@@ -297,24 +341,87 @@ class Import_Controller extends Base_Controller {
 		] );
 	}
 
+	/**
+	 * Create one private resumable job for a persisted non-canonical source.
+	 *
+	 * @param WP_REST_Request $request REST request.
+	 * @return WP_REST_Response|WP_Error REST response or error.
+	 */
+	public function create_decomposition_job( WP_REST_Request $request ) {
+		$attachment_id = absint( $request->get_param( 'attachment_id' ) );
+		$connection_id = absint( $request->get_param( 'connection_id' ) );
+		$overwrite     = rest_sanitize_boolean( $request->get_param( 'overwrite' ) );
+		$source        = $this->extract_story_source( $attachment_id );
+		if ( is_wp_error( $source ) ) {
+			return $this->safe_error( $source, 400 );
+		}
+		if ( ! empty( $source['is_json'] ) ) {
+			return new WP_Error(
+				'worldgraph_story_decomposition_not_required',
+				__(
+					'This attachment is already canonical World Graph Studio JSON. Use the synchronous preview route or validate and import it directly.',
+					'worldgraph'
+				),
+				[ 'status' => 409 ]
+			);
+		}
+
+		if ( ! $connection_id ) {
+			$connection_id = $this->default_decomposition_connection_id();
+		}
+		$connection = $this->validate_decomposition_connection( $connection_id );
+		if ( is_wp_error( $connection ) ) {
+			$status = 'worldgraph_story_connection_forbidden' === (string) $connection->get_error_code() ? 403 : 400;
+			return $this->safe_error( $connection, $status );
+		}
+
+		$job = $this->start_decomposition_job(
+			$source,
+			$attachment_id,
+			$connection_id,
+			$overwrite,
+			$this->decomposition_connection_name( $connection )
+		);
+		if ( is_wp_error( $job ) ) {
+			$status = 'worldgraph_llm_request_failed' === (string) $job->get_error_code() ? 502 : 422;
+			return $this->safe_error( $job, $status );
+		}
+
+		$job_id = sanitize_text_field( (string) ( $job['job_id'] ?? '' ) );
+		if ( ! preg_match( '/\A[A-Za-z0-9_-]{32,86}\z/', $job_id ) ) {
+			return new WP_Error(
+				'worldgraph_story_decomposition_job_invalid',
+				'The story decomposition job did not return a valid private identifier.',
+				[ 'status' => 500 ]
+			);
+		}
+
+		$this->mark_decomposition_job_pending( $attachment_id, $job_id );
+		$location = rest_url( 'worldgraph/v1/import/decompositions/' . rawurlencode( $job_id ) );
+		return $this->decomposition_job_response( $job, 202, $location );
+	}
+
 	/** Return the safe public projection of one private decomposition job. */
 	public function get_decomposition_job( WP_REST_Request $request ) {
+		$route = $request->get_url_params();
 		return $this->decomposition_job_response(
-			\WorldGraphStoryIO\Decomposition_Job::status( (string) $request->get_param( 'job_id' ) )
+			\WorldGraphStoryIO\Decomposition_Job::status( (string) ( $route['job_id'] ?? '' ) )
 		);
 	}
 
 	/** Advance exactly one bounded analysis, synthesis, or finalization stage. */
 	public function step_decomposition_job( WP_REST_Request $request ) {
+		$route = $request->get_url_params();
 		return $this->decomposition_job_response(
-			\WorldGraphStoryIO\Decomposition_Job::step( (string) $request->get_param( 'job_id' ) )
+			\WorldGraphStoryIO\Decomposition_Job::step( (string) ( $route['job_id'] ?? '' ) )
 		);
 	}
 
 	/** Request cancellation of one private decomposition job. */
 	public function cancel_decomposition_job( WP_REST_Request $request ) {
+		$route = $request->get_url_params();
 		return $this->decomposition_job_response(
-			\WorldGraphStoryIO\Decomposition_Job::cancel( (string) $request->get_param( 'job_id' ) )
+			\WorldGraphStoryIO\Decomposition_Job::cancel( (string) ( $route['job_id'] ?? '' ) )
 		);
 	}
 
@@ -452,8 +559,8 @@ class Import_Controller extends Base_Controller {
 	}
 
 	/** Return sensitive story/export content with explicit no-store headers. */
-	private function private_response( array $data ): WP_REST_Response {
-		$response = rest_ensure_response( $data );
+	private function private_response( array $data, int $status = 200 ): WP_REST_Response {
+		$response = new WP_REST_Response( $data, $status );
 		$response->header( 'Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0' );
 		$response->header( 'Pragma', 'no-cache' );
 		$response->header( 'X-Content-Type-Options', 'nosniff' );
@@ -461,25 +568,199 @@ class Import_Controller extends Base_Controller {
 	}
 
 	/** Return a no-store job response without forwarding private WP_Error data. */
-	private function decomposition_job_response( $result ) {
+	private function decomposition_job_response( $result, int $success_status = 200, string $location = '' ) {
 		if ( is_wp_error( $result ) ) {
 			$data   = $result->get_error_data();
 			$status = is_array( $data ) ? absint( $data['status'] ?? 0 ) : 0;
 			$status = $status ?: 400;
 			$error  = $this->safe_error( $result, $status );
-			$response = $this->private_response( [
+			return $this->private_response( [
 				'code'    => (string) $error->get_error_code(),
 				'message' => (string) $error->get_error_message(),
 				'data'    => [ 'status' => $status ],
-			] );
-			$response->set_status( $status );
-			return $response;
+			], $status );
 		}
 
-		return $this->private_response( [
+		$response = $this->private_response( [
 			'success' => true,
-			'job'     => is_array( $result ) ? $result : [],
-		] );
+			'job'     => is_array( $result ) ? $this->decomposition_job_projection( $result ) : [],
+		], $success_status );
+		if ( '' !== $location ) {
+			$response->header( 'Location', $location );
+		}
+		return $response;
+	}
+
+	/** Allow only the documented non-sensitive job status fields across REST. */
+	private function decomposition_job_projection( array $job ): array {
+		$progress  = is_array( $job['progress'] ?? null ) ? $job['progress'] : [];
+		$analysis  = is_array( $job['analysis'] ?? null ) ? $job['analysis'] : [];
+		$synthesis = is_array( $job['synthesis'] ?? null ) ? $job['synthesis'] : [];
+		$retrieval = is_array( $job['retrieval'] ?? null ) ? $job['retrieval'] : [];
+		$error     = is_array( $job['error'] ?? null ) ? $job['error'] : [];
+
+		return [
+			'job_id'       => sanitize_text_field( (string) ( $job['job_id'] ?? '' ) ),
+			'status'       => sanitize_key( (string) ( $job['status'] ?? '' ) ),
+			'stage'        => sanitize_key( (string) ( $job['stage'] ?? '' ) ),
+			'stage_label'  => sanitize_text_field( (string) ( $job['stage_label'] ?? '' ) ),
+			'section'      => sanitize_text_field( (string) ( $job['section'] ?? '' ) ),
+			'progress'     => [
+				'completed' => absint( $progress['completed'] ?? 0 ),
+				'total'     => absint( $progress['total'] ?? 0 ),
+				'percent'   => min( 100, absint( $progress['percent'] ?? 0 ) ),
+			],
+			'analysis'     => [
+				'completed' => absint( $analysis['completed'] ?? 0 ),
+				'total'     => absint( $analysis['total'] ?? 0 ),
+			],
+			'synthesis'    => [
+				'completed' => absint( $synthesis['completed'] ?? 0 ),
+				'total'     => absint( $synthesis['total'] ?? 0 ),
+			],
+			'attempts'     => absint( $job['attempts'] ?? 0 ),
+			'tokens'       => absint( $job['tokens'] ?? 0 ),
+			'retrieval'    => [
+				'backend'   => sanitize_key( (string) ( $retrieval['backend'] ?? '' ) ),
+				'indexed'   => absint( $retrieval['indexed'] ?? 0 ),
+				'retrieved' => absint( $retrieval['retrieved'] ?? 0 ),
+			],
+			'error'        => [
+				'code'        => sanitize_key( (string) ( $error['code'] ?? '' ) ),
+				'message'     => sanitize_text_field( (string) ( $error['message'] ?? '' ) ),
+				'retryable'   => ! empty( $error['retryable'] ),
+				'retry_count' => absint( $error['retry_count'] ?? 0 ),
+				'retry_limit' => absint( $error['retry_limit'] ?? 0 ),
+			],
+			'can_step'     => ! empty( $job['can_step'] ),
+			'can_cancel'   => ! empty( $job['can_cancel'] ),
+			'preview_url'  => esc_url_raw( (string) ( $job['preview_url'] ?? '' ) ),
+			'preview_expires_at' => absint( $job['preview_expires_at'] ?? 0 ),
+			'expires_at'   => absint( $job['expires_at'] ?? 0 ),
+		];
+	}
+
+	/** Extract one persisted source through an overridable, server-owned seam. */
+	protected function extract_story_source( int $attachment_id ) {
+		return ( new \WorldGraphStoryIO\Source_Extractor() )->extract_attachment( $attachment_id );
+	}
+
+	/** Build a decomposer through an overridable seam for focused REST tests. */
+	protected function story_decomposer(): \WorldGraphStoryIO\Story_Decomposer {
+		return new \WorldGraphStoryIO\Story_Decomposer();
+	}
+
+	/** Resolve the site's default eligible decomposition Connection. */
+	protected function default_decomposition_connection_id(): int {
+		return \WorldGraphStoryIO\Story_Decomposer::default_connection_id();
+	}
+
+	/** Validate a selected Connection without exposing its resolved credential data. */
+	protected function validate_decomposition_connection( int $connection_id ) {
+		if ( ! $connection_id ) {
+			return new WP_Error(
+				'worldgraph_story_connection_required',
+				__( 'No usable LLM Connection is configured for story decomposition.', 'worldgraph' )
+			);
+		}
+		if ( ! $this->current_user_can_manage_decomposition_connection( $connection_id ) ) {
+			return new WP_Error(
+				'worldgraph_story_connection_forbidden',
+				__( 'You cannot use the selected LLM Connection for story decomposition.', 'worldgraph' )
+			);
+		}
+
+		$connection = $this->decomposition_connection_record( $connection_id );
+		if ( ! is_array( $connection ) ) {
+			return new WP_Error(
+				'worldgraph_story_connection_invalid',
+				__( 'Select a published OpenAI-compatible, OpenAI, or Anthropic LLM Connection.', 'worldgraph' )
+			);
+		}
+
+		$provider = sanitize_key( (string) ( $connection['provider_type'] ?? '' ) );
+		if (
+			'publish' !== (string) ( $connection['status_wp'] ?? '' )
+			|| ! in_array( $provider, self::LLM_TYPES, true )
+		) {
+			return new WP_Error(
+				'worldgraph_story_connection_invalid',
+				__( 'Select a published OpenAI-compatible, OpenAI, or Anthropic LLM Connection.', 'worldgraph' )
+			);
+		}
+		if ( 'disabled' === (string) ( $connection['status'] ?? '' ) ) {
+			return new WP_Error(
+				'worldgraph_story_connection_disabled',
+				__( 'The selected LLM Connection is disabled.', 'worldgraph' )
+			);
+		}
+		if (
+			'' === trim( (string) ( $connection['endpoint_url'] ?? '' ) )
+			|| '' === trim( (string) ( $connection['model'] ?? '' ) )
+		) {
+			return new WP_Error(
+				'worldgraph_story_connection_incomplete',
+				__( 'The selected LLM Connection needs an endpoint URL and model.', 'worldgraph' )
+			);
+		}
+
+		return $connection;
+	}
+
+	/** Check the selected Connection's object-level management boundary. */
+	protected function current_user_can_manage_decomposition_connection( int $connection_id ): bool {
+		return \WorldGraph\Utils\Connection_Repository::current_user_can_manage( $connection_id );
+	}
+
+	/** Load the trusted server-side Connection record after authorization. */
+	protected function decomposition_connection_record( int $connection_id ): ?array {
+		return \WorldGraph\Utils\Connection_Repository::get( $connection_id );
+	}
+
+	/** Create one private checkpointed job through the shared job engine. */
+	protected function start_decomposition_job(
+		array $source,
+		int $attachment_id,
+		int $connection_id,
+		bool $overwrite,
+		string $connection_name
+	) {
+		return \WorldGraphStoryIO\Decomposition_Job::create(
+			$source,
+			$attachment_id,
+			$connection_id,
+			$overwrite,
+			$connection_name
+		);
+	}
+
+	/** Return a safe display label without serializing the Connection record. */
+	protected function decomposition_connection_name( array $connection ): string {
+		$name = ! empty( $connection['connection_name'] ) ? $connection['connection_name'] : ( $connection['title'] ?? '' );
+		return sanitize_text_field( (string) $name );
+	}
+
+	/** Mark the source as resumable without persisting its text in response metadata. */
+	protected function mark_decomposition_job_pending( int $attachment_id, string $job_id ): void {
+		update_post_meta( $attachment_id, '_worldgraph_story_import_status', 'decomposition_pending' );
+		update_post_meta(
+			$attachment_id,
+			'_worldgraph_story_preview_fingerprint',
+			substr( hash( 'sha256', $job_id ), 0, 24 )
+		);
+		update_post_meta( $attachment_id, '_worldgraph_story_imported_by', get_current_user_id() );
+	}
+
+	/** Direct long-form clients to the checkpointed collection operation. */
+	private function decomposition_job_required_error(): WP_Error {
+		return new WP_Error(
+			'worldgraph_story_decomposition_job_required',
+			__(
+				'This source requires resumable processing. Create a job with POST /worldgraph/v1/import/decompositions, then advance its checkpoint URL.',
+				'worldgraph'
+			),
+			[ 'status' => 409 ]
+		);
 	}
 
 	/** Rebuild a trusted REST error without carrying arbitrary provider data. */

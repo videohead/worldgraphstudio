@@ -64,9 +64,9 @@ Use the current WordPress contracts for
 and
 [`wp_register_ability_category()`](https://developer.wordpress.org/reference/functions/wp_register_ability_category/)
 when repairing that separate inbound surface.
-The current `.vscode/mcp.json` also contains extension settings rather than an
-MCP `servers` registry; do not use it as evidence that a coding-tool server is
-configured.
+The VS Code workspace coding-agent registry is `.vscode/mcp.json`. Extension
+settings belong in `.vscode/settings.json`; the registry currently defines the
+deployment-specific Metis coding-tool server.
 
 ## 3. Runtime Architecture
 
@@ -1554,8 +1554,8 @@ behavior that does not exist:
 - The current Abilities implementation uses the wrong registration lifecycle
   and lacks required categories; World Graph Studio also does not bundle a
   WordPress MCP server/adapter.
-- `.vscode/mcp.json` is not currently an MCP server registry; it contains
-  extension settings and no `servers` object.
+- `.vscode/mcp.json` is the VS Code workspace MCP server registry and currently
+  defines the deployment-specific Metis coding-tool server.
 
 If a task introduces a generic callback or interface to remove one of these
 limits, specify the migration and backward-compatibility behavior, retain the

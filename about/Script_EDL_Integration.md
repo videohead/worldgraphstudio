@@ -95,17 +95,20 @@ delete the source attachment; it remains in WordPress uploads. PDF support is
 limited to documents with an extractable text layer. A scan or image-only PDF
 returns an OCR-required error and must be made searchable before retrying.
 
-The headless-compatible preview endpoint accepts a persisted attachment and
-selected Connection:
+An authenticated API client creates non-canonical long-form work from a
+persisted attachment and optional/default Connection:
 
 ```http
-POST /wp-json/worldgraph/v1/import/decompose
+POST /wp-json/worldgraph/v1/import/decompositions
 ```
 
-It returns the derived canonical candidate and bounded processing metadata.
-For non-canonical sources it does not return the original manuscript, and it
-never returns resolved Connection credentials. A REST client confirms by
-submitting the reviewed candidate to `POST /import`.
+It returns HTTP 202, a bounded job projection, and the item URL in `Location`;
+the client advances that URL one checkpoint at a time. The synchronous
+`POST /import/decompose` compatibility route is reserved for canonical JSON or
+non-canonical text of at most 1,400 UTF-8 characters whose initial plan is
+exactly one span. Neither path returns the original non-canonical manuscript or
+resolved Connection credentials. A REST client confirms by submitting the
+reviewed candidate to `POST /import`.
 
 ### Final Draft FDX Import
 
@@ -224,13 +227,14 @@ capabilities or active delivery commitments:
 
 No `/scripts/*` routes are registered in v1. The Story Import & Export plugin
 instead provides administrator-only `/import/validate`, `/import`,
-`/import/decompose`, and `/export/{project_id}` compatibility routes. The
-headless REST contract therefore exists, but the optional Next.js application
-still lacks browser-user authentication, a creator adapter, and import/export
-UI. Delivered FDX import uses a capability- and nonce-protected WordPress admin
-action; the deterministic Fountain source targets the same pattern but is not
-yet operational. Extensions should use their own namespaces until they satisfy
-the canonical Story Graph mapping and validation contract.
+bounded synchronous `/import/decompose`, `/import/decompositions` collection
+creation and item status/step/cancellation, and `/export/{project_id}` routes.
+The headless REST contract therefore exists, but the optional Next.js
+application still lacks browser-user authentication, a creator adapter, and
+import/export UI. Delivered FDX import uses a capability- and nonce-protected
+WordPress admin action; the deterministic Fountain source targets the same
+pattern but is not yet operational. Extensions should use their own namespaces
+until they satisfy the canonical Story Graph mapping and validation contract.
 
 ## Story Graph Mapping Rules
 

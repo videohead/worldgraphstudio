@@ -90,7 +90,12 @@ and ODT files up to 20 MB. Canonical JSON follows that upload-size boundary;
 other extracted sources are limited to 500,000 characters. WordPress first
 saves the selected file as a Media Library attachment. If it is already
 canonical World Graph Studio JSON, the plugin validates it directly and makes
-no model request. Otherwise:
+no model request. For non-canonical sources, a known model context can support
+spans up to a 12,000-character target and 16,000-character hard maximum. When
+context metadata is unavailable, the conservative profile uses a 1,100-
+character target, 1,400-character hard maximum, 128 characters of context on
+each side, and a 768-token response allowance. A plan cannot exceed 1,000
+spans, including adaptive subdivisions. For an LLM decomposition:
 
 The repository's [sample EPUB](pg28554-images-3.epub) can be used to exercise
 the spine-order extraction, heading-aware planning, and resumable path below.
@@ -125,9 +130,23 @@ finalization step instead of holding one browser request open for the entire
 book. A provider, PHP, web-server, or reverse-proxy timeout does not confirm or
 commit the candidate. Retry the current step to resume from the saved
 checkpoint; persistent model failures can still require a smaller source, a
-faster model, or a larger-context Connection. The preparation job expires two
-hours after creation even when steps succeed. Once it finishes, the separate
-review preview remains available for 30 minutes.
+faster model, or a larger-context Connection. Temporary provider failures may
+be resumed at the same saved checkpoint for three failed retries; the fourth
+failure at that checkpoint stops the job. The active preparation deadline is
+fixed at creation: 806,760 seconds (9 days, 8 hours, and 6 minutes), covering
+the two passes over the 1,000-span ceiling plus a 24-hour resume grace. Once it
+finishes, the separate review preview remains available for 30 minutes.
+Prepared chunks and model intermediates are held in separate, verified private
+transient shards of at most 512 KiB rather than one large job record. A terminal
+checkpoint requests early cleanup; expiry remains the backstop if cleanup or a
+run itself is abandoned.
+
+For API-driven imports, create long-form work with
+`POST /wp-json/worldgraph/v1/import/decompositions` using the persisted
+`attachment_id`; then follow the returned `Location` and advance its item URL.
+The legacy `/import/decompose` route is synchronous only for canonical JSON or
+non-canonical input of at most 1,400 UTF-8 characters whose initial plan is
+exactly one span.
 
 The story reaches the model as a JSON data envelope under separate server-owned
 instructions, not as chat history. Story text that resembles a command remains
@@ -137,15 +156,35 @@ normalized, dry-run-validated World Graph Studio version 1.2 document becomes
 the candidate you can confirm; intermediate evidence and partial graph objects
 cannot be imported.
 
-By default, related evidence is selected privately with lexical matching. A
-site operator can optionally enable the bundled **Story RAG Decomposer** under
-**World Graph Studio > Plugins**, but only after separately installing and
-activating WPVDB at `wp-content/plugins/wpvdb` and configuring its embedding
-provider/model. That provider receives bounded evidence and query input. The
-bridge stores only numeric vectors and bounded identifiers in private
-user/source-scoped transients for up to two hours and does not put manuscript,
-evidence, or query text in WPVDB's shared embeddings table. If WPVDB is
-unavailable or fails, preparation automatically retains the lexical result.
+By default, related evidence is selected privately with lexical matching.
+Neither Story Import & Export nor that base decomposer requires WPVDB.
+
+The bundled **Story RAG Decomposer** is a separate, optional long-form
+retrieval enhancement shown under **World Graph Studio > Plugins**. To use it:
+
+1. Separately install WPVDB as a top-level WordPress plugin at
+   `wp-content/plugins/wpvdb` in the target WordPress installation, alongside
+   `worldgraph/` rather than inside it.
+2. Activate WPVDB and configure its active embedding provider and model.
+3. Then enable **Story RAG Decomposer**. Enabling World Graph Studio does not
+   install WPVDB, and the nested RAG directory does not contain it. The Plugins
+   page shows **Configure First** and keeps the enhancement's Enable control
+   unavailable until WPVDB reports a valid configuration.
+
+The embedding provider receives at most 12,000 characters of bounded evidence
+or 6,000 characters of query input per call. The bridge stores up to 128
+uniformly sampled numeric vectors and bounded identifiers in private,
+per-user/per-run transients. Each expiration is capped by the owning run's fixed
+deadline, so a later write cannot extend retention. Synchronous requests use a
+separate run scope and request cleanup when they finish. The bridge does not put
+manuscript, evidence, query text, or vectors in WPVDB's shared embeddings
+table. WPVDB Core briefly uses its shared object cache during an embedding call,
+so the bridge HMAC-scopes the input to the user and run and makes a best-effort
+eviction of that exact cache key before and after the call. For resumable jobs,
+completion, failure, and cancellation request per-run cleanup after the
+terminal checkpoint commits, while expiration is the backstop. If WPVDB is
+unavailable or fails, preparation retains the lexical result instead of
+failing the base decomposition.
 
 The model is instructed to ignore publishing metadata, tables of contents,
 scan/OCR notices, legal boilerplate, and other front or back matter where the

@@ -16,16 +16,18 @@ defined( 'ABSPATH' ) || exit;
  * transient shards. Browser responses are projections produced by public_status().
  */
 class Decomposition_Job {
-	private const VERSION            = 1;
-	private const MAX_PLANNED_CHUNKS = 512;
-	private const MAX_STAGE_SECONDS  = 6 * MINUTE_IN_SECONDS;
-	private const RESUME_GRACE       = 24 * HOUR_IN_SECONDS;
-	private const ACTIVE_TTL         = ( ( self::MAX_PLANNED_CHUNKS * 2 ) + 1 ) * self::MAX_STAGE_SECONDS + self::RESUME_GRACE;
-	private const COMPLETED_TTL      = 30 * MINUTE_IN_SECONDS;
-	private const LOCK_TTL           = 10 * MINUTE_IN_SECONDS;
-	private const MAX_SHARD_BYTES    = 512 * 1024;
-	private const TOKEN_PATTERN      = '/\A[A-Za-z0-9_-]{32,86}\z/';
-	private const SHARD_KINDS        = [ 'chunk', 'analysis', 'document' ];
+	private const VERSION                = 1;
+	private const MAX_PLANNED_CHUNKS     = 1_000;
+	private const REQUEST_TIME_LIMIT     = 6 * MINUTE_IN_SECONDS;
+	private const RESUME_GRACE           = 24 * HOUR_IN_SECONDS;
+	public const ACTIVE_TTL              = ( ( self::MAX_PLANNED_CHUNKS * 2 ) + 1 ) * self::REQUEST_TIME_LIMIT + self::RESUME_GRACE;
+	private const COMPLETED_TTL          = 30 * MINUTE_IN_SECONDS;
+	private const LOCK_TTL               = 10 * MINUTE_IN_SECONDS;
+	private const MAX_CHECKPOINT_RETRIES = 3;
+	private const RETRIEVAL_RADIUS       = 3;
+	private const MAX_SHARD_BYTES        = 512 * 1024;
+	private const TOKEN_PATTERN          = '/\A[A-Za-z0-9_-]{32,86}\z/';
+	private const SHARD_KINDS            = [ 'chunk', 'analysis', 'document', 'memory' ];
 
 	/** Create and checkpoint a decomposition plan for one persisted source. */
 	public static function create( array $source, int $attachment_id, int $connection_id, bool $overwrite = false, string $connection_name = '' ) {
@@ -59,16 +61,20 @@ class Decomposition_Job {
 			return $normalized;
 		}
 
-		$token   = self::new_token();
-		$created = time();
-		$state   = [
+		$token     = self::new_token();
+		$created   = time();
+		$run_scope = hash_hmac( 'sha256', 'story-decomposition:' . $user_id . ':' . $token, wp_salt( 'auth' ) );
+		$profile = $normalized['profile'];
+		$profile['run_scope'] = $run_scope;
+		$profile['run_expires_at'] = $created + self::ACTIVE_TTL;
+		$state = [
 			'version'           => self::VERSION,
 			'job_id'            => $token,
 			'user_id'           => $user_id,
 			'created_at'        => $created,
-			// The fixed active deadline budgets six minutes for every possible
-			// analysis/synthesis/finalize step at the 512-section ceiling, plus a
-			// full day in which an operator may leave and resume the browser UI.
+			'checkpoint_revision' => 0,
+			// ACTIVE_TTL is exactly ( ( 2 * 1,000 ) + 1 ) six-minute request
+			// windows for analysis/synthesis/finalize, plus a 24-hour resume grace.
 			'expires_at'        => $created + self::ACTIVE_TTL,
 			'status'            => 'ready',
 			'stage'             => 'analysis',
@@ -81,14 +87,16 @@ class Decomposition_Job {
 			'source_characters' => absint( $source['characters'] ?? mb_strlen( $text, 'UTF-8' ) ),
 			'extracted_sha256'  => hash( 'sha256', $text ),
 			'source_sha256'     => $normalized['source_sha256'],
+			'run_scope'         => $run_scope,
 			'source_title'      => $normalized['source_title'],
-			'profile'           => $normalized['profile'],
+			'profile'           => $profile,
 			'plan'              => $normalized['plan'],
 			'chunk_count'       => count( $normalized['plan']['chunks'] ),
 			'analysis_cursor'   => 0,
 			'synthesis_cursor'  => 0,
 			'analysis_results'  => [],
 			'documents'         => [],
+			'graph_memory'      => [],
 			'metrics'           => [
 				'attempts'     => 0,
 				'tokens'       => 0,
@@ -122,7 +130,22 @@ class Decomposition_Job {
 
 	/** Return a safe status projection for the current user. */
 	public static function status( string $job_id ) {
-		$state = self::load_state( $job_id );
+		$lock = self::acquire_lock( $job_id );
+		if ( ! is_wp_error( $lock ) ) {
+			self::register_shutdown_lock_cleanup( $job_id, $lock );
+			try {
+				$state = self::load_state( $job_id );
+				if ( ! is_wp_error( $state ) ) {
+					self::post_commit_cleanup( $state );
+				}
+			} finally {
+				self::release_lock( $job_id, $lock );
+			}
+		} else {
+			// A worker owns the lock. A read-only projection remains safe, while
+			// deferred cleanup must wait so it cannot overwrite a newer checkpoint.
+			$state = self::load_state( $job_id );
+		}
 		if ( is_wp_error( $state ) ) {
 			return $state;
 		}
@@ -146,6 +169,8 @@ class Decomposition_Job {
 				return $state;
 			}
 			if ( in_array( (string) $state['status'], [ 'complete', 'failed', 'cancelled' ], true ) ) {
+				self::post_commit_cleanup( $state );
+				delete_transient( self::cancel_key( $job_id ) );
 				return self::public_status( $state );
 			}
 			if ( self::cancellation_requested( $job_id ) ) {
@@ -154,7 +179,7 @@ class Decomposition_Job {
 				if ( is_wp_error( $saved ) ) {
 					return $saved;
 				}
-				self::cleanup_pending_shards( $state );
+				self::post_commit_cleanup( $state );
 				delete_transient( self::cancel_key( $job_id ) );
 				return self::public_status( $state );
 			}
@@ -188,16 +213,30 @@ class Decomposition_Job {
 			if ( self::cancellation_requested( $job_id ) ) {
 				self::mark_cancelled( $state );
 			} elseif ( is_wp_error( $result ) ) {
-				self::mark_failed( $state, $result );
-			} elseif ( 'complete' !== (string) $state['status'] ) {
-				$state['status'] = 'ready';
+				$disposition = self::defer_retryable_failure( $state, $result );
+				if ( 'exhausted' === $disposition ) {
+					self::mark_failed(
+						$state,
+						new \WP_Error(
+							'worldgraph_story_decomposition_retry_exhausted',
+							__( 'The LLM Connection remained unavailable after the bounded retry allowance. Start over when the provider is available.', 'worldgraph' )
+						)
+					);
+				} elseif ( 'terminal' === $disposition ) {
+					self::mark_failed( $state, $result );
+				}
+			} else {
+				unset( $state['retry'] );
+				if ( 'complete' !== (string) $state['status'] ) {
+					$state['status'] = 'ready';
+				}
 			}
 
 			$saved = self::save_state( $state );
 			if ( is_wp_error( $saved ) ) {
 				return $saved;
 			}
-			self::cleanup_pending_shards( $state );
+			self::post_commit_cleanup( $state );
 			if ( 'cancelled' === (string) ( $state['status'] ?? '' ) ) {
 				delete_transient( self::cancel_key( $job_id ) );
 			}
@@ -215,7 +254,8 @@ class Decomposition_Job {
 			return $state;
 		}
 		if ( in_array( (string) $state['status'], [ 'complete', 'failed', 'cancelled' ], true ) ) {
-			return self::public_status( $state );
+			delete_transient( self::cancel_key( $job_id ) );
+			return self::status( $job_id );
 		}
 
 		$cancel_key = self::cancel_key( $job_id );
@@ -243,12 +283,19 @@ class Decomposition_Job {
 			if ( is_wp_error( $state ) ) {
 				return $state;
 			}
+			// The job may have reached a terminal checkpoint after the initial
+			// read but before this request acquired the lock. Never overwrite it.
+			if ( in_array( (string) $state['status'], [ 'complete', 'failed', 'cancelled' ], true ) ) {
+				self::post_commit_cleanup( $state );
+				delete_transient( $cancel_key );
+				return self::public_status( $state );
+			}
 			self::mark_cancelled( $state );
 			$saved = self::save_state( $state );
 			if ( is_wp_error( $saved ) ) {
 				return $saved;
 			}
-			self::cleanup_pending_shards( $state );
+			self::post_commit_cleanup( $state );
 			delete_transient( self::cancel_key( $job_id ) );
 			return self::public_status( $state );
 		} finally {
@@ -330,7 +377,7 @@ class Decomposition_Job {
 		return '' !== $joined ? $joined : $fallback_text;
 	}
 
-	/** Persist exact manuscript chunks separately and return text-free descriptors. */
+	/** Persist exact manuscript chunks separately and return minimal state references. */
 	private static function store_chunk_shards( array $state, array $chunks ) {
 		$descriptors = [];
 		foreach ( $chunks as $chunk ) {
@@ -344,14 +391,15 @@ class Decomposition_Job {
 				return $reference;
 			}
 
-			$descriptor = $chunk;
-			unset( $descriptor['text'] );
-			foreach ( [ 'context_before', 'context_after' ] as $context_key ) {
-				if ( is_array( $descriptor[ $context_key ] ?? null ) ) {
-					unset( $descriptor[ $context_key ]['text'] );
-				}
-			}
-			$descriptors[] = array_merge( $descriptor, $reference );
+			// Everything except the stable ordering ID and authenticated shard
+			// reference is already stored inside the shard. Keeping metadata and
+			// context descriptors here as well can push a 1,000-part job beyond
+			// common persistent-object-cache item limits.
+			$descriptors[] = [
+				'id'           => (string) $chunk['id'],
+				'shard_id'     => (string) $reference['shard_id'],
+				'shard_sha256' => (string) $reference['shard_sha256'],
+			];
 		}
 
 		return $descriptors;
@@ -440,12 +488,56 @@ class Decomposition_Job {
 	}
 
 	/** Delete only shards whose obsolete references were committed in core state. */
-	private static function cleanup_pending_shards( array $state ): void {
-		foreach ( (array) ( $state['cleanup_shards'] ?? [] ) as $reference ) {
+	private static function cleanup_pending_shards( array &$state ): bool {
+		$changed = false;
+		foreach ( (array) ( $state['cleanup_shards'] ?? [] ) as $key => $reference ) {
 			if ( ! is_array( $reference ) ) {
+				unset( $state['cleanup_shards'][ $key ] );
+				$changed = true;
 				continue;
 			}
-			self::delete_shard( $state, (string) ( $reference['kind'] ?? '' ), (string) ( $reference['shard_id'] ?? '' ) );
+			if ( self::delete_shard( $state, (string) ( $reference['kind'] ?? '' ), (string) ( $reference['shard_id'] ?? '' ) ) ) {
+				unset( $state['cleanup_shards'][ $key ] );
+				$changed = true;
+			}
+		}
+		if ( empty( $state['cleanup_shards'] ) ) {
+			unset( $state['cleanup_shards'] );
+		}
+		return $changed;
+	}
+
+	/** Finish shard/RAG cleanup after the state no longer references derivative data. */
+	private static function post_commit_cleanup( array &$state ): void {
+		$changed = self::cleanup_pending_shards( $state );
+		$status  = sanitize_key( (string) ( $state['status'] ?? '' ) );
+		$scope   = (string) ( $state['run_scope'] ?? '' );
+		if (
+			! empty( $state['rag_cleanup_pending'] )
+			&& in_array( $status, [ 'complete', 'failed', 'cancelled' ], true )
+			&& 1 === preg_match( '/\A[a-f0-9]{64}\z/', $scope )
+			&& function_exists( 'do_action' )
+		) {
+			try {
+				do_action(
+					'worldgraph_story_rag_cleanup',
+					$scope,
+					[
+						'user_id'       => absint( $state['user_id'] ?? 0 ),
+						'source_sha256' => sanitize_text_field( (string) ( $state['source_sha256'] ?? '' ) ),
+						'status'        => $status,
+					]
+				);
+				$state['rag_cleanup_pending'] = false;
+				$changed = true;
+			} catch ( \Throwable $throwable ) {
+				// The durable pending marker lets a later status/step request retry.
+			}
+		}
+		if ( $changed ) {
+			// Best effort: on failure the durable cleanup list/pending flag is retried
+			// during the next authenticated load, while the primary checkpoint remains valid.
+			self::save_state( $state );
 		}
 	}
 
@@ -472,16 +564,33 @@ class Decomposition_Job {
 				}
 			}
 		}
+		if ( is_array( $state['graph_memory'] ?? null ) ) {
+			self::delete_shard( $state, 'memory', (string) ( $state['graph_memory']['shard_id'] ?? '' ) );
+		}
 		self::cleanup_pending_shards( $state );
 	}
 
 	/** Delete one private shard through its fully derived, bounded key. */
-	private static function delete_shard( array $state, string $kind, string $shard_id ): void {
+	private static function delete_shard( array $state, string $kind, string $shard_id ): bool {
 		$job_id = self::sanitize_job_id( (string) ( $state['job_id'] ?? '' ) );
 		$user_id = absint( $state['user_id'] ?? 0 );
 		if ( '' !== $job_id && $user_id && '' !== $shard_id && in_array( $kind, self::SHARD_KINDS, true ) ) {
-			delete_transient( self::shard_key( $job_id, $user_id, $kind, $shard_id ) );
+			$key = self::shard_key( $job_id, $user_id, $kind, $shard_id );
+			delete_transient( $key );
+			return false === get_transient( $key );
 		}
+		return false;
+	}
+
+	/** Select a constant-size evidence neighborhood for lexical/RAG candidate ranking. */
+	private static function retrieval_candidate_indexes( int $total, int $cursor ): array {
+		$indexes = [];
+		$start   = max( 0, $cursor - self::RETRIEVAL_RADIUS );
+		$end     = min( $total - 1, $cursor + self::RETRIEVAL_RADIUS );
+		for ( $index = $start; $index <= $end; $index++ ) {
+			$indexes[] = $index;
+		}
+		return $indexes;
 	}
 
 	/** Process one evidence-extraction section and checkpoint its private result. */
@@ -528,7 +637,7 @@ class Decomposition_Job {
 						return new \WP_Error( 'worldgraph_story_decomposition_subdivision_invalid', __( 'Adaptive recovery did not preserve the complete story section.', 'worldgraph' ) );
 					}
 					$used_ids = [];
-					foreach ( $chunks as $existing_index => $existing_chunk ) {
+					foreach ( $chunks as $existing_chunk ) {
 						if ( is_array( $existing_chunk ) ) {
 							$used_ids[ (string) ( $existing_chunk['id'] ?? '' ) ] = true;
 						}
@@ -612,10 +721,17 @@ class Decomposition_Job {
 		if ( is_wp_error( $evidence ) ) {
 			return $evidence;
 		}
+		if ( count( (array) ( $state['analysis_results'] ?? [] ) ) !== $total ) {
+			return new \WP_Error( 'worldgraph_story_decomposition_evidence_missing', __( 'One or more checkpointed story analysis results are missing.', 'worldgraph' ) );
+		}
 
-		$all_evidence = [];
-		foreach ( $chunks as $planned_chunk ) {
-			$planned_id = is_array( $planned_chunk ) ? (string) ( $planned_chunk['id'] ?? '' ) : '';
+		$candidate_evidence = [ $cursor => $evidence ];
+		foreach ( self::retrieval_candidate_indexes( $total, $cursor ) as $candidate_index ) {
+			if ( $candidate_index === $cursor ) {
+				continue;
+			}
+			$planned_chunk = is_array( $chunks[ $candidate_index ] ?? null ) ? $chunks[ $candidate_index ] : [];
+			$planned_id    = (string) ( $planned_chunk['id'] ?? '' );
 			if ( '' === $planned_id || ! is_array( $state['analysis_results'][ $planned_id ] ?? null ) ) {
 				return new \WP_Error( 'worldgraph_story_decomposition_evidence_missing', __( 'A checkpointed story analysis result is missing.', 'worldgraph' ) );
 			}
@@ -623,15 +739,17 @@ class Decomposition_Job {
 			if ( is_wp_error( $planned_evidence ) ) {
 				return $planned_evidence;
 			}
-			$all_evidence[] = $planned_evidence;
+			$candidate_evidence[ $candidate_index ] = $planned_evidence;
 		}
 		if ( method_exists( $decomposer, 'retrieve_planned_evidence' ) ) {
-			$evidence_bundle = $decomposer->retrieve_planned_evidence( $chunk, $all_evidence, $cursor );
+			$evidence_bundle = $decomposer->retrieve_planned_evidence( $chunk, $candidate_evidence, $cursor, (array) $state['profile'] );
 		} else {
+			$related_candidates = $candidate_evidence;
+			unset( $related_candidates[ $cursor ] );
 			$evidence_bundle = [
 				'backend' => 'recent',
 				'current' => $evidence,
-				'related' => array_slice( $all_evidence, max( 0, $cursor - 3 ), min( 3, $cursor ) ),
+				'related' => array_slice( array_values( $related_candidates ), 0, 3 ),
 			];
 		}
 		if ( ! is_array( $evidence_bundle ) ) {
@@ -640,23 +758,65 @@ class Decomposition_Job {
 		$related = is_array( $evidence_bundle['related'] ?? null )
 			? $evidence_bundle['related']
 			: ( is_array( $evidence_bundle['retrieved'] ?? null ) ? $evidence_bundle['retrieved'] : [] );
+		$related     = array_values( array_filter( $related, 'is_array' ) );
+		$related_ids = [];
+		foreach ( $related as $related_evidence ) {
+			$related_id = (string) ( $related_evidence['_retrieval']['chunk_id'] ?? '' );
+			if ( '' !== $related_id ) {
+				$related_ids[ $related_id ] = true;
+			}
+		}
+		$seen_indexes = [];
+		foreach ( array_slice( (array) ( $evidence_bundle['related_indexes'] ?? [] ), 0, 3 ) as $related_index ) {
+			if ( count( $related ) >= 3 ) {
+				break;
+			}
+			if ( ! is_int( $related_index ) || $related_index < 0 || $related_index >= $total || $related_index === $cursor || isset( $seen_indexes[ $related_index ] ) ) {
+				continue;
+			}
+			$seen_indexes[ $related_index ] = true;
+			$related_chunk = is_array( $chunks[ $related_index ] ?? null ) ? $chunks[ $related_index ] : [];
+			$related_id    = (string) ( $related_chunk['id'] ?? '' );
+			if ( '' === $related_id || isset( $related_ids[ $related_id ] ) ) {
+				continue;
+			}
+			if ( isset( $candidate_evidence[ $related_index ] ) ) {
+				$related[] = $candidate_evidence[ $related_index ];
+				$related_ids[ $related_id ] = true;
+				continue;
+			}
+			$related_ref   = $state['analysis_results'][ $related_id ] ?? null;
+			$resolved      = self::load_shard_value( $state, 'analysis', $related_ref );
+			if ( is_wp_error( $resolved ) ) {
+				return $resolved;
+			}
+			$related[] = $resolved;
+			$related_ids[ $related_id ] = true;
+		}
+		$evidence_bundle['related'] = array_slice( $related, 0, 3 );
+		$indexed_count = isset( $evidence_bundle['indexed_count'] )
+			? min( $total, absint( $evidence_bundle['indexed_count'] ) )
+			: $total;
+		unset( $evidence_bundle['related_indexes'], $evidence_bundle['retrieved'], $evidence_bundle['indexed_count'] );
+		$related = $evidence_bundle['related'];
 		$retrieval_metrics = is_array( $state['metrics']['retrieval'] ?? null ) ? $state['metrics']['retrieval'] : [];
 		$state['metrics']['retrieval'] = [
 			'backend'   => sanitize_key( (string) ( $evidence_bundle['backend'] ?? '' ) ),
-			'indexed'   => count( $all_evidence ),
+			'indexed'   => $indexed_count,
 			'retrieved' => absint( $retrieval_metrics['retrieved'] ?? 0 ) + count( $related ),
 		];
 
+		if ( count( (array) ( $state['documents'] ?? [] ) ) !== $cursor ) {
+			return new \WP_Error( 'worldgraph_story_decomposition_documents_missing', __( 'A checkpointed partial story graph is missing.', 'worldgraph' ) );
+		}
+		$previous_memory    = [];
 		$accepted_documents = [];
-		for ( $accepted_index = 0; $accepted_index < $cursor; $accepted_index++ ) {
-			$accepted_chunk = is_array( $chunks[ $accepted_index ] ?? null ) ? $chunks[ $accepted_index ] : [];
-			$accepted_id    = (string) ( $accepted_chunk['id'] ?? '' );
-			$accepted_ref   = $state['documents'][ $accepted_id ] ?? null;
-			$accepted       = self::load_shard_value( $state, 'document', $accepted_ref );
-			if ( is_wp_error( $accepted ) ) {
-				return $accepted;
+		if ( $cursor > 0 ) {
+			$previous_memory = self::load_shard_value( $state, 'memory', $state['graph_memory'] ?? null );
+			if ( is_wp_error( $previous_memory ) ) {
+				return $previous_memory;
 			}
-			$accepted_documents[] = $accepted;
+			$accepted_documents[] = $previous_memory;
 		}
 
 		$result = $decomposer->synthesize_planned_chunk(
@@ -687,6 +847,29 @@ class Decomposition_Job {
 			return $document_ref;
 		}
 		$state['documents'][ $chunk_id ] = $document_ref;
+		if ( ! method_exists( $decomposer, 'graph_memory' ) ) {
+			return new \WP_Error( 'worldgraph_story_decomposition_memory_unavailable', __( 'The installed story decomposer cannot checkpoint evolving graph memory.', 'worldgraph' ) );
+		}
+		$memory_input = [];
+		if ( ! empty( $previous_memory ) ) {
+			$memory_input[-1] = $previous_memory;
+		}
+		$memory_input[ $cursor ] = $document;
+		$graph_memory = $decomposer->graph_memory(
+			$memory_input,
+			max( 600, absint( $state['profile']['memory_chars'] ?? 3_000 ) )
+		);
+		if ( ! is_array( $graph_memory ) || empty( $graph_memory ) ) {
+			return new \WP_Error( 'worldgraph_story_decomposition_memory_invalid', __( 'The evolving graph memory could not be checkpointed.', 'worldgraph' ) );
+		}
+		$memory_ref = self::store_value_shard( $state, 'memory', 'graph-memory-' . ( $cursor + 1 ), $graph_memory );
+		if ( is_wp_error( $memory_ref ) ) {
+			return $memory_ref;
+		}
+		if ( is_array( $state['graph_memory'] ?? null ) ) {
+			self::queue_shard_cleanup( $state, 'memory', (string) ( $state['graph_memory']['shard_id'] ?? '' ) );
+		}
+		$state['graph_memory'] = $memory_ref;
 		$state['synthesis_cursor'] = $cursor + 1;
 		self::merge_metrics( $state['metrics'], $result );
 		if ( $state['synthesis_cursor'] >= $total ) {
@@ -727,14 +910,16 @@ class Decomposition_Job {
 			return new \WP_Error( 'worldgraph_story_decomposition_source_changed', __( 'The checkpointed story source failed its integrity check.', 'worldgraph' ) );
 		}
 
-		$result = $decomposer->finalize_planned_documents(
+		$final_plan           = (array) $state['plan'];
+		$final_plan['chunks'] = $chunks;
+		$result               = $decomposer->finalize_planned_documents(
 			$documents,
 			$source_text,
 			(string) $state['filename'],
 			(string) $state['source_title'],
 			(int) $state['connection_id'],
 			(array) $state['metrics'],
-			(array) $state['plan']
+			$final_plan
 		);
 		if ( is_wp_error( $result ) ) {
 			self::merge_error_metrics( $state['metrics'], $result );
@@ -880,6 +1065,68 @@ class Decomposition_Job {
 		}
 	}
 
+	/** Keep transient provider failures at the same durable checkpoint for manual resume. */
+	private static function defer_retryable_failure( array &$state, \WP_Error $error ): string {
+		if ( ! self::is_retryable_provider_error( $error ) ) {
+			return 'terminal';
+		}
+
+		$stage      = sanitize_key( (string) ( $state['stage'] ?? '' ) );
+		$cursor     = 'synthesis' === $stage ? absint( $state['synthesis_cursor'] ?? 0 ) : absint( $state['analysis_cursor'] ?? 0 );
+		$checkpoint = $stage . ':' . $cursor . ':' . absint( $state['chunk_count'] ?? 0 );
+		$previous   = is_array( $state['retry'] ?? null ) ? $state['retry'] : [];
+		$failures   = hash_equals( $checkpoint, (string) ( $previous['checkpoint'] ?? '' ) )
+			? absint( $previous['failures'] ?? 0 ) + 1
+			: 1;
+		$state['retry'] = [
+			'checkpoint' => $checkpoint,
+			'failures'   => $failures,
+		];
+		if ( $failures > self::MAX_CHECKPOINT_RETRIES ) {
+			return 'exhausted';
+		}
+
+		$state['status'] = 'ready';
+		$state['last_error'] = [
+			'code'        => sanitize_key( (string) $error->get_error_code() ) ?: 'worldgraph_story_decomposition_retryable',
+			'message'     => sprintf(
+				/* translators: 1: failed request count, 2: retry allowance. */
+				__( 'The LLM Connection was temporarily unavailable. Resume from the last safe checkpoint (retry %1$d of %2$d).', 'worldgraph' ),
+				$failures,
+				self::MAX_CHECKPOINT_RETRIES
+			),
+			'retryable'   => true,
+			'retry_count' => $failures,
+			'retry_limit' => self::MAX_CHECKPOINT_RETRIES,
+		];
+		return 'deferred';
+	}
+
+	/** Classify only temporary transport/provider failures, never malformed story content. */
+	private static function is_retryable_provider_error( \WP_Error $error ): bool {
+		$data   = $error->get_error_data();
+		$data   = is_array( $data ) ? $data : [];
+		$status = absint( $data['http_status'] ?? $data['status'] ?? 0 );
+		if ( $status > 0 ) {
+			return in_array( $status, [ 408, 409, 425, 429 ], true ) || ( $status >= 500 && $status <= 599 );
+		}
+
+		$code = sanitize_key( (string) $error->get_error_code() );
+		if ( in_array( $code, [ 'http_request_failed', 'http_request_not_executed' ], true ) ) {
+			return true;
+		}
+		if ( 'worldgraph_llm_request_failed' === $code ) {
+			$provider_error = sanitize_key( (string) ( $data['provider_error'] ?? '' ) );
+			return in_array( $provider_error, [ 'connection_error', 'api_error', 'rate_limit_exceeded', 'backend_no_response' ], true );
+		}
+		foreach ( [ 'timeout', 'timed_out', 'transport', 'connection_reset', 'rate_limit', 'temporarily_unavailable', 'service_unavailable' ] as $marker ) {
+			if ( str_contains( $code, $marker ) ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	/** Treat final metrics as authoritative when finalization returns them. */
 	private static function authoritative_final_metrics( array $metrics, array $result ): array {
 		$final = is_array( $result['metrics'] ?? null ) ? $result['metrics'] : $result;
@@ -932,7 +1179,11 @@ class Decomposition_Job {
 				}
 			}
 		}
-		unset( $state['profile'], $state['source_title'], $state['analysis_results'], $state['documents'] );
+		if ( is_array( $state['graph_memory'] ?? null ) ) {
+			self::queue_shard_cleanup( $state, 'memory', (string) ( $state['graph_memory']['shard_id'] ?? '' ) );
+		}
+		$state['rag_cleanup_pending'] = true;
+		unset( $state['profile'], $state['source_title'], $state['analysis_results'], $state['documents'], $state['graph_memory'], $state['retry'] );
 		if ( isset( $state['plan'] ) && is_array( $state['plan'] ) ) {
 			unset( $state['plan']['text'], $state['plan']['source_text'], $state['plan']['chunks'], $state['plan']['boundaries'] );
 		}
@@ -1024,6 +1275,9 @@ class Decomposition_Job {
 			'error'        => [
 				'code'    => sanitize_key( (string) ( $error['code'] ?? '' ) ),
 				'message' => sanitize_text_field( (string) ( $error['message'] ?? '' ) ),
+				'retryable' => ! empty( $error['retryable'] ),
+				'retry_count' => absint( $error['retry_count'] ?? 0 ),
+				'retry_limit' => absint( $error['retry_limit'] ?? 0 ),
 			],
 			'can_step'     => ! in_array( $status, [ 'complete', 'failed', 'cancelled', 'cancelling' ], true ),
 			'can_cancel'   => ! in_array( $status, [ 'complete', 'failed', 'cancelled', 'cancelling' ], true ),
@@ -1074,12 +1328,11 @@ class Decomposition_Job {
 			return new \WP_Error( 'worldgraph_story_decomposition_expired', __( 'The story decomposition job expired. Upload the source again.', 'worldgraph' ), [ 'status' => 410 ] );
 		}
 
-		self::cleanup_pending_shards( $state );
 		return $state;
 	}
 
 	/** Persist state without extending its fixed active or preview-aligned deadline. */
-	private static function save_state( array $state ) {
+	private static function save_state( array &$state ) {
 		$job_id = self::sanitize_job_id( (string) ( $state['job_id'] ?? '' ) );
 		$user_id = absint( $state['user_id'] ?? 0 );
 		$ttl     = absint( $state['expires_at'] ?? 0 ) - time();
@@ -1087,7 +1340,10 @@ class Decomposition_Job {
 			return new \WP_Error( 'worldgraph_story_decomposition_expired', __( 'The story decomposition job expired before it could be checkpointed.', 'worldgraph' ) );
 		}
 
-		$state['identity_sha256'] = self::identity_hash( $state );
+		// A monotonically increasing revision makes a rejected write observable even
+		// when the semantic state matches the preceding "running" checkpoint.
+		$state['checkpoint_revision'] = absint( $state['checkpoint_revision'] ?? 0 ) + 1;
+		$state['identity_sha256']     = self::identity_hash( $state );
 		$expected_digest = self::value_hash( $state );
 		set_transient( self::state_key( $job_id, $user_id ), $state, $ttl );
 		$stored = get_transient( self::state_key( $job_id, $user_id ) );
@@ -1159,6 +1415,7 @@ class Decomposition_Job {
 			'source_characters' => absint( $state['source_characters'] ?? 0 ),
 			'extracted_sha256'  => (string) ( $state['extracted_sha256'] ?? '' ),
 			'source_sha256'     => (string) ( $state['source_sha256'] ?? '' ),
+			'run_scope'         => (string) ( $state['run_scope'] ?? '' ),
 		];
 		$encoded = wp_json_encode( $identity, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
 		return hash_hmac( 'sha256', false === $encoded ? '' : $encoded, wp_salt( 'auth' ) );

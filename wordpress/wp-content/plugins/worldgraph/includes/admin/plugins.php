@@ -71,13 +71,15 @@ class Plugins {
 				'World Graph Studio - Story RAG Decomposer',
 				[
 					'name'         => 'Story RAG Decomposer',
-					'description'  => 'Adds private, transient WPVDB similarity retrieval to long-form story decomposition. Requires the separately installed WPVDB plugin.',
+					'description'  => 'Adds scoped, transient WPVDB similarity retrieval to long-form story decomposition.',
+					'requires'     => 'WPVDB must be installed and activated as a separate top-level WordPress plugin at wp-content/plugins/wpvdb, then configured with an embedding provider and model.',
+					'requires_url' => 'https://github.com/Automattic/wpvdb',
 					'version'      => defined( 'WORLDGRAPH_STORY_RAG_VERSION' ) ? WORLDGRAPH_STORY_RAG_VERSION : '1.0.0',
 					'author'       => 'World Graph Studio Contributors',
 					'icon'         => 'dashicons-networking',
 					'file'         => 'plugins/story-rag-decomposer/story-rag-decomposer.php',
 					'has_settings' => true,
-					'settings_url' => admin_url( 'admin.php?page=wpvdb-settings' ),
+					'settings_url' => class_exists( '\\WPVDB\\Core' ) ? admin_url( 'admin.php?page=wpvdb-settings' ) : admin_url( 'plugins.php' ),
 					'testable'     => false,
 				]
 			);
@@ -446,15 +448,17 @@ class Plugins {
 	 */
 	public static function register_plugin( string $slug, string $name, array $args = [] ): void {
 		self::$plugins[ $slug ] = [
-			'slug'        => $slug,
-			'name'        => $name,
-			'description' => $args['description'] ?? '',
-			'version'     => $args['version'] ?? '1.0.0',
-			'author'      => $args['author'] ?? '',
-			'icon'        => $args['icon'] ?? 'dashicons-admin-plugins',
-			'file'        => $args['file'] ?? '',
-			'active'      => false,
-			'configured'  => false,
+			'slug'         => $slug,
+			'name'         => $name,
+			'description'  => $args['description'] ?? '',
+			'requires'     => $args['requires'] ?? '',
+			'requires_url' => $args['requires_url'] ?? '',
+			'version'      => $args['version'] ?? '1.0.0',
+			'author'       => $args['author'] ?? '',
+			'icon'         => $args['icon'] ?? 'dashicons-admin-plugins',
+			'file'         => $args['file'] ?? '',
+			'active'       => false,
+			'configured'   => false,
 			'has_settings' => ! empty( $args['has_settings'] ),
 			'settings_url' => $args['settings_url'] ?? '',
 			'testable'     => ! array_key_exists( 'testable', $args ) || ! empty( $args['testable'] ),
@@ -563,6 +567,12 @@ class Plugins {
 								<br>
 								<small>
 									<?php echo esc_html( $plugin['description'] ); ?>
+									<?php if ( ! empty( $plugin['requires'] ) ) : ?>
+										<br><strong>Requirement:</strong> <?php echo esc_html( $plugin['requires'] ); ?>
+										<?php if ( ! empty( $plugin['requires_url'] ) ) : ?>
+											<a href="<?php echo esc_url( $plugin['requires_url'] ); ?>" target="_blank" rel="noopener noreferrer">WPVDB project page</a>
+										<?php endif; ?>
+									<?php endif; ?>
 									<br>
 									<span class="worldgraph-plugin-meta">
 										Version <?php echo esc_html( $plugin['version'] ); ?> &middot; <?php echo esc_html( $plugin['author'] ); ?>
@@ -636,7 +646,9 @@ class Plugins {
 
 		if ( $new_state && ! self::is_plugin_configured( $slug ) && ! empty( $plugin['has_settings'] ) ) {
 			wp_send_json_error( [
-				'message' => 'Please configure this plugin before enabling it.',
+				'message' => 'story-rag-decomposer' === $slug
+					? 'Install and activate WPVDB separately at wp-content/plugins/wpvdb, then configure its embedding provider and model before enabling Story RAG Decomposer.'
+					: 'Please configure this plugin before enabling it.',
 				'settings_url' => $plugin['settings_url'],
 			] );
 		}

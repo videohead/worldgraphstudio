@@ -41,6 +41,8 @@ The human-readable development source is available at [GitHub](https://github.co
 5. Leave all provider settings empty for Story Graph-only use, or add only the optional connections you intend to use.
 6. If you enable asynchronous generation, configure a reliable WP-Cron runner for your site.
 
+The optional Story RAG Decomposer is not needed for ordinary Story Import & Export. If you choose to enable that long-form retrieval enhancement, install and activate WPVDB separately as the top-level `/wp-content/plugins/wpvdb` plugin, then configure an active embedding provider and model in WPVDB. World Graph Studio does not bundle or install WPVDB, and its Plugins page will keep the enhancement unavailable until that requirement is met.
+
 Back up the WordPress database before upgrading an existing installation or importing a project.
 
 == Frequently Asked Questions ==
@@ -52,6 +54,10 @@ No. Projects, worlds, characters, locations, scenes, shots, relationships, conti
 = Why is Secure Custom Fields required? =
 
 World Graph Studio uses Secure Custom Fields for its field definitions and structured content values. WordPress must be able to activate that dependency before World Graph Studio can initialize.
+
+= Is WPVDB required for story import? =
+
+No. The base Story Import & Export plugin, its chapter-aware decomposer, and lexical evidence retrieval work without WPVDB. WPVDB is required only for the disabled-by-default Story RAG Decomposer enhancement. To use that enhancement, install and activate WPVDB separately under `/wp-content/plugins/wpvdb` and configure its embedding provider and model before enabling Story RAG Decomposer on the World Graph Studio Plugins page.
 
 = Does the plugin contact external services by default? =
 
