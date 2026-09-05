@@ -6,10 +6,15 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 BACKUP_ARCHIVE="$ROOT_DIR/scripts/backup.sql.gz"
+BACKUP_SQL="$ROOT_DIR/scripts/backup.sql"
 COMPOSE_FILE="$ROOT_DIR/compose.yaml"
 
-if [[ ! -f "$BACKUP_ARCHIVE" ]]; then
-  echo "Backup file not found: $BACKUP_ARCHIVE"
+if [[ -f "$BACKUP_ARCHIVE" ]]; then
+  BACKUP_FILE="$BACKUP_ARCHIVE"
+elif [[ -f "$BACKUP_SQL" ]]; then
+  BACKUP_FILE="$BACKUP_SQL"
+else
+  echo "Backup file not found: expected $BACKUP_ARCHIVE or $BACKUP_SQL"
   exit 1
 fi
 
@@ -27,9 +32,15 @@ echo "=== Bootstrapping World Graph Studio database ==="
 
 (
   cd "$ROOT_DIR"
-  gzip -dc "$BACKUP_ARCHIVE" \
-    | docker compose -f "$COMPOSE_FILE" exec -T database \
-      sh -lc 'exec mariadb --user="$MARIADB_USER" --password="$MARIADB_PASSWORD" "$MARIADB_DATABASE"'
+  if [[ "$BACKUP_FILE" == *.gz ]]; then
+    gzip -dc "$BACKUP_FILE"
+  else
+    cat "$BACKUP_FILE"
+  fi
+) | (
+  cd "$ROOT_DIR"
+  docker compose -f "$COMPOSE_FILE" exec -T database \
+    sh -lc 'exec mariadb --user="$MARIADB_USER" --password="$MARIADB_PASSWORD" "$MARIADB_DATABASE"'
 )
 
 echo "=== Database bootstrap complete ==="

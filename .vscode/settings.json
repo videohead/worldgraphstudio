@@ -1,6 +1,8 @@
 {
+    "codecomfy.comfyuiUrl": "http://localhost:8188",
+    "codecomfy.ffmpegPath": "path/to/ffmpeg.exe",
     "chat.tools.terminal.autoApprove": {
-        "/^lando exec appserver -- php /app/vendor/bin/phpunit --filter FDX /app/wordpress/wp-content/plugins/worldgraph/tests$/": {
+        "/^docker compose --profile tools run --rm phpunit --filter FDX /app/wordpress/wp-content/plugins/worldgraph/tests$/": {
             "approve": true,
             "matchCommandLine": true
         },

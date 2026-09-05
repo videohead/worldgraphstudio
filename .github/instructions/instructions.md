@@ -8,16 +8,24 @@ an optional external generation service used by the relevant plugin.
 
 ## Local Entry Points
 
-When the Docker Compose services are running, use these entry points for local
-validation:
+The default Docker Compose stack runs `wordpress`, `database`, and `node`. Use
+these entry points for local validation:
 
 - WordPress app: http://localhost:8080/
-- phpMyAdmin: http://localhost:8081/
 - Optional headless frontend: http://localhost:3000/
 - ComfyUI HTTP API: http://localhost:8188
 - Optional ComfyUI MCP: a deployment-specific, separate Streamable HTTP
   endpoint (for example, http://localhost:9000/mcp); port 8188 is not MCP
 - Local LLM: http://localhost:11434
+
+Published project ports bind only to the host loopback interface. phpMyAdmin is
+also loopback-only and starts only through the `tools` profile:
+
+```bash
+docker compose --profile tools up -d phpmyadmin
+```
+
+It is then available at http://localhost:8081/.
 
 Use `docker compose ps` to confirm service state before testing. WordPress is
 the application and control plane; do not assume a separate Python, queue, or
@@ -29,9 +37,11 @@ Use the service that owns the runtime required by the command:
 
 | Runtime | Docker Compose service | Project path |
 | --- | --- | --- |
-| WordPress, PHP, and WP-CLI | `wordpress` | live root `/var/www/html`; source `/app/wordpress` |
+| WordPress, PHP, and WP-CLI | `wordpress` | `/var/www/html` |
 | Node.js, npm, Playwright, and JavaScript checks | `node` | `/app` |
+| PHPUnit | on-demand `phpunit` (`tools` profile) | `/app` |
 | MariaDB | `database` | N/A |
+| Database administration | `phpmyadmin` (`tools` profile) | N/A |
 
 WP-CLI belongs in `wordpress`, not the Node-based `node` service. The intended
 project command, run from the repository root, is:
@@ -271,7 +281,13 @@ docker compose --profile headless run --rm headless npm run build
 
 - Use the repository-root Docker Compose stack for local environment
   management.
+- The default stack contains only `wordpress`, `database`, and `node`; start
+  profile-gated tools only when needed.
+- Bind every published development port to the host loopback interface.
 - Keep WordPress and database data in named volumes; never bind-mount them.
+- The `db_data` and `wordpress_data` volumes do not import prior local data.
+  Preserve the old database and uploads before switching, and never run
+  `docker compose down -v` until the migration is verified.
 - Run ComfyUI behind its GPU-enabled service when GPU support is available.
 - Never commit sensitive `.env` files.
 - Restart containers only when changing Docker configuration, dependencies, or
@@ -290,6 +306,9 @@ docker compose --profile headless run --rm headless npm run build
 
 - Docker Compose is the required environment for local validation.
 - Run WordPress and PHP commands in `wordpress`; run Node.js commands in `node`.
+- Run PHPUnit on demand with
+  `docker compose --profile tools run --rm phpunit`; do not keep the test
+  container running.
 - Use `docker compose exec wordpress wp` only after `command -v wp` succeeds
   in `wordpress`. An OCI
   `executable file not found` error means the image lacks WP-CLI; it does not

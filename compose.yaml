@@ -1,4 +1,4 @@
-name: worldgraph
+name: worldgraph-docker
 
 services:
   wordpress:
@@ -6,10 +6,9 @@ services:
       context: .
       dockerfile: docker/wordpress/Dockerfile
     ports:
-      - "${WORDPRESS_PORT:-8080}:80"
+      - "127.0.0.1:${WORDPRESS_PORT:-8080}:80"
     volumes:
       - wordpress_data:/var/www/html
-      - .:/app
       - ./wordpress/wp-content/plugins/worldgraph:/var/www/html/wp-content/plugins/worldgraph
       - ./wordpress/wp-content/themes/worldgraph-child:/var/www/html/wp-content/themes/worldgraph-child
     environment:
@@ -18,14 +17,25 @@ services:
       WORDPRESS_DB_USER: ${WORDPRESS_DB_USER:-wordpress}
       WORDPRESS_DB_PASSWORD: ${WORDPRESS_DB_PASSWORD:-wordpress}
       WORDPRESS_TABLE_PREFIX: ${WORDPRESS_TABLE_PREFIX:-wp_}
-      WORDPRESS_DEBUG: ${WORDPRESS_DEBUG:-1}
+      # The official image treats every non-empty WORDPRESS_DEBUG value,
+      # including "0", as true. Keep debug explicitly enabled for local use.
+      WORDPRESS_DEBUG: "1"
       WP_CLI_ALLOW_ROOT: "1"
-      WP_USERNAME: ${WP_USERNAME:-admin}
-      WP_APP_PASSWORD: ${WP_APP_PASSWORD:-admin}
       WORLDGRAPH_HEADLESS_LOCAL_HOSTS: headless
       WORLDGRAPH_COMFY_API_KEY: ${WORLDGRAPH_COMFY_API_KEY:-}
       WORLDGRAPH_AI_API_KEY: ${WORLDGRAPH_AI_API_KEY:-}
       WORLDGRAPH_AI_FALLBACK_API_KEY: ${WORLDGRAPH_AI_FALLBACK_API_KEY:-}
+      WORLDGRAPH_AI_IMAGE_API_KEY: ${WORLDGRAPH_AI_IMAGE_API_KEY:-}
+      WORDPRESS_CONFIG_EXTRA: |
+        if ( ! defined( 'WORLDGRAPH_AI_API_KEY' ) && false !== getenv( 'WORLDGRAPH_AI_API_KEY' ) && '' !== trim( (string) getenv( 'WORLDGRAPH_AI_API_KEY' ) ) ) {
+          define( 'WORLDGRAPH_AI_API_KEY', trim( (string) getenv( 'WORLDGRAPH_AI_API_KEY' ) ) );
+        }
+        if ( ! defined( 'WORLDGRAPH_AI_FALLBACK_API_KEY' ) && false !== getenv( 'WORLDGRAPH_AI_FALLBACK_API_KEY' ) && '' !== trim( (string) getenv( 'WORLDGRAPH_AI_FALLBACK_API_KEY' ) ) ) {
+          define( 'WORLDGRAPH_AI_FALLBACK_API_KEY', trim( (string) getenv( 'WORLDGRAPH_AI_FALLBACK_API_KEY' ) ) );
+        }
+        if ( ! defined( 'WORLDGRAPH_AI_IMAGE_API_KEY' ) && false !== getenv( 'WORLDGRAPH_AI_IMAGE_API_KEY' ) && '' !== trim( (string) getenv( 'WORLDGRAPH_AI_IMAGE_API_KEY' ) ) ) {
+          define( 'WORLDGRAPH_AI_IMAGE_API_KEY', trim( (string) getenv( 'WORLDGRAPH_AI_IMAGE_API_KEY' ) ) );
+        }
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -55,16 +65,26 @@ services:
       start_period: 15s
 
   phpmyadmin:
+    profiles: ["tools"]
     image: phpmyadmin:5.2
     ports:
-      - "${PHPMYADMIN_PORT:-8081}:80"
+      - "127.0.0.1:${PHPMYADMIN_PORT:-8081}:80"
     environment:
       PMA_HOST: database
-      PMA_USER: ${WORDPRESS_DB_USER:-wordpress}
-      PMA_PASSWORD: ${WORDPRESS_DB_PASSWORD:-wordpress}
     depends_on:
       database:
         condition: service_healthy
+
+  phpunit:
+    profiles: ["tools"]
+    build:
+      context: .
+      dockerfile: docker/wordpress/Dockerfile
+    working_dir: /app
+    volumes:
+      - .:/app:ro
+    entrypoint: ["/opt/worldgraph/vendor/bin/phpunit"]
+    network_mode: none
 
   node:
     build:
@@ -87,8 +107,9 @@ services:
     volumes:
       - ./headless:/app/headless
       - headless_node_modules:/app/headless/node_modules
+      - headless_next:/app/headless/.next
     ports:
-      - "${HEADLESS_PORT:-3000}:3000"
+      - "127.0.0.1:${HEADLESS_PORT:-3000}:3000"
     environment:
       WORDPRESS_URL: http://wordpress
       WORDPRESS_HOSTNAME: localhost
@@ -105,3 +126,4 @@ volumes:
   db_data:
   node_modules:
   headless_node_modules:
+  headless_next:

@@ -20,8 +20,8 @@ are classified separately in [Delivery Status](Delivery_Status.md).
 
 Every World Graph Studio user needs:
 
-1. A WordPress.org-capable host, WP Local, or the repository-root Docker
-   Compose deployment for local development. The Compose stack starts the
+1. A WordPress.org-capable production host, or the repository-root Docker
+   Compose environment for local development. The Compose stack starts the
    WordPress, PHP, MariaDB, and development-tooling services.
 2. Optionally, a local ComfyUI installation, Comfy Cloud account, fal account,
    ElevenLabs account, separate SunoAPI.org and Ace Data Cloud accounts,
@@ -40,14 +40,23 @@ credentials. ChatGPT, Claude, and Claude Code subscriptions without an API
 credential do not authenticate the hosted LLM integrations. Hosted LLM
 providers require an API key; a local LLM must expose an OpenAI-compatible API
 endpoint and any credential it requires.
+
 ## Core Runtime
 
 The standard deployment contains WordPress, MariaDB, and the World Graph Studio plugin. WordPress stores generation jobs and uses WP-Cron to process bounded batches.
-A Node.js tooling container is also included for testing and development.
+The default local Compose stack also includes the Node.js development-tooling
+container. PHPUnit runs on demand, and phpMyAdmin starts only when requested;
+both belong to the `tools` profile rather than the default stack. Published
+development ports bind only to the host loopback interface.
 In the Docker Compose environment, FFmpeg is installed in the `wordpress`
 service because the resumable rough-cut worker executes from PHP. Tooling in a
 separate container cannot serve as an automatic cross-container fallback.
 The SCF plugin is also required in order to extend World Graph Studio capabilities.
+
+When replacing an existing local environment, follow the
+[local data migration steps](../README.md#migrating-existing-local-data). The
+new named volumes do not discover an earlier database or uploads
+automatically.
 
 ## Connection Adapters
 

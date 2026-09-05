@@ -11,10 +11,12 @@ The plugin test suite lives in
 `wordpress/wp-content/plugins/worldgraph/tests/` and uses
 `tests/phpunit.xml` plus `tests/bootstrap.php`.
 
-Run it from the repository root through the `wordpress` service:
+Run it from the repository root through the on-demand `phpunit` service in the
+`tools` profile. The service mounts the repository read-only at `/app`, has no
+network access, and exits after the command:
 
 ```bash
-docker compose exec wordpress /opt/worldgraph/vendor/bin/phpunit \
+docker compose --profile tools run --rm phpunit \
   -c /app/wordpress/wp-content/plugins/worldgraph/tests/phpunit.xml \
   --testsuite "World Graph Studio" \
   --do-not-cache-result
@@ -26,7 +28,7 @@ ignored by the repository.
 Run a focused file or method by appending the path or filter:
 
 ```bash
-docker compose exec wordpress /opt/worldgraph/vendor/bin/phpunit \
+docker compose --profile tools run --rm phpunit \
   -c /app/wordpress/wp-content/plugins/worldgraph/tests/phpunit.xml \
   --filter test_method_name \
   --do-not-cache-result
@@ -34,9 +36,9 @@ docker compose exec wordpress /opt/worldgraph/vendor/bin/phpunit \
 
 The suite covers CPT and taxonomy contracts, SCF alignment, relationships,
 import/export, generation modalities and providers, REST contracts, WordPress
-Abilities, schema alignment, and admin behavior. Use `rg --files
-wordpress/wp-content/plugins/worldgraph/tests` for the current file list rather
-than maintaining a duplicate list here.
+Abilities, schema alignment, and admin behavior. Use
+`docker compose exec node rg --files /app/wordpress/wp-content/plugins/worldgraph/tests`
+for the current file list rather than maintaining a duplicate list here.
 
 ## Static validation
 
@@ -44,7 +46,7 @@ than maintaining a duplicate list here.
 
 ```bash
 docker compose exec wordpress sh -lc \
-  'find /app/wordpress/wp-content/plugins/worldgraph -type f -name "*.php" -exec php -l {} \;'
+  'find /var/www/html/wp-content/plugins/worldgraph -type f -name "*.php" -exec php -l {} \;'
 ```
 
 ### JavaScript syntax

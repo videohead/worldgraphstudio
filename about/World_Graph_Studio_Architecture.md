@@ -56,8 +56,10 @@ The standard deployment contains:
 | Optional external services | LLM inference, generative workflows, VideoDraft synchronization, and other configured delivered integrations |
 
 The local development environment uses the repository-root Docker Compose
-stack; Docker Compose is not a production dependency. No separate Python API,
-router, queue server, or orchestration service is required by the application.
+stack. Its default services are WordPress, MariaDB, and Node.js tooling;
+PHPUnit and phpMyAdmin are profile-gated tools. Docker Compose is not a
+production dependency. No separate Python API, router, queue server, or
+orchestration service is required by the application.
 
 ## Repository architecture
 

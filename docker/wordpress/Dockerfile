@@ -16,6 +16,7 @@ RUN curl -fsSL https://github.com/wp-cli/wp-cli/releases/download/v2.12.0/wp-cli
     && rm /tmp/wp-cli.phar
 
 COPY --from=composer:2.7.7 /usr/bin/composer /usr/local/bin/composer
+COPY docker/wordpress/worldgraph.ini /usr/local/etc/php/conf.d/worldgraph.ini
 
 WORKDIR /opt/worldgraph
 COPY composer.json composer.lock ./

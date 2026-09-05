@@ -38,6 +38,9 @@ The Compose service sets `WORDPRESS_URL` to the internal service URL
 URLs returned to the browser use the public WordPress origin at
 `http://localhost:8080`.
 
+Complete the WordPress installation before starting or building the frontend;
+the production build reads post slugs from the WordPress REST API.
+
 For the headless Connections manager, also configure these values in the
 repository-root `.env` using a WordPress Application Password:
 
@@ -60,7 +63,8 @@ docker compose --profile headless up -d --build headless
 docker compose --profile headless run --rm headless npm run build
 ```
 
-The dev server is available at `http://localhost:3000`.
+The dev server is available at `http://localhost:3000`; its published port is
+bound only to the host loopback interface.
 
 ## Cache revalidation
 

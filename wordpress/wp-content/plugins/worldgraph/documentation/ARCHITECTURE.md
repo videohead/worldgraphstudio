@@ -330,7 +330,8 @@ registration. Provider accounts and services are optional.
 In the repository's Docker Compose environment:
 
 - `wordpress` owns PHP, WordPress, and WP-CLI;
-- `node` owns Node.js and JavaScript checks; and
+- `node` owns Node.js and JavaScript checks;
+- the `tools` profile runs the on-demand `phpunit` service against `/app`; and
 - `database` owns MariaDB.
 
 PHP changes do not require restarting WordPress.
@@ -350,13 +351,13 @@ renamed `worldgraph/worldgraph.php` plugin so the migration can run.
 From the repository root:
 
 ```bash
-docker compose exec wordpress /opt/worldgraph/vendor/bin/phpunit \
+docker compose --profile tools run --rm phpunit \
   -c /app/wordpress/wp-content/plugins/worldgraph/tests/phpunit.xml \
   --testsuite "World Graph Studio" \
   --do-not-cache-result
 
 docker compose exec wordpress sh -lc \
-  'find /app/wordpress/wp-content/plugins/worldgraph -type f -name "*.php" -exec php -l {} \;'
+  'find /var/www/html/wp-content/plugins/worldgraph -type f -name "*.php" -exec php -l {} \;'
 
 docker compose exec node sh -lc \
   'find /app/wordpress/wp-content/plugins/worldgraph/assets -type f -name "*.js" -exec node --check {} \;'

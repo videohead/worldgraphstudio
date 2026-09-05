@@ -18,8 +18,11 @@ RUN ln -s /opt/worldgraph/node_modules/.bin/jsonlint /usr/local/bin/jsonlint \
     && ln -s /opt/worldgraph/node_modules/.bin/sass /usr/local/bin/sass
 
 COPY docker/node/entrypoint.sh /usr/local/bin/worldgraph-node-entrypoint
-RUN chmod 0755 /usr/local/bin/worldgraph-node-entrypoint
+RUN chmod 0755 /usr/local/bin/worldgraph-node-entrypoint \
+    && mkdir -p /app/node_modules \
+    && chown node:node /app/node_modules
 ENTRYPOINT ["worldgraph-node-entrypoint"]
 
 WORKDIR /app
+USER node
 CMD ["sleep", "infinity"]
