@@ -1,0 +1,11 @@
+**
+!composer.json
+!composer.lock
+!package.json
+!package-lock.json
+!headless/
+headless/**
+!headless/package.json
+!headless/package-lock.json
+!docker/
+!docker/**

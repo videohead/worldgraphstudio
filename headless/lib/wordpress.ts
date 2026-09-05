@@ -12,7 +12,7 @@ const WORDPRESS_URL = process.env.WORDPRESS_URL;
 
 if (!WORDPRESS_URL) {
   console.warn(
-    "WORDPRESS_URL is not set. Set it in .env.local, e.g. https://worldgraph.lndo.site"
+    "WORDPRESS_URL is not set. Set it in .env.local, e.g. http://localhost:8080"
   );
 }
 

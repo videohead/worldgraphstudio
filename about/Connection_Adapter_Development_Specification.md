@@ -1436,12 +1436,12 @@ also have behavioral fixtures where the bootstrap permits them.
 Run the narrow provider test first, then the full suite:
 
 ```bash
-lando phpunit \
+docker compose exec wordpress /opt/worldgraph/vendor/bin/phpunit \
   -c /app/wordpress/wp-content/plugins/worldgraph/tests/phpunit.xml \
   --filter Acme \
   --do-not-cache-result
 
-lando phpunit \
+docker compose exec wordpress /opt/worldgraph/vendor/bin/phpunit \
   -c /app/wordpress/wp-content/plugins/worldgraph/tests/phpunit.xml \
   --testsuite "World Graph Studio" \
   --do-not-cache-result

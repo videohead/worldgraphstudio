@@ -20,10 +20,9 @@ are classified separately in [Delivery Status](Delivery_Status.md).
 
 Every World Graph Studio user needs:
 
-1. A WordPress.org-capable host, WP Local, or a local Docker/Lando deployment.
-   Developers can use either the Lando config or the plain Docker Compose
-   stack in [`developers/`](../developers/); both start the same WordPress,
-   PHP, and MariaDB services.
+1. A WordPress.org-capable host, WP Local, or the repository-root Docker
+   Compose deployment for local development. The Compose stack starts the
+   WordPress, PHP, MariaDB, and development-tooling services.
 2. Optionally, a local ComfyUI installation, Comfy Cloud account, fal account,
    ElevenLabs account, separate SunoAPI.org and Ace Data Cloud accounts,
    separate midjourney-api.com and Ace Data Cloud MidJourney credentials, a
@@ -44,11 +43,10 @@ endpoint and any credential it requires.
 ## Core Runtime
 
 The standard deployment contains WordPress, MariaDB, and the World Graph Studio plugin. WordPress stores generation jobs and uses WP-Cron to process bounded batches.
-A node-driven CLI container is also included for testing and development.
-In the default Lando environment, FFmpeg is installed in the WordPress
-`appserver` because the resumable rough-cut worker executes from PHP. The
-separate CLI FFmpeg tooling cannot serve as an automatic cross-container
-fallback.
+A Node.js tooling container is also included for testing and development.
+In the Docker Compose environment, FFmpeg is installed in the `wordpress`
+service because the resumable rough-cut worker executes from PHP. Tooling in a
+separate container cannot serve as an automatic cross-container fallback.
 The SCF plugin is also required in order to extend World Graph Studio capabilities.
 
 ## Connection Adapters
@@ -98,11 +96,13 @@ handling must be implemented explicitly. See
 [Adding Connections and Templates](Adding_Connections_and_Templates.md) for the
 concise extension workflow.
 
-For reliable production scheduling, invoke `wp-cron.php` from the host scheduler. Local Lando users can run due events with `lando wp-cron`.
+For reliable production scheduling, invoke `wp-cron.php` from the host
+scheduler. Local Docker Compose users can run due events with
+`docker compose exec wordpress wp cron event run --due-now`.
 
-After adopting a Lando configuration that newly installs FFmpeg in
-`appserver`, run `lando rebuild -y`, then verify the PHP runtime with
-`lando exec appserver -- ffmpeg -version`. A future ComfyUI-first assembly path
+After changing the `wordpress` image dependencies, rebuild it with
+`docker compose up -d --build wordpress`, then verify the PHP runtime with
+`docker compose exec wordpress ffmpeg -version`. A future ComfyUI-first assembly path
 requires an explicitly installed, capability-checked World Graph assembly
 node/Template; ComfyUI's normal HTTP API does not expose its internal FFmpeg
 binary as a command service.
@@ -113,26 +113,23 @@ Comfy Cloud uses its MCP execution path. A local ComfyUI deployment can use its
 HTTP API for execution and a separate MCP server for template discovery and
 model downloads.
 
-### Reaching a local ComfyUI from Lando
+### Reaching a local ComfyUI from Docker Compose
 
-WordPress runs inside the `appserver` container, so `localhost` in the ComfyUI
-URL fields refers to that container, not your development host. Use Lando's
-built-in host hostname instead:
+WordPress runs inside the `wordpress` container, so `localhost` in the ComfyUI
+URL fields refers to that container, not your development host. Use Docker's
+host gateway hostname instead:
 
-- **ComfyUI API URL:** `http://host.lando.internal:8188`
-- **LLM base URL** (Ollama, llama.cpp, LM Studio, vLLM): `http://host.lando.internal:11434/v1`
+- **ComfyUI API URL:** `http://host.docker.internal:8188`
+- **LLM base URL** (Ollama, llama.cpp, LM Studio, vLLM): `http://host.docker.internal:11434/v1`
 
-`host.lando.internal` (Lando ≥ 3.22) resolves to the Lando host machine from
-every service in every running app, on every platform, without extra
-Docker network or `extra_hosts` configuration. Prefer it over
-`host.docker.internal`, which is Linux/Docker-Engine-version-specific and
-only works when the app's Landofile explicitly adds
-`extra_hosts: ["host.docker.internal:host-gateway"]`.
+The Compose configuration maps `host.docker.internal` to Docker's host gateway,
+including on Linux. If the optional service is added to the same Compose
+network instead, use its service hostname and internal port.
 
 If ComfyUI runs in its own Docker Compose project rather than directly on the
-host, publish its ports to the host (e.g. `"8188:8188"`) so `host.lando.internal`
-can reach it — Lando does not automatically join unrelated Compose projects'
-networks.
+host, publish its ports to the host (for example, `"8188:8188"`) so
+`host.docker.internal` can reach it. Unrelated Compose projects do not share a
+network unless one is configured explicitly.
 
 ### Automatic Template discovery and model downloads
 
@@ -393,9 +390,9 @@ subset and REST contract.
 
 World Graph Studio can reach a local ComfyUI server through its HTTP API. In the Setup
 wizard, choose **Local ComfyUI HTTP API + MCP**, set the endpoint that is reachable
-from WordPress, and use **Test ComfyUI** to check `/system_stats`. In a Lando
-development environment where ComfyUI runs on the host, use
-`http://host.lando.internal:8188`; `localhost` refers to the WordPress
+from WordPress, and use **Test ComfyUI** to check `/system_stats`. In the local
+Docker Compose environment where ComfyUI runs on the host, use
+`http://host.docker.internal:8188`; `localhost` refers to the WordPress
 container and will not reach the host service.
 
 

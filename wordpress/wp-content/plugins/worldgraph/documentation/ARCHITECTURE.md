@@ -327,10 +327,10 @@ Required:
 WordPress 6.9 or later is needed for the conditional WordPress Abilities
 registration. Provider accounts and services are optional.
 
-In the repository's Lando environment:
+In the repository's Docker Compose environment:
 
-- `appserver` owns PHP, WordPress, and WP-CLI;
-- `cli` owns Node.js and JavaScript checks; and
+- `wordpress` owns PHP, WordPress, and WP-CLI;
+- `node` owns Node.js and JavaScript checks; and
 - `database` owns MariaDB.
 
 PHP changes do not require restarting WordPress.
@@ -350,23 +350,23 @@ renamed `worldgraph/worldgraph.php` plugin so the migration can run.
 From the repository root:
 
 ```bash
-./vendor/bin/phpunit \
-  -c wordpress/wp-content/plugins/worldgraph/tests/phpunit.xml \
+docker compose exec wordpress /opt/worldgraph/vendor/bin/phpunit \
+  -c /app/wordpress/wp-content/plugins/worldgraph/tests/phpunit.xml \
   --testsuite "World Graph Studio" \
   --do-not-cache-result
 
-find wordpress/wp-content/plugins/worldgraph -type f -name '*.php' \
-  -exec php -l {} \;
+docker compose exec wordpress sh -lc \
+  'find /app/wordpress/wp-content/plugins/worldgraph -type f -name "*.php" -exec php -l {} \;'
 
-lando exec cli -- /bin/sh -lc \
+docker compose exec node sh -lc \
   'find /app/wordpress/wp-content/plugins/worldgraph/assets -type f -name "*.js" -exec node --check {} \;'
 ```
 
 For an activated local site:
 
 ```bash
-lando wp plugin status worldgraph
-lando wp cron event list
+docker compose exec wordpress wp plugin status worldgraph
+docker compose exec wordpress wp cron event list
 ```
 
 Use [Delivery Status](../../../../../about/Delivery_Status.md) rather than old

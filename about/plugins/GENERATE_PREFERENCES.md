@@ -650,9 +650,9 @@ the completed child media remains available and the batch reports an assembly
 error and diagnostic instead of pretending a rough cut exists.
 
 The delivered assembler executes FFmpeg in the WordPress PHP runtime. The
-default Lando configuration therefore installs FFmpeg in `appserver`; the
-separate `cli` service's binary is developer tooling and cannot be selected as
-an automatic PHP fallback across the container boundary. A preferred ComfyUI
+Docker Compose `wordpress` image therefore installs FFmpeg; a binary in the
+separate `node` service is developer tooling and cannot be selected as an
+automatic PHP fallback across the container boundary. A preferred ComfyUI
 assembly backend still needs to be completed as a capability-gated Template
 backed by a trusted, bounded assembly node. Ordinary ComfyUI HTTP does not
 expose a generic FFmpeg command endpoint, and raw FFmpeg argument passthrough

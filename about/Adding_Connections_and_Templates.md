@@ -780,12 +780,12 @@ Add focused tests under
 Run the narrow adapter/module tests first, then the full suite:
 
 ```bash
-lando phpunit \
+docker compose exec wordpress /opt/worldgraph/vendor/bin/phpunit \
   -c /app/wordpress/wp-content/plugins/worldgraph/tests/phpunit.xml \
   --filter 'Connection|Template|Acme' \
   --do-not-cache-result
 
-lando phpunit \
+docker compose exec wordpress /opt/worldgraph/vendor/bin/phpunit \
   -c /app/wordpress/wp-content/plugins/worldgraph/tests/phpunit.xml \
   --testsuite "World Graph Studio" \
   --do-not-cache-result

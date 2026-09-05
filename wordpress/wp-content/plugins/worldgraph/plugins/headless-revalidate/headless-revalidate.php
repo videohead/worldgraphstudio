@@ -231,9 +231,9 @@ function record_failure( string $message, array $settings ): void {
 /**
  * Whether one exact private-network target is explicitly allowed for local development.
  *
- * Lando's two known headless hostnames are enabled only inside a Lando service.
- * Other local stacks may define WORLDGRAPH_HEADLESS_LOCAL_HOSTS as an array or
- * comma-delimited list of exact hostnames in wp-config.php.
+ * Local targets are disabled by default. Define WORLDGRAPH_HEADLESS_LOCAL_HOSTS
+ * as an array or comma-delimited list of exact hostnames in wp-config.php, or
+ * provide the same comma-delimited value through the container environment.
  *
  * @param string $url Candidate webhook URL.
  * @return bool
@@ -244,12 +244,17 @@ function is_allowed_local_revalidation_target( string $url ): bool {
 		return false;
 	}
 
-	$allowed_hosts = [];
-	if ( 'ON' === getenv( 'LANDO' ) || false !== getenv( 'LANDO_INFO' ) ) {
-		$allowed_hosts = [ 'headless', 'headless.worldgraph.lndo.site' ];
-	}
+	$host_sources = [];
 	if ( defined( 'WORLDGRAPH_HEADLESS_LOCAL_HOSTS' ) ) {
-		$configured_hosts = constant( 'WORLDGRAPH_HEADLESS_LOCAL_HOSTS' );
+		$host_sources[] = constant( 'WORLDGRAPH_HEADLESS_LOCAL_HOSTS' );
+	}
+	$environment_hosts = getenv( 'WORLDGRAPH_HEADLESS_LOCAL_HOSTS' );
+	if ( false !== $environment_hosts ) {
+		$host_sources[] = $environment_hosts;
+	}
+
+	$allowed_hosts = [];
+	foreach ( $host_sources as $configured_hosts ) {
 		if ( is_string( $configured_hosts ) ) {
 			$configured_hosts = preg_split( '/\s*,\s*/', $configured_hosts, -1, PREG_SPLIT_NO_EMPTY );
 		}

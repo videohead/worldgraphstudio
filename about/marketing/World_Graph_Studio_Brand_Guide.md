@@ -467,8 +467,8 @@ World Graph Studio lets creators choose the infrastructure.
 
 ## Deployment Promise
 
-World Graph Studio runs on a WordPress.org-capable host or a local Docker/Lando
-deployment. Helpful specialist agents require an API-connected LLM: a local
+World Graph Studio runs on a WordPress.org-capable host or a local Docker
+Compose deployment. Helpful specialist agents require an API-connected LLM: a local
 OpenAI-compatible server or a supported hosted API key. Generation can use
 Comfy Cloud MCP, local ComfyUI HTTP workflows, fal MCP, ElevenLabs, Suno through
 SunoAPI.org REST and AceData Cloud MCP,

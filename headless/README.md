@@ -29,20 +29,19 @@ actions.
 
 ## Setup
 
-Container-first workflow (recommended): use the Lando or Docker Compose
-services that already ship with Node/npm for this project (see
-[`developers/`](../developers/)). Do not install or upgrade Node on the host
-unless you are intentionally running headless standalone.
+Use the repository-root Docker Compose services, which provide the required
+Node/npm runtime. Do not install or upgrade Node on the host for repository
+work.
 
-```bash
-cd headless
-cp .env.example .env.local   # point WORDPRESS_URL at your Lando or Docker site
-```
+The Compose service sets `WORDPRESS_URL` to the internal service URL
+`http://wordpress`. It keeps `WORDPRESS_HOSTNAME` as `localhost` because media
+URLs returned to the browser use the public WordPress origin at
+`http://localhost:8080`.
 
-For the headless Connections manager, also configure admin credentials using a
-WordPress Application Password:
+For the headless Connections manager, also configure these values in the
+repository-root `.env` using a WordPress Application Password:
 
-```bash
+```dotenv
 WORLDGRAPH_ADMIN_USER="admin-username"
 WORLDGRAPH_ADMIN_APP_PASSWORD="xxxx xxxx xxxx xxxx xxxx xxxx"
 ```
@@ -54,31 +53,14 @@ The current Connections interface is a development prototype and remains
 production-blocked until it authenticates and authorizes the browser user
 independently of these server credentials. See the parity ledger.
 
-Via Lando (recommended, matches the rest of the stack):
+Start the headless service from the repository root:
 
 ```bash
-lando start                # the "headless" service auto-installs deps and runs `next dev`
-lando headless-build       # production build, when needed
-lando exec cli -- sh -lc 'cd /app/headless && npm run build'
-```
-
-The dev server is proxied at `http://headless.worldgraph.lndo.site`.
-
-Via Docker Compose (no Lando required):
-
-```bash
-cd developers
-docker compose up -d headless   # runs `npm install && next dev` on port 3000
+docker compose --profile headless up -d --build headless
+docker compose --profile headless run --rm headless npm run build
 ```
 
 The dev server is available at `http://localhost:3000`.
-
-Standalone (optional, outside Lando):
-
-```bash
-npm install
-npm run dev
-```
 
 ## Cache revalidation
 
@@ -94,12 +76,12 @@ one of `projects`, `worlds`, `characters`, `scenes`, `props`, or `sounds`.
 Story fetches also refresh after five minutes as a bounded fallback when an
 individual webhook cannot be delivered.
 
-The sender retains WordPress safe-HTTP validation. Inside Lando it narrowly
-allows only `headless` and `headless.worldgraph.lndo.site`, so either the
-service URL (`http://headless:3000`) or proxy URL can be configured locally.
-For a different private development hostname, define
-`WORLDGRAPH_HEADLESS_LOCAL_HOSTS` in `wp-config.php` as an exact hostname or
-comma-delimited list; production hosts need no exception.
+The sender retains WordPress safe-HTTP validation. Inside Docker Compose,
+configure the webhook with the internal service URL `http://headless:3000` and
+use the exact `headless` hostname that Compose automatically allows through
+`WORLDGRAPH_HEADLESS_LOCAL_HOSTS`. Set that environment value explicitly only
+when adding a different private development hostname. Production hosts need no
+local-host exception.
 
 ## License
 

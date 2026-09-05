@@ -68,14 +68,19 @@ class Test_Rough_Cut_Assembler extends TestCase {
 		$this->assertIsString( $availability['error'] );
 	}
 
-	/** Lando installs the automatic assembly binary in the PHP-owned service. */
-	public function test_lando_appserver_owns_the_ffmpeg_runtime(): void {
-		$lando = (string) file_get_contents( dirname( __DIR__, 5 ) . '/.lando.yml' );
+	/** The Docker WordPress image installs the automatic assembly binary. */
+	public function test_wordpress_container_owns_the_ffmpeg_runtime(): void {
+		$repository_root = dirname( __DIR__, 5 );
+		$compose         = file_get_contents( $repository_root . '/compose.yaml' );
+		$dockerfile      = file_get_contents( $repository_root . '/docker/wordpress/Dockerfile' );
 
-		$this->assertNotSame( '', $lando );
+		$this->assertIsString( $compose );
+		$this->assertStringContainsString( "  wordpress:\n", $compose );
+		$this->assertStringContainsString( 'dockerfile: docker/wordpress/Dockerfile', $compose );
+		$this->assertIsString( $dockerfile );
 		$this->assertMatchesRegularExpression(
-			'/services:\s+appserver:.*?build_as_root:.*?apt-get install -y --no-install-recommends ffmpeg.*?\n  database:/s',
-			$lando
+			'/FROM wordpress:php8\.2-apache.*?apt-get install -y --no-install-recommends.*?\bffmpeg\b/s',
+			$dockerfile
 		);
 	}
 

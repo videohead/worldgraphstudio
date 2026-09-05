@@ -38,8 +38,8 @@ custom nodes, or replace model-loader selections on your behalf.
 In WordPress Admin, open **World Graph Studio > Setup & Settings** and select
 **Local ComfyUI HTTP API + MCP**.
 
-- Local ComfyUI API URL: `http://host.lando.internal:8188`
-- Local ComfyUI MCP URL: `http://host.lando.internal:9000/mcp`
+- Local ComfyUI API URL: `http://host.docker.internal:8188`
+- Local ComfyUI MCP URL: `http://host.docker.internal:9000/mcp`
 
 If your MCP service runs on a different host, port, or path, use that real
 value. Do not append `/mcp` to port `8188` unless a separate MCP server is
@@ -413,6 +413,6 @@ API. Its server examples load that JSON and send it to `POST /prompt` as the
 
 ## Node and npm note
 
-Use container-managed Node/npm for project commands (Lando `cli` or `headless`
-services). Avoid installing or changing host Node versions unless you are
-intentionally running the headless app outside Lando.
+Use container-managed Node/npm for project commands through the Docker Compose
+`node` or `headless` services. Do not install or change host Node versions for
+repository work.

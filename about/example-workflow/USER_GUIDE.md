@@ -10,24 +10,20 @@ World Graph Studio requires WordPress 6.0 or newer, PHP 8.1 or newer, and the
 Secure Custom Fields plugin. It works with ordinary WordPress themes and does
 not require a specific theme.
 
-For the repository's Lando environment (`developers/.lando.yml`):
+From the repository root, start the Docker Compose environment and activate
+the required plugins:
 
 ```bash
-lando start
-lando wp plugin install secure-custom-fields --activate
-lando wp plugin activate worldgraph
-```
-
-Open the URL reported by `lando info`, sign in to WordPress, and choose **World
-Graph Studio > Setup**.
-
-Without Lando, use the Docker Compose stack in `developers/` instead:
-
-```bash
-cd developers
-docker compose up -d
-docker compose exec appserver wp plugin install secure-custom-fields --activate
-docker compose exec appserver wp plugin activate worldgraph
+cp .env.example .env
+docker compose up -d --build
+docker compose exec wordpress wp core install \
+  --url=http://localhost:8080 \
+  --title="World Graph Studio" \
+  --admin_user=admin \
+  --admin_password='change-this-password' \
+  --admin_email='you@example.com'
+docker compose exec wordpress wp plugin install secure-custom-fields --activate
+docker compose exec wordpress wp plugin activate worldgraph
 ```
 
 Then open `http://localhost:8080` and choose **World Graph Studio > Setup**.

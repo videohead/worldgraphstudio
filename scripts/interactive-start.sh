@@ -23,24 +23,17 @@ prompt_yes_no() {
   done
 }
 
-ENABLE_VLLM=false
-ENABLE_COMFYUI=false
+ENABLE_HEADLESS=false
 
-if prompt_yes_no "Start vLLM?"; then
-  ENABLE_VLLM=true
+if prompt_yes_no "Start the optional headless frontend?"; then
+  ENABLE_HEADLESS=true
 fi
 
-if prompt_yes_no "Start ComfyUI?"; then
-  ENABLE_COMFYUI=true
+COMPOSE_ARGS=( -f compose.yaml )
+if [[ "$ENABLE_HEADLESS" == true ]]; then
+  COMPOSE_ARGS+=( --profile headless )
 fi
+COMPOSE_ARGS+=( up -d )
 
-COMPOSE_ARGS=( -f docker-compose.yml up -d )
-if [[ "$ENABLE_VLLM" == true ]]; then
-  COMPOSE_ARGS+=( vllm llm-agents )
-fi
-if [[ "$ENABLE_COMFYUI" == true ]]; then
-  COMPOSE_ARGS+=( comfyui )
-fi
-
-echo "Starting World Graph Studio with optional services: vLLM=$ENABLE_VLLM, ComfyUI=$ENABLE_COMFYUI"
+echo "Starting World Graph Studio with headless=$ENABLE_HEADLESS"
 docker compose "${COMPOSE_ARGS[@]}"

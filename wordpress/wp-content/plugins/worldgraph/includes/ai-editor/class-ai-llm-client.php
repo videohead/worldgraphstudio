@@ -1339,7 +1339,7 @@ class AI_LLM_Client {
 			$error = $response->get_error_message();
 			$host  = wp_parse_url( $url, PHP_URL_HOST );
 			if ( in_array( $host, [ 'localhost', '127.0.0.1', '::1' ], true ) ) {
-				$error .= ' WordPress makes this request from its container, where localhost is not your development host. Use host.lando.internal (Lando) or a Docker service hostname.';
+				$error .= ' WordPress makes this request from its container, where localhost is not your development host. Use host.docker.internal or a Docker service hostname.';
 			}
 
 			return [

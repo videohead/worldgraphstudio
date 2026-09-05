@@ -11,19 +11,10 @@ The plugin test suite lives in
 `wordpress/wp-content/plugins/worldgraph/tests/` and uses
 `tests/phpunit.xml` plus `tests/bootstrap.php`.
 
-Run it from the repository root on the host:
+Run it from the repository root through the `wordpress` service:
 
 ```bash
-./vendor/bin/phpunit \
-  -c wordpress/wp-content/plugins/worldgraph/tests/phpunit.xml \
-  --testsuite "World Graph Studio" \
-  --do-not-cache-result
-```
-
-Or use Lando's PHP runtime:
-
-```bash
-lando phpunit \
+docker compose exec wordpress /opt/worldgraph/vendor/bin/phpunit \
   -c /app/wordpress/wp-content/plugins/worldgraph/tests/phpunit.xml \
   --testsuite "World Graph Studio" \
   --do-not-cache-result
@@ -35,8 +26,8 @@ ignored by the repository.
 Run a focused file or method by appending the path or filter:
 
 ```bash
-./vendor/bin/phpunit \
-  -c wordpress/wp-content/plugins/worldgraph/tests/phpunit.xml \
+docker compose exec wordpress /opt/worldgraph/vendor/bin/phpunit \
+  -c /app/wordpress/wp-content/plugins/worldgraph/tests/phpunit.xml \
   --filter test_method_name \
   --do-not-cache-result
 ```
@@ -52,33 +43,30 @@ than maintaining a duplicate list here.
 ### PHP syntax
 
 ```bash
-git ls-files -z \
-  'wordpress/wp-content/plugins/worldgraph/*.php' \
-  'wordpress/wp-content/plugins/worldgraph/**/*.php' \
-  | xargs -0 -n1 php -l
+docker compose exec wordpress sh -lc \
+  'find /app/wordpress/wp-content/plugins/worldgraph -type f -name "*.php" -exec php -l {} \;'
 ```
 
 ### JavaScript syntax
 
-Node.js belongs to Lando's `cli` service:
+Node.js belongs to the Docker Compose `node` service:
 
 ```bash
-lando exec cli -- /bin/sh -lc \
+docker compose exec node sh -lc \
   'find /app/wordpress/wp-content/plugins/worldgraph/assets -type f -name "*.js" -exec node --check {} \;'
 ```
 
 ### SCF Local JSON
 
 ```bash
-for file in wordpress/wp-content/plugins/worldgraph/acf-json/*.json; do
-  jq empty "$file"
-done
+docker compose exec node sh -lc \
+  'for file in /app/wordpress/wp-content/plugins/worldgraph/acf-json/*.json; do node -e "JSON.parse(require(\"fs\").readFileSync(process.argv[1], \"utf8\"))" "$file"; done'
 ```
 
 ### Shell syntax
 
 ```bash
-bash -n scripts/interactive-start.sh scripts/setup-db.sh
+docker compose exec node bash -n /app/scripts/interactive-start.sh /app/scripts/setup-db.sh
 ```
 
 ### Patch hygiene
@@ -89,14 +77,14 @@ git diff --check
 
 ## WordPress runtime smoke checks
 
-WP-CLI runs in the `appserver` service through the Lando wrapper:
+WP-CLI runs in the `wordpress` service:
 
 ```bash
-lando wp core is-installed
-lando wp plugin list
-lando wp plugin status worldgraph
-lando wp post-type list --fields=name,public,show_in_rest
-lando wp rest route list --fields=route | rg worldgraph
+docker compose exec wordpress wp core is-installed
+docker compose exec wordpress wp plugin list
+docker compose exec wordpress wp plugin status worldgraph
+docker compose exec wordpress wp post-type list --fields=name,public,show_in_rest
+docker compose exec wordpress sh -lc 'wp rest route list --fields=route | grep worldgraph'
 ```
 
 When testing a database upgraded from the old product namespace, also verify
@@ -107,10 +95,10 @@ serialized WordPress migration with raw SQL replacement.
 Useful content commands include:
 
 ```bash
-lando wp post list --post_type=worldgraph_project
-lando wp post list --post_type=worldgraph_character
-lando wp option get siteurl
-lando wp cron event list
+docker compose exec wordpress wp post list --post_type=worldgraph_project
+docker compose exec wordpress wp post list --post_type=worldgraph_character
+docker compose exec wordpress wp option get siteurl
+docker compose exec wordpress wp cron event list
 ```
 
 ## Headless parity validation
@@ -120,13 +108,7 @@ impact, validate the affected PHP contracts and the Next.js consumer in the
 same change. The minimum headless gate is a production build:
 
 ```bash
-lando headless-build
-```
-
-The equivalent command in the shared Node service is:
-
-```bash
-lando exec cli -- sh -lc 'cd /app/headless && npm ci && npm run build'
+docker compose --profile headless run --rm headless npm run build
 ```
 
 A successful build proves compilation, not behavioral parity. Add and run the
@@ -178,23 +160,25 @@ release.
 
 ## Playwright status
 
-`package.json` contains Playwright and WordPress E2E dependencies, and Lando's
-`cli` image installs Chromium. There is currently no checked-in
-`playwright.config.*` file or `*.spec.*` suite, so `lando playwright test` is
-not a release gate yet. When a browser suite is added, document its fixtures,
-credentials, database reset strategy, and exact command here.
+`package.json` contains Playwright and WordPress E2E dependencies, and the
+`node` image installs Chromium. There is currently no checked-in
+`playwright.config.*` file or `*.spec.*` suite, so
+`docker compose exec node npx playwright test` is not a release gate yet. When
+a browser suite is added, document its fixtures, credentials, database reset
+strategy, and exact command here.
 
 ## Troubleshooting
 
 If PHP appears stale after an edit, clear OPcache without restarting WordPress:
 
 ```bash
-lando exec appserver -- php -r 'opcache_reset();'
+docker compose exec wordpress php -r 'opcache_reset();'
 ```
 
-If `lando wp` reports that `wp` is missing, the appserver image predates the
-WP-CLI build step. Rebuild the Lando app, then retry from the `appserver`
-runtime. Do not move WordPress commands into the Node-based `cli` service.
+If `docker compose exec wordpress wp` reports that `wp` is missing, the image
+predates the WP-CLI build step. Run
+`docker compose up -d --build wordpress`, then retry from the `wordpress`
+runtime. Do not move WordPress commands into the Node service.
 
 If a test changes the working tree, first check that it did not write
 `tests/.phpunit.result.cache`, generated media, browser reports, or a database

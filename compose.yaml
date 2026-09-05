@@ -1,0 +1,107 @@
+name: worldgraph
+
+services:
+  wordpress:
+    build:
+      context: .
+      dockerfile: docker/wordpress/Dockerfile
+    ports:
+      - "${WORDPRESS_PORT:-8080}:80"
+    volumes:
+      - wordpress_data:/var/www/html
+      - .:/app
+      - ./wordpress/wp-content/plugins/worldgraph:/var/www/html/wp-content/plugins/worldgraph
+      - ./wordpress/wp-content/themes/worldgraph-child:/var/www/html/wp-content/themes/worldgraph-child
+    environment:
+      WORDPRESS_DB_HOST: database:3306
+      WORDPRESS_DB_NAME: ${WORDPRESS_DB_NAME:-wordpress}
+      WORDPRESS_DB_USER: ${WORDPRESS_DB_USER:-wordpress}
+      WORDPRESS_DB_PASSWORD: ${WORDPRESS_DB_PASSWORD:-wordpress}
+      WORDPRESS_TABLE_PREFIX: ${WORDPRESS_TABLE_PREFIX:-wp_}
+      WORDPRESS_DEBUG: ${WORDPRESS_DEBUG:-1}
+      WP_CLI_ALLOW_ROOT: "1"
+      WP_USERNAME: ${WP_USERNAME:-admin}
+      WP_APP_PASSWORD: ${WP_APP_PASSWORD:-admin}
+      WORLDGRAPH_HEADLESS_LOCAL_HOSTS: headless
+      WORLDGRAPH_COMFY_API_KEY: ${WORLDGRAPH_COMFY_API_KEY:-}
+      WORLDGRAPH_AI_API_KEY: ${WORLDGRAPH_AI_API_KEY:-}
+      WORLDGRAPH_AI_FALLBACK_API_KEY: ${WORLDGRAPH_AI_FALLBACK_API_KEY:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      database:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost/wp-login.php >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  database:
+    image: mariadb:10.6
+    environment:
+      MARIADB_DATABASE: ${WORDPRESS_DB_NAME:-wordpress}
+      MARIADB_USER: ${WORDPRESS_DB_USER:-wordpress}
+      MARIADB_PASSWORD: ${WORDPRESS_DB_PASSWORD:-wordpress}
+      MARIADB_ROOT_PASSWORD: ${WORDPRESS_DB_ROOT_PASSWORD:-wordpress}
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mariadb-admin ping -h localhost -uroot -p$${MARIADB_ROOT_PASSWORD} --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+  phpmyadmin:
+    image: phpmyadmin:5.2
+    ports:
+      - "${PHPMYADMIN_PORT:-8081}:80"
+    environment:
+      PMA_HOST: database
+      PMA_USER: ${WORDPRESS_DB_USER:-wordpress}
+      PMA_PASSWORD: ${WORDPRESS_DB_PASSWORD:-wordpress}
+    depends_on:
+      database:
+        condition: service_healthy
+
+  node:
+    build:
+      context: .
+      dockerfile: docker/node/Dockerfile
+    init: true
+    working_dir: /app
+    volumes:
+      - .:/app
+      - node_modules:/app/node_modules
+    command: sleep infinity
+
+  headless:
+    profiles: ["headless"]
+    build:
+      context: .
+      dockerfile: docker/headless/Dockerfile
+    init: true
+    working_dir: /app/headless
+    volumes:
+      - ./headless:/app/headless
+      - headless_node_modules:/app/headless/node_modules
+    ports:
+      - "${HEADLESS_PORT:-3000}:3000"
+    environment:
+      WORDPRESS_URL: http://wordpress
+      WORDPRESS_HOSTNAME: localhost
+      WORDPRESS_WEBHOOK_SECRET: ${WORDPRESS_WEBHOOK_SECRET:-change-me}
+      WORLDGRAPH_ADMIN_USER: ${WORLDGRAPH_ADMIN_USER:-}
+      WORLDGRAPH_ADMIN_APP_PASSWORD: ${WORLDGRAPH_ADMIN_APP_PASSWORD:-}
+    command: npm run dev -- --hostname 0.0.0.0 --port 3000
+    depends_on:
+      wordpress:
+        condition: service_healthy
+
+volumes:
+  wordpress_data:
+  db_data:
+  node_modules:
+  headless_node_modules:
