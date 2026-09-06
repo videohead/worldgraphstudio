@@ -20,11 +20,12 @@ Run it from the repository root on the host:
   --do-not-cache-result
 ```
 
-Or use Lando's PHP runtime:
+Or use the Compose PHP runtime:
 
 ```bash
-lando phpunit \
-  -c /app/wordpress/wp-content/plugins/worldgraph/tests/phpunit.xml \
+docker compose -f developers/docker-compose.yml exec appserver \
+  ./vendor/bin/phpunit \
+  -c /var/www/html/wp-content/plugins/worldgraph/tests/phpunit.xml \
   --testsuite "World Graph Studio" \
   --do-not-cache-result
 ```
@@ -60,10 +61,10 @@ git ls-files -z \
 
 ### JavaScript syntax
 
-Node.js belongs to Lando's `cli` service:
+Node.js belongs to the Compose `cli` service:
 
 ```bash
-lando exec cli -- /bin/sh -lc \
+docker compose -f developers/docker-compose.yml exec cli /bin/sh -lc \
   'find /app/wordpress/wp-content/plugins/worldgraph/assets -type f -name "*.js" -exec node --check {} \;'
 ```
 
@@ -89,14 +90,14 @@ git diff --check
 
 ## WordPress runtime smoke checks
 
-WP-CLI runs in the `appserver` service through the Lando wrapper:
+WP-CLI runs in the `appserver` service:
 
 ```bash
-lando wp core is-installed
-lando wp plugin list
-lando wp plugin status worldgraph
-lando wp post-type list --fields=name,public,show_in_rest
-lando wp rest route list --fields=route | rg worldgraph
+docker compose -f developers/docker-compose.yml exec appserver wp core is-installed
+docker compose -f developers/docker-compose.yml exec appserver wp plugin list
+docker compose -f developers/docker-compose.yml exec appserver wp plugin status worldgraph
+docker compose -f developers/docker-compose.yml exec appserver wp post-type list --fields=name,public,show_in_rest
+docker compose -f developers/docker-compose.yml exec appserver wp rest route list --fields=route | rg worldgraph
 ```
 
 When testing a database upgraded from the old product namespace, also verify
@@ -107,10 +108,10 @@ serialized WordPress migration with raw SQL replacement.
 Useful content commands include:
 
 ```bash
-lando wp post list --post_type=worldgraph_project
-lando wp post list --post_type=worldgraph_character
-lando wp option get siteurl
-lando wp cron event list
+docker compose -f developers/docker-compose.yml exec appserver wp post list --post_type=worldgraph_project
+docker compose -f developers/docker-compose.yml exec appserver wp post list --post_type=worldgraph_character
+docker compose -f developers/docker-compose.yml exec appserver wp option get siteurl
+docker compose -f developers/docker-compose.yml exec appserver wp cron event list
 ```
 
 ## Headless parity validation
@@ -120,13 +121,13 @@ impact, validate the affected PHP contracts and the Next.js consumer in the
 same change. The minimum headless gate is a production build:
 
 ```bash
-lando headless-build
+docker compose -f developers/docker-compose.yml exec headless npm run build
 ```
 
 The equivalent command in the shared Node service is:
 
 ```bash
-lando exec cli -- sh -lc 'cd /app/headless && npm ci && npm run build'
+docker compose -f developers/docker-compose.yml exec cli sh -lc 'cd /app/headless && npm ci && npm run build'
 ```
 
 A successful build proves compilation, not behavioral parity. Add and run the
@@ -178,10 +179,10 @@ release.
 
 ## Playwright status
 
-`package.json` contains Playwright and WordPress E2E dependencies, and Lando's
-`cli` image installs Chromium. There is currently no checked-in
-`playwright.config.*` file or `*.spec.*` suite, so `lando playwright test` is
-not a release gate yet. When a browser suite is added, document its fixtures,
+`package.json` contains Playwright and WordPress E2E dependencies. There is
+currently no checked-in `playwright.config.*` file or `*.spec.*` suite, so a
+Playwright command is not a release gate yet. When a browser suite is added,
+document its fixtures,
 credentials, database reset strategy, and exact command here.
 
 ## Troubleshooting
@@ -189,12 +190,13 @@ credentials, database reset strategy, and exact command here.
 If PHP appears stale after an edit, clear OPcache without restarting WordPress:
 
 ```bash
-lando exec appserver -- php -r 'opcache_reset();'
+docker compose -f developers/docker-compose.yml exec appserver php -r 'opcache_reset();'
 ```
 
-If `lando wp` reports that `wp` is missing, the appserver image predates the
-WP-CLI build step. Rebuild the Lando app, then retry from the `appserver`
-runtime. Do not move WordPress commands into the Node-based `cli` service.
+If the `appserver` WP-CLI command reports that `wp` is missing, rebuild the
+appserver with `docker compose -f developers/docker-compose.yml up -d --build appserver`,
+then retry from the `appserver` runtime. Do not move WordPress commands into
+the Node-based `cli` service.
 
 If a test changes the working tree, first check that it did not write
 `tests/.phpunit.result.cache`, generated media, browser reports, or a database

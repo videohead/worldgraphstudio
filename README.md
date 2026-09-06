@@ -154,34 +154,17 @@ services are replaceable connections; they do not own the Story Graph.
 
 ## Quick start (for Developers and people looking to get into the guts)
 
-All developer tooling, including the Lando config and a plain Docker Compose
-alternative, lives in [`developers/`](developers/). Pick whichever option
-matches your local setup; both start the same WordPress + PHP 8.2 + MariaDB +
+The Docker Compose developer environment lives in
+[`developers/`](developers/). It starts the WordPress + PHP 8.2 + MariaDB +
 phpMyAdmin stack.
 
 ### Requirements
 
 - Docker Desktop or Docker Engine
-- [Lando](https://docs.lando.dev/getting-started/installation.html) (only if
-  you choose the Lando option)
 - Git
 - An API-connected LLM only if you want AI Editor or specialist-agent features
 - ComfyUI, Comfy Cloud, VideoDraft, or another configured provider only if you
   want automated asset generation
-
-### Option A: Lando
-
-```bash
-git clone <repository-url> worldgraph
-cd worldgraph/developers
-lando start
-lando info
-```
-
-Lando starts WordPress, PHP 8.2, MariaDB, and phpMyAdmin. The default local URL
-is `https://worldgraph.lndo.site`.
-
-### Option B: Docker Compose (no Lando required)
 
 ```bash
 git clone <repository-url> worldgraph
@@ -191,35 +174,29 @@ docker compose up -d
 ```
 
 See [`developers/docker-compose.yml`](developers/docker-compose.yml) for
-service details. WordPress is served at `http://localhost:8080` and phpMyAdmin
-at `http://localhost:8081`. Swap `lando wp ...` for
-`docker compose exec appserver wp ...` in the commands below when using this
-option.
+service details. WordPress is served at `http://localhost:8000`.
 
 WordPress core and Secure Custom Fields are deployment dependencies rather than
 tracked source in this repository. For a fresh checkout and database, install
 them before activating World Graph Studio:
 
 ```bash
-lando wp core download --force
-lando wp config create \
+docker compose exec appserver wp core download --force
+docker compose exec appserver wp config create \
   --dbname=wordpress \
   --dbuser=wordpress \
   --dbpass=wordpress \
   --dbhost=database \
   --skip-check
-lando wp core install \
-  --url=https://worldgraph.lndo.site \
+docker compose exec appserver wp core install \
+  --url=http://localhost:8000 \
   --title="World Graph Studio" \
   --admin_user=admin \
   --admin_password=<choose-a-password> \
   --admin_email=<your-email>
-lando wp plugin install secure-custom-fields --activate
-lando wp plugin activate worldgraph
+docker compose exec appserver wp plugin install secure-custom-fields --activate
+docker compose exec appserver wp plugin activate worldgraph
 ```
-
-With Docker Compose, run the equivalent commands through
-`docker compose exec appserver wp ...`, using `--url=http://localhost:8080`.
 
 World Graph Studio works with ordinary WordPress themes; no particular theme is
 required by the plugin.
@@ -263,19 +240,19 @@ variables use `WORLDGRAPH_`.
 ### Node and npm usage
 
 Use container-managed Node.js by default. For this repository, run Node/npm
-commands in the Lando `cli` service (or the `headless` service when running
+commands in the Compose `cli` service (or the `headless` service when running
 the optional Next.js frontend). This avoids host-version drift and ad-hoc local
 toolchain installs.
 
 Examples:
 
 ```bash
-lando exec cli -- sh -lc 'node -v && npm -v'
-lando exec cli -- sh -lc 'cd /app/headless && npm run build'
+docker compose -f developers/docker-compose.yml exec cli sh -lc 'node -v && npm -v'
+docker compose -f developers/docker-compose.yml exec cli sh -lc 'cd /app/headless && npm run build'
 ```
 
 Only use host-installed Node/npm when you intentionally run the headless app
-outside Lando.
+outside Docker Compose.
 
 Run the PHP test suite without writing PHPUnit's result cache:
 

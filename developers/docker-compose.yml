@@ -1,7 +1,6 @@
 # Docker Compose environment for World Graph Studio
 #
-# This is a docker-compose equivalent of .lando.yml, for developers who do
-# not use Lando. Run all commands from this directory:
+# Run all commands from this directory:
 #   docker compose up -d
 #   docker compose exec appserver wp core is-installed
 #
@@ -13,10 +12,12 @@ services:
   appserver:
     build:
       context: ./docker/appserver
+    container_name: worldgraph-appserver
+    working_dir: /var/www/html/worldgraphstudio
     ports:
-      - "80:80"
+      - "127.0.0.1:8000:80"
     volumes:
-      - ../wordpress:/var/www/html
+      - ../wordpress:/var/www/html/worldgraphstudio
     environment:
       WORDPRESS_DB_HOST: database
       WORDPRESS_DB_NAME: wordpress
@@ -28,6 +29,7 @@ services:
       WORLDGRAPH_COMFY_API_KEY: ${WORLDGRAPH_COMFY_API_KEY:-}
       WORLDGRAPH_AI_API_KEY: ${WORLDGRAPH_AI_API_KEY:-}
       WORLDGRAPH_AI_FALLBACK_API_KEY: ${WORLDGRAPH_AI_FALLBACK_API_KEY:-}
+      APACHE_RUN_GROUP: optusers
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -35,20 +37,19 @@ services:
 
   database:
     image: mariadb:10.6
-    ports:
-      - "3306:3306"
+    container_name: worldgraph-database
     environment:
       MARIADB_DATABASE: wordpress
       MARIADB_USER: wordpress
       MARIADB_PASSWORD: wordpress
       MARIADB_ROOT_PASSWORD: wordpress
     volumes:
-      - db_data:/var/lib/mysql
+      - worldgraph_db_data:/var/lib/mysql
+      - ./docker/database-init:/docker-entrypoint-initdb.d:ro
 
   phpmyadmin:
     image: phpmyadmin:latest
-    ports:
-      - "7007:80"
+    container_name: worldgraph-phpmyadmin
     environment:
       PMA_HOST: database
     depends_on:
@@ -56,6 +57,7 @@ services:
 
   cli:
     image: node:20
+    container_name: worldgraph-cli
     working_dir: /app
     volumes:
       - ../:/app
@@ -65,18 +67,22 @@ services:
 
   headless:
     image: node:20
+    container_name: worldgraph-headless
     working_dir: /app/headless
     volumes:
       - ../headless:/app/headless
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     environment:
-      WORDPRESS_URL: http://localhost
-      WORDPRESS_HOSTNAME: localhost
+      WORDPRESS_URL: https://videohead.duckdns.org/worldgraphstudio
+      WORDPRESS_HOSTNAME: videohead.duckdns.org
       WORDPRESS_WEBHOOK_SECRET: ${WORDPRESS_WEBHOOK_SECRET:-change-me}
+      NEXT_PUBLIC_BASE_PATH: /studio
+    extra_hosts:
+      - "videohead.duckdns.org:host-gateway"
     command: sh -c "npm install && npm run dev -- --hostname 0.0.0.0 --port 3000"
     depends_on:
       - appserver
 
 volumes:
-  db_data:
+  worldgraph_db_data:

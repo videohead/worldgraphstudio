@@ -8,58 +8,53 @@ an optional external generation service used by the relevant plugin.
 
 ## Local Entry Points
 
-When Lando and docker containers are already running, use these service entry points for local
+When Docker Compose containers are already running, use these service entry points for local
 validation:
 
-- WordPress app: http://worldgraph.lndo.site/ or https://worldgraph.lndo.site/
+- WordPress app: http://localhost:8000
 - ComfyUI HTTP API: http://localhost:8188
 - Optional ComfyUI MCP: a deployment-specific, separate Streamable HTTP
   endpoint (for example, http://localhost:9000/mcp); port 8188 is not MCP
 - Local LLM: http://localhost:11434
 
-If the environment is already running, prefer `lando info` to refresh the URLs
-before testing. WordPress is the application and control plane; do not assume a
-separate Python, queue, or orchestration service exists.
+Run `docker compose -f developers/docker-compose.yml ps` to inspect the running
+services before testing. WordPress is the application and control plane; do not
+assume a separate Python, queue, or orchestration service exists.
 
-## Lando Runtime Ownership
+## Docker Compose Runtime Ownership
 
 Use the service that owns the runtime required by the command:
 
-| Runtime | Lando service | Project path |
+| Runtime | Compose service | Project path |
 | --- | --- | --- |
 | WordPress, PHP, and WP-CLI | `appserver` | `/app/wordpress` |
 | Node.js, npm, Playwright, and JavaScript checks | `cli` | `/app` |
 | MariaDB | `database` | N/A |
 
-WP-CLI belongs in `appserver`, not the Node-based `cli` service. The intended
-project command is:
+WP-CLI belongs in `appserver`, not the Node-based `cli` service. Run it with:
 
 ```bash
-lando wp <command> [arguments]
+docker compose -f developers/docker-compose.yml exec appserver wp <command> [arguments]
 ```
 
-The `wp` tooling entry in `.lando.yml` selects `appserver` and runs WP-CLI from
-`/app/wordpress`. A pinned WP-CLI Phar is installed and checksum-verified by
-the appserver build. Existing containers created before that build step was
-added will still lack the executable. If `lando wp` fails with an OCI error such as
-`exec: "wp": executable file not found in $PATH`, confirm the container state:
+WP-CLI runs in `/var/www/html`. A pinned WP-CLI Phar is installed and
+checksum-verified by the appserver build. If the command reports
+`executable file not found in $PATH`, confirm the container state:
 
 ```bash
-lando ssh -s appserver -c '/bin/sh -lc "command -v wp"'
+docker compose -f developers/docker-compose.yml exec appserver sh -lc 'command -v wp'
 ```
 
 An empty result means WP-CLI is not installed in the PHP runtime. Do not retry
 the command in `cli`: that service intentionally provides Node.js and does not
-own the WordPress PHP runtime. Run `lando rebuild -y` to apply the appserver
-build and install `/usr/local/bin/wp`, then use `lando wp`. WP-CLI should run
-against `/app/wordpress`; pass `--path=/app/wordpress` when invoking the binary
-outside the Lando tooling wrapper.
+own the WordPress PHP runtime. Rebuild the appserver with
+`docker compose -f developers/docker-compose.yml up -d --build appserver`.
 
 For PHP-only diagnostics that do not require WP-CLI, use the installed PHP
 runtime directly:
 
 ```bash
-lando exec appserver -- php -r '<php code>'
+docker compose -f developers/docker-compose.yml exec appserver php -r '<php code>'
 ```
 
 This is a diagnostic fallback, not a general replacement for WP-CLI commands.
@@ -218,19 +213,19 @@ https://codex.wordpress.org/WordPress_Coding_Standards
 ### Node and npm usage
 
 Use container-managed Node.js by default. For this repository, run Node/npm
-commands in the Lando `cli` service (or the `headless` service when running
+commands in the Compose `cli` service (or the `headless` service when running
 the optional Next.js frontend). This avoids host-version drift and ad-hoc local
 toolchain installs.
 
 Examples:
 
 ```bash
-lando exec cli -- sh -lc 'node -v && npm -v'
-lando exec cli -- sh -lc 'cd /app/headless && npm run build'
+docker compose -f developers/docker-compose.yml exec cli sh -lc 'node -v && npm -v'
+docker compose -f developers/docker-compose.yml exec cli sh -lc 'cd /app/headless && npm run build'
 ```
 
 Only use host-installed Node/npm when you intentionally run the headless app
-outside Lando.
+outside Docker Compose.
 
 ### WordPress
 
@@ -269,10 +264,11 @@ outside Lando.
 
 - Apply this pattern to every REST controller in `includes/rest-api/`.
 
-### Docker and Lando
+### Docker Compose
 
-- Use Lando for local environment management where possible.
-- Keep WordPress and database data in named volumes; never bind-mount them.
+- Use Docker Compose for local environment management.
+- Keep database data in named volumes; the WordPress source tree is bind-mounted
+  for development.
 - Run ComfyUI behind its GPU-enabled service when GPU support is available.
 - Never commit sensitive `.env` files.
 - Restart containers only when changing Docker configuration, dependencies, or
@@ -287,23 +283,24 @@ outside Lando.
 
 ## Testing
 
-### Tool Calling
+### Runtime Commands
 
-- Lando is the preferred environment for local validation.
 - Run WordPress and PHP commands in `appserver`; run Node.js commands in `cli`.
-- Use `lando wp` only after `command -v wp` succeeds in `appserver`. An OCI
+- Use `docker compose -f developers/docker-compose.yml exec appserver wp` only
+  after `command -v wp` succeeds in `appserver`. An OCI
   `executable file not found` error means the image lacks WP-CLI; it does not
   mean WP-CLI belongs in the Node `cli` service.
-- Node.js is available in Lando's `cli` service, not the host or `appserver` service. Run JavaScript checks with `lando node --check /app/path/to/file.js`.
+- Node.js is available in the Compose `cli` service, not the host or `appserver`
+  service. Run JavaScript checks with
+  `docker compose -f developers/docker-compose.yml exec cli node --check /app/path/to/file.js`.
 
 ### WordPress: Do Not Restart
 
 - WordPress runs PHP directly and does not need restarting after PHP changes.
-- Do not run `lando restart wordpress` for PHP changes.
 - If old code is still served, clear OPcache with:
 
   ```bash
-  lando exec appserver -- php -r "opcache_reset();"
+  docker compose -f developers/docker-compose.yml exec appserver php -r "opcache_reset();"
   ```
 
 ### WordPress: WP_Widget Method Signatures
@@ -367,7 +364,7 @@ Testing documentation and utilities are maintained in `.github/testing/`. The
 World Graph Studio plugin includes a `tests/` directory for unit and integration tests.
 
 Key testing principles:
-- Run tests locally via Lando to ensure environment consistency
+- Run tests in the Docker Compose service that owns their runtime
 - Test narrowly after each code change
 - Ensure all tests pass before merging changes
 - Use the testing utilities and documentation in `.github/testing/` for setup and execution
