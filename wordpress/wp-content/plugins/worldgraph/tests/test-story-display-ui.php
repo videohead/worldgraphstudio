@@ -217,7 +217,8 @@ class Test_Story_Display_UI extends TestCase {
 		$this->assertStringContainsString( 'flush_story_revalidation_queue', $source );
 		$this->assertStringContainsString( 'wp_safe_remote_post', $source );
 		$this->assertStringContainsString( 'is_allowed_local_revalidation_target', $source );
-		$this->assertStringContainsString( "[ 'headless', 'headless.worldgraph.lndo.site' ]", $source );
+		$this->assertStringContainsString( "defined( 'WORLDGRAPH_HEADLESS_LOCAL_HOSTS' )", $source );
+		$this->assertStringContainsString( "getenv( 'WORLDGRAPH_HEADLESS_LOCAL_HOSTS' )", $source );
 		$this->assertStringContainsString( "'http_request_host_is_external'", $source );
 		$this->assertStringContainsString( "'http_allowed_safe_ports'", $source );
 		$this->assertStringContainsString( '} finally {', $source );

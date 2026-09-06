@@ -50,6 +50,12 @@ namespace WorldGraphStoryIO {
 	function set_transient( string $key, $value, int $expiration ): bool {
 		$is_state  = str_starts_with( $key, 'worldgraph_story_decomp_state_' );
 		$is_cancel = str_starts_with( $key, 'worldgraph_story_decomp_cancel_' );
+		if ( $is_state ) {
+			$GLOBALS['worldgraph_decomposition_job_state_write_calls'] = (int) ( $GLOBALS['worldgraph_decomposition_job_state_write_calls'] ?? 0 ) + 1;
+			if ( (int) ( $GLOBALS['worldgraph_decomposition_job_fail_state_write_call'] ?? 0 ) === $GLOBALS['worldgraph_decomposition_job_state_write_calls'] ) {
+				return false;
+			}
+		}
 		if ( $is_state && ! empty( $GLOBALS['worldgraph_decomposition_job_drop_state_updates'] ) && isset( $GLOBALS['worldgraph_decomposition_job_transients'][ $key ] ) ) {
 			return false;
 		}
@@ -60,16 +66,46 @@ namespace WorldGraphStoryIO {
 			'value'      => $value,
 			'expiration' => $expiration,
 		];
+		if ( $is_cancel && is_callable( $GLOBALS['worldgraph_decomposition_job_after_cancel_write'] ?? null ) ) {
+			$callback = $GLOBALS['worldgraph_decomposition_job_after_cancel_write'];
+			$GLOBALS['worldgraph_decomposition_job_after_cancel_write'] = null;
+			$callback();
+		}
 		return true;
 	}
 
 	/** Read a private checkpoint from memory. */
 	function get_transient( string $key ) {
+		if ( preg_match( '/\Aworldgraph_story_decomp_shard_\d+_(chunk|analysis|document|memory)_/', $key, $matches ) ) {
+			$kind = (string) $matches[1];
+			$GLOBALS['worldgraph_decomposition_job_shard_reads'][ $kind ] = (int) ( $GLOBALS['worldgraph_decomposition_job_shard_reads'][ $kind ] ?? 0 ) + 1;
+		}
 		return $GLOBALS['worldgraph_decomposition_job_transients'][ $key ]['value'] ?? false;
 	}
 
 	/** Delete an in-memory checkpoint. */
 	function delete_transient( string $key ): bool {
+		$record = $GLOBALS['worldgraph_decomposition_job_transients'][ $key ]['value'] ?? null;
+		if ( str_starts_with( $key, 'worldgraph_story_decomp_shard_' ) && is_array( $record ) ) {
+			$committed = [];
+			foreach ( (array) ( $GLOBALS['worldgraph_decomposition_job_transients'] ?? [] ) as $state_key => $state_record ) {
+				$state_value = is_array( $state_record ) ? ( $state_record['value'] ?? null ) : null;
+				if (
+					str_starts_with( (string) $state_key, 'worldgraph_story_decomp_state_' )
+					&& is_array( $state_value )
+					&& (string) ( $record['job_id'] ?? '' ) === (string) ( $state_value['job_id'] ?? '' )
+				) {
+					$committed = $state_value;
+					break;
+				}
+			}
+			$GLOBALS['worldgraph_decomposition_job_shard_deletions'][] = [
+				'kind'          => (string) ( $record['kind'] ?? '' ),
+				'status'        => (string) ( $committed['status'] ?? '' ),
+				'has_chunks'    => isset( $committed['plan']['chunks'] ),
+				'cleanup_count' => count( (array) ( $committed['cleanup_shards'] ?? [] ) ),
+			];
+		}
 		unset( $GLOBALS['worldgraph_decomposition_job_transients'][ $key ] );
 		return true;
 	}
@@ -208,6 +244,15 @@ namespace {
 			return \WorldGraphStoryIO\absint( $value );
 		}
 	}
+	if ( ! function_exists( 'do_action' ) ) {
+		/** Capture lifecycle hooks without loading WordPress. */
+		function do_action( string $hook_name, ...$args ): void {
+			$GLOBALS['worldgraph_decomposition_job_actions'][] = [
+				'hook' => $hook_name,
+				'args' => $args,
+			];
+		}
+	}
 
 	require_once WORLDGRAPH_STORY_IO_PLUGIN_DIR . 'includes/class-story-chunker.php';
 	require_once WORLDGRAPH_STORY_IO_PLUGIN_DIR . 'includes/class-story-decomposer.php';
@@ -222,10 +267,24 @@ namespace {
 		public int $subdivision_calls = 0;
 		public bool $fail_first_analysis = false;
 		public bool $fail_terminal_analysis = false;
+		/** @var array<int,WP_Error> */
+		public array $analysis_errors = [];
 		/** @var array<int,string> */
 		public array $successful_analysis_texts = [];
 		/** @var array<int,array<int,string>> */
 		public array $accepted_scene_ids = [];
+		/** @var array<int,int> */
+		public array $retrieval_candidate_counts = [];
+		/** @var array<int,array<int,string>> */
+		public array $synthesis_related_chunk_ids = [];
+		/** @var array<int,int> */
+		public array $related_indexes = [];
+		/** @var array<int,string> */
+		public array $analysis_run_scopes = [];
+		/** @var array<int,string> */
+		public array $retrieval_run_scopes = [];
+		/** @var array<int,string> */
+		public array $synthesis_run_scopes = [];
 		public string $subdivision_source = '';
 
 		public function __construct( bool $fail_first_analysis = false ) {
@@ -234,6 +293,7 @@ namespace {
 
 		public function analyze_planned_chunk( array $chunk, int $ordinal, int $total, string $filename, int $connection_id, array $profile = [] ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed
 			++$this->analysis_calls;
+			$this->analysis_run_scopes[] = (string) ( $profile['run_scope'] ?? '' );
 			if ( $this->fail_first_analysis && 1 === $this->analysis_calls ) {
 				return new WP_Error(
 					'worldgraph_story_decompose_truncated',
@@ -243,6 +303,9 @@ namespace {
 			}
 			if ( $this->fail_terminal_analysis ) {
 				return new WP_Error( 'worldgraph_story_analysis_rejected', 'The bounded analysis was rejected.' );
+			}
+			if ( ! empty( $this->analysis_errors ) ) {
+				return array_shift( $this->analysis_errors );
 			}
 
 			$this->successful_analysis_texts[] = (string) $chunk['text'];
@@ -258,21 +321,35 @@ namespace {
 			];
 		}
 
-		public function retrieve_planned_evidence( array $chunk, array $evidence, int $current_index ): array { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found
+		public function retrieve_planned_evidence( array $chunk, array $evidence, int $current_index, array $profile = [] ): array { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed
 			++$this->retrieval_calls;
+			$this->retrieval_candidate_counts[] = count( $evidence );
+			$this->retrieval_run_scopes[] = (string) ( $profile['run_scope'] ?? '' );
+			$related = $evidence;
+			unset( $related[ $current_index ] );
 			return [
-				'backend' => 'test_vector',
-				'current' => $evidence[ $current_index ],
-				'related' => [ $evidence[ ( $current_index + 1 ) % count( $evidence ) ] ],
+				'backend'         => 'test_vector',
+				'current'         => $evidence[ $current_index ],
+				'related'         => array_slice( array_values( $related ), 0, 1 ),
+				'related_indexes' => $this->related_indexes,
 			];
 		}
 
 		public function synthesize_planned_chunk( array $chunk, array $evidence, array $accepted_documents, int $ordinal, int $total, string $filename, int $connection_id, array $profile = [] ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed
 			++$this->synthesis_calls;
+			$this->synthesis_run_scopes[] = (string) ( $profile['run_scope'] ?? '' );
+			$this->synthesis_related_chunk_ids[] = array_values(
+				array_filter(
+					array_map(
+						static fn( array $item ): string => (string) ( $item['_retrieval']['chunk_id'] ?? '' ),
+						(array) ( $evidence['related'] ?? [] )
+					)
+				)
+			);
 			$this->accepted_scene_ids[] = array_values(
 				array_filter(
 					array_map(
-						static fn( array $document ): string => (string) ( $document['scenes'][0]['id'] ?? '' ),
+						static fn( array $document ): string => (string) ( $document['scenes'][0]['source_id'] ?? $document['scenes'][0]['id'] ?? '' ),
 						$accepted_documents
 					)
 				)
@@ -316,7 +393,7 @@ namespace {
 			$this->subdivision_source = (string) $chunk['text'];
 			$middle = intdiv( mb_strlen( $this->subdivision_source, 'UTF-8' ), 2 );
 			return [
-				[ 'id' => 'adaptive-a', 'text' => mb_substr( $this->subdivision_source, 0, $middle, 'UTF-8' ) ],
+				[ 'id' => (string) $chunk['id'], 'text' => mb_substr( $this->subdivision_source, 0, $middle, 'UTF-8' ) ],
 				[ 'id' => 'adaptive-b', 'text' => mb_substr( $this->subdivision_source, $middle, null, 'UTF-8' ) ],
 			];
 		}
@@ -337,6 +414,12 @@ namespace {
 			$GLOBALS['worldgraph_decomposition_job_meta']       = [];
 			$GLOBALS['worldgraph_decomposition_job_drop_state_updates'] = false;
 			$GLOBALS['worldgraph_decomposition_job_drop_cancel_writes'] = false;
+			$GLOBALS['worldgraph_decomposition_job_state_write_calls'] = 0;
+			$GLOBALS['worldgraph_decomposition_job_fail_state_write_call'] = 0;
+			$GLOBALS['worldgraph_decomposition_job_shard_reads'] = [];
+			$GLOBALS['worldgraph_decomposition_job_shard_deletions'] = [];
+			$GLOBALS['worldgraph_decomposition_job_actions'] = [];
+			$GLOBALS['worldgraph_decomposition_job_after_cancel_write'] = null;
 			\WorldGraph\Admin\Import::$capture                 = [];
 		}
 
@@ -344,27 +427,64 @@ namespace {
 			$manuscript = $this->two_chunk_story( 'PRIVATE MANUSCRIPT TOKEN' );
 			$status     = $this->create_job( $manuscript );
 
-			$this->assertFalse( is_wp_error( $status ) );
+			$this->assertFalse(
+				is_wp_error( $status ),
+				is_wp_error( $status ) ? $status->get_error_code() . ': ' . $status->get_error_message() : ''
+			);
 			$this->assertSame( 'ready', $status['status'] );
 			$this->assertSame( 'analysis', $status['stage'] );
 			$this->assertGreaterThanOrEqual( 2, $status['analysis']['total'] );
 			$this->assertTrue( $status['can_step'] );
 			$this->assertArrayNotHasKey( 'plan', $status );
 			$this->assertArrayNotHasKey( 'analysis_results', $status );
+			$this->assertArrayNotHasKey( 'run_scope', $status );
 			$this->assertStringNotContainsString( 'PRIVATE MANUSCRIPT TOKEN', wp_json_encode( $status ) );
-			$this->assertGreaterThan( 5 * 24 * 60 * 60, $status['expires_at'] - time() );
+			$expected_lifetime = ( ( 2 * 1_000 ) + 1 ) * 6 * 60 + 24 * 60 * 60;
+			$this->assertEqualsWithDelta( $expected_lifetime, $status['expires_at'] - time(), 2 );
 
 			$state = $this->job_state( (string) $status['job_id'] );
 			$this->assertStringNotContainsString( 'PRIVATE MANUSCRIPT TOKEN', serialize( $state ) );
-			$this->assertArrayNotHasKey( 'text', $state['plan']['chunks'][0] );
-			$this->assertArrayNotHasKey( 'text', $state['plan']['chunks'][0]['context_after'] );
+			$this->assertSame( [ 'id', 'shard_id', 'shard_sha256' ], array_keys( $state['plan']['chunks'][0] ) );
 			$this->assertCount( $status['analysis']['total'], $this->shard_keys() );
+			$this->assertMatchesRegularExpression( '/\A[a-f0-9]{64}\z/', $state['run_scope'] );
+			$this->assertSame( $state['run_scope'], $state['profile']['run_scope'] );
+			$this->assertStringNotContainsString( $state['run_scope'], wp_json_encode( $status ) );
 
 			$decomposer = new Story_Decomposition_Job_Decomposer_Fake();
 			$checkpoint = Decomposition_Job::step( $status['job_id'], $decomposer );
 			$this->assertFalse( is_wp_error( $checkpoint ) );
+			$this->assertArrayNotHasKey( 'run_scope', $checkpoint );
+			$this->assertSame( [ $state['run_scope'] ], $decomposer->analysis_run_scopes );
 			$this->assertStringNotContainsString( 'PRIVATE EVIDENCE', wp_json_encode( $checkpoint ) );
 			$this->assertStringNotContainsString( 'PRIVATE EVIDENCE', serialize( $this->job_state( (string) $status['job_id'] ) ) );
+		}
+
+		/** Maximum-size plans keep only compact references in the core checkpoint. */
+		public function test_thousand_part_plan_references_fit_below_common_cache_item_limits(): void {
+			$chunks = [];
+			for ( $index = 0; $index < 1_000; $index++ ) {
+				$chunks[] = [
+					'id'   => 'part-' . ( $index + 1 ) . '-' . str_repeat( 'a', 16 ),
+					'text' => 'Bounded story section ' . ( $index + 1 ),
+				];
+			}
+
+			$method = new \ReflectionMethod( Decomposition_Job::class, 'store_chunk_shards' );
+			$method->setAccessible( true );
+			$references = $method->invoke(
+				null,
+				[
+					'job_id'     => str_repeat( 'a', 43 ),
+					'user_id'    => 101,
+					'expires_at' => time() + HOUR_IN_SECONDS,
+				],
+				$chunks
+			);
+
+			$this->assertIsArray( $references );
+			$this->assertCount( 1_000, $references );
+			$this->assertSame( [ 'id', 'shard_id', 'shard_sha256' ], array_keys( $references[0] ) );
+			$this->assertLessThan( 256 * 1024, strlen( serialize( $references ) ) );
 		}
 
 		public function test_each_step_runs_exactly_one_stage_and_hands_metadata_to_preview(): void {
@@ -387,6 +507,7 @@ namespace {
 				$this->assertSame( $completed === $total ? 'finalize' : 'synthesis', $status['stage'] );
 			}
 
+			$GLOBALS['worldgraph_decomposition_job_shard_deletions'] = [];
 			$status = Decomposition_Job::step( $job_id, $decomposer );
 			$this->assertSame( [ $total, $total, 1 ], [ $decomposer->analysis_calls, $decomposer->synthesis_calls, $decomposer->finalize_calls ] );
 			$this->assertSame( 'complete', $status['status'] );
@@ -399,8 +520,29 @@ namespace {
 			$this->assertSame( [ 'scene-1' ], $decomposer->accepted_scene_ids[1] );
 			$completed_state = $this->job_state( $job_id );
 			$this->assertArrayNotHasKey( 'chunks', $completed_state['plan'] );
-			$this->assertCount( $total * 3, $completed_state['cleanup_shards'] );
-			$this->assertSame( [ 'analysis', 'chunk', 'document' ], $this->cleanup_kinds( $completed_state ) );
+			$this->assertArrayNotHasKey( 'analysis_results', $completed_state );
+			$this->assertArrayNotHasKey( 'documents', $completed_state );
+			$this->assertArrayNotHasKey( 'graph_memory', $completed_state );
+			$this->assertArrayNotHasKey( 'cleanup_shards', $completed_state );
+			$this->assertFalse( $completed_state['rag_cleanup_pending'] );
+			$expected_cleanup = ( $total * 3 ) + 1;
+			$this->assertCount( $expected_cleanup, $GLOBALS['worldgraph_decomposition_job_shard_deletions'] );
+			$this->assertSame( [ 'analysis', 'chunk', 'document', 'memory' ], $this->deletion_kinds() );
+			foreach ( $GLOBALS['worldgraph_decomposition_job_shard_deletions'] as $deletion ) {
+				$this->assertSame( 'complete', $deletion['status'] );
+				$this->assertFalse( $deletion['has_chunks'] );
+				$this->assertSame( $expected_cleanup, $deletion['cleanup_count'] );
+			}
+			$cleanup_action = $this->only_rag_cleanup_action();
+			$this->assertSame( $completed_state['run_scope'], $cleanup_action['args'][0] );
+			$this->assertSame(
+				[
+					'user_id'       => 101,
+					'source_sha256' => $completed_state['source_sha256'],
+					'status'        => 'complete',
+				],
+				$cleanup_action['args'][1]
+			);
 
 			$handoff = \WorldGraph\Admin\Import::$capture;
 			$this->assertSame( 2, $handoff['decomposition']['passes'] );
@@ -421,6 +563,7 @@ namespace {
 			$this->assertSame( 'worldgraph_story_decomposition_not_found', $foreign->get_error_code() );
 
 			$GLOBALS['worldgraph_decomposition_job_user'] = 101;
+			$GLOBALS['worldgraph_decomposition_job_shard_deletions'] = [];
 			$cancelled = Decomposition_Job::cancel( $job_id );
 			$this->assertSame( 'cancelled', $cancelled['status'] );
 			$this->assertFalse( $cancelled['can_step'] );
@@ -434,8 +577,18 @@ namespace {
 			$this->assertSame( [], $this->shard_keys() );
 			$cancelled_state = $this->job_state( $job_id );
 			$this->assertArrayNotHasKey( 'chunks', $cancelled_state['plan'] );
-			$this->assertCount( $status['analysis']['total'], $cancelled_state['cleanup_shards'] );
-			$this->assertSame( [ 'chunk' ], $this->cleanup_kinds( $cancelled_state ) );
+			$this->assertArrayNotHasKey( 'cleanup_shards', $cancelled_state );
+			$this->assertFalse( $cancelled_state['rag_cleanup_pending'] );
+			$this->assertCount( $status['analysis']['total'], $GLOBALS['worldgraph_decomposition_job_shard_deletions'] );
+			$this->assertSame( [ 'chunk' ], $this->deletion_kinds() );
+			foreach ( $GLOBALS['worldgraph_decomposition_job_shard_deletions'] as $deletion ) {
+				$this->assertSame( 'cancelled', $deletion['status'] );
+				$this->assertFalse( $deletion['has_chunks'] );
+				$this->assertSame( $status['analysis']['total'], $deletion['cleanup_count'] );
+			}
+			$cleanup_action = $this->only_rag_cleanup_action();
+			$this->assertSame( $cancelled_state['run_scope'], $cleanup_action['args'][0] );
+			$this->assertSame( 'cancelled', $cleanup_action['args'][1]['status'] );
 		}
 
 		public function test_retryable_failure_subdivides_with_exact_source_coverage_before_retry(): void {
@@ -471,6 +624,25 @@ namespace {
 			$this->assertSame( 'ready', Decomposition_Job::status( (string) $status['job_id'] )['status'] );
 		}
 
+		public function test_revision_detects_a_rejected_post_provider_checkpoint_before_another_call(): void {
+			$status     = $this->create_job( $this->two_chunk_story() );
+			$job_id     = (string) $status['job_id'];
+			$decomposer = new Story_Decomposition_Job_Decomposer_Fake();
+			$GLOBALS['worldgraph_decomposition_job_fail_state_write_call'] = 3;
+
+			$post_call_failure = Decomposition_Job::step( $job_id, $decomposer );
+			$this->assertTrue( is_wp_error( $post_call_failure ) );
+			$this->assertSame( 'worldgraph_story_decomposition_checkpoint_failed', $post_call_failure->get_error_code() );
+			$this->assertSame( 1, $decomposer->analysis_calls );
+			$this->assertSame( 'running', $this->job_state( $job_id )['status'] );
+
+			$GLOBALS['worldgraph_decomposition_job_fail_state_write_call'] = 4;
+			$pre_call_failure = Decomposition_Job::step( $job_id, $decomposer );
+			$this->assertTrue( is_wp_error( $pre_call_failure ) );
+			$this->assertSame( 'worldgraph_story_decomposition_checkpoint_failed', $pre_call_failure->get_error_code() );
+			$this->assertSame( 1, $decomposer->analysis_calls );
+		}
+
 		public function test_rejected_cancel_flag_write_does_not_claim_cancellation(): void {
 			$status = $this->create_job( $this->two_chunk_story() );
 			$GLOBALS['worldgraph_decomposition_job_drop_cancel_writes'] = true;
@@ -480,6 +652,27 @@ namespace {
 			$this->assertTrue( is_wp_error( $result ) );
 			$this->assertSame( 'worldgraph_story_decomposition_cancel_checkpoint_failed', $result->get_error_code() );
 			$this->assertSame( 'ready', Decomposition_Job::status( (string) $status['job_id'] )['status'] );
+		}
+
+		public function test_cancel_cleanup_waits_until_the_terminal_state_commits(): void {
+			$status         = $this->create_job( $this->two_chunk_story() );
+			$job_id         = (string) $status['job_id'];
+			$initial_shards = $this->shard_keys();
+			$GLOBALS['worldgraph_decomposition_job_drop_state_updates'] = true;
+
+			$rejected = Decomposition_Job::cancel( $job_id );
+
+			$this->assertTrue( is_wp_error( $rejected ) );
+			$this->assertSame( 'worldgraph_story_decomposition_checkpoint_failed', $rejected->get_error_code() );
+			$this->assertSame( $initial_shards, $this->shard_keys() );
+			$this->assertArrayHasKey( 'chunks', $this->job_state( $job_id )['plan'] );
+			$this->assertSame( [], $GLOBALS['worldgraph_decomposition_job_shard_deletions'] );
+			$this->assertSame( [], $this->rag_cleanup_actions() );
+
+			$GLOBALS['worldgraph_decomposition_job_drop_state_updates'] = false;
+			$cancelled = Decomposition_Job::cancel( $job_id );
+			$this->assertSame( 'cancelled', $cancelled['status'] );
+			$this->assertSame( [], $this->shard_keys() );
 		}
 
 		public function test_reissued_cancel_commits_after_an_active_lock_is_released(): void {
@@ -500,6 +693,31 @@ namespace {
 			$this->assertSame( [], $this->shard_keys() );
 		}
 
+		public function test_cancellation_does_not_overwrite_a_concurrently_completed_checkpoint(): void {
+			$status = $this->create_job( $this->two_chunk_story() );
+			$job_id = (string) $status['job_id'];
+			$GLOBALS['worldgraph_decomposition_job_after_cancel_write'] = static function () use ( $job_id ): void {
+				foreach ( $GLOBALS['worldgraph_decomposition_job_transients'] as &$record ) {
+					$state = is_array( $record ) ? ( $record['value'] ?? null ) : null;
+					if ( is_array( $state ) && isset( $state['status'] ) && $job_id === (string) ( $state['job_id'] ?? '' ) ) {
+						$record['value']['status'] = 'complete';
+						$record['value']['stage'] = 'complete';
+						$record['value']['preview_url'] = 'https://example.test/review/concurrently-completed';
+						$record['value']['preview_expires_at'] = time() + 1800;
+						break;
+					}
+				}
+				unset( $record );
+			};
+
+			$result = Decomposition_Job::cancel( $job_id );
+
+			$this->assertSame( 'complete', $result['status'] );
+			$this->assertStringContainsString( 'concurrently-completed', $result['preview_url'] );
+			$this->assertArrayNotHasKey( '_worldgraph_story_import_status', $GLOBALS['worldgraph_decomposition_job_meta'][91] ?? [] );
+			$this->assertSame( [], $this->cancel_keys() );
+		}
+
 		public function test_terminal_failure_clears_every_private_payload_shard(): void {
 			$status = $this->create_job( $this->two_chunk_story() );
 			$decomposer = new Story_Decomposition_Job_Decomposer_Fake();
@@ -513,6 +731,115 @@ namespace {
 			$this->assertArrayNotHasKey( 'analysis_results', $state );
 			$this->assertArrayNotHasKey( 'documents', $state );
 			$this->assertArrayNotHasKey( 'chunks', $state['plan'] );
+			$this->assertSame( 'failed', $this->only_rag_cleanup_action()['args'][1]['status'] );
+		}
+
+		public function test_timeout_and_5xx_failures_pause_for_resume_without_losing_the_checkpoint(): void {
+			$status         = $this->create_job( $this->two_chunk_story() );
+			$job_id         = (string) $status['job_id'];
+			$initial_shards = $this->shard_keys();
+			$decomposer     = new Story_Decomposition_Job_Decomposer_Fake();
+			$decomposer->analysis_errors = [
+				new WP_Error( 'http_request_failed', 'cURL timeout included a private endpoint.' ),
+				new WP_Error( 'worldgraph_provider_http_error', 'HTTP 503 included a private provider body.', [ 'http_status' => 503 ] ),
+			];
+
+			$timeout = Decomposition_Job::step( $job_id, $decomposer );
+			$this->assertSame( 'ready', $timeout['status'] );
+			$this->assertTrue( $timeout['error']['retryable'] );
+			$this->assertSame( 1, $timeout['error']['retry_count'] );
+			$this->assertStringNotContainsString( 'private endpoint', $timeout['error']['message'] );
+			$this->assertSame( [ 'completed' => 0, 'total' => $status['analysis']['total'] ], $timeout['analysis'] );
+			$this->assertSame( $initial_shards, $this->shard_keys() );
+
+			$unavailable = Decomposition_Job::step( $job_id, $decomposer );
+			$this->assertSame( 'ready', $unavailable['status'] );
+			$this->assertTrue( $unavailable['error']['retryable'] );
+			$this->assertSame( 2, $unavailable['error']['retry_count'] );
+			$this->assertStringNotContainsString( 'private provider body', $unavailable['error']['message'] );
+			$this->assertSame( $initial_shards, $this->shard_keys() );
+
+			$resumed = Decomposition_Job::step( $job_id, $decomposer );
+			$this->assertSame( 1, $resumed['analysis']['completed'] );
+			$this->assertFalse( $resumed['error']['retryable'] );
+			$this->assertSame( 3, $decomposer->analysis_calls );
+		}
+
+		public function test_retryable_provider_failure_becomes_terminal_only_after_the_retry_budget(): void {
+			$status     = $this->create_job( $this->two_chunk_story() );
+			$job_id     = (string) $status['job_id'];
+			$decomposer = new Story_Decomposition_Job_Decomposer_Fake();
+			for ( $failure = 0; $failure < 4; $failure++ ) {
+				$decomposer->analysis_errors[] = new WP_Error(
+					'worldgraph_llm_request_failed',
+					'Provider secret diagnostic.',
+					[ 'provider_error' => 'connection_error' ]
+				);
+			}
+
+			for ( $failure = 1; $failure <= 3; $failure++ ) {
+				$paused = Decomposition_Job::step( $job_id, $decomposer );
+				$this->assertSame( 'ready', $paused['status'] );
+				$this->assertTrue( $paused['error']['retryable'] );
+				$this->assertSame( $failure, $paused['error']['retry_count'] );
+				$this->assertNotSame( [], $this->shard_keys() );
+			}
+
+			$failed = Decomposition_Job::step( $job_id, $decomposer );
+			$this->assertSame( 'failed', $failed['status'] );
+			$this->assertSame( 'worldgraph_story_decomposition_retry_exhausted', $failed['error']['code'] );
+			$this->assertFalse( $failed['error']['retryable'] );
+			$this->assertSame( [], $this->shard_keys() );
+		}
+
+		public function test_nonretryable_llm_protocol_and_auth_failures_are_terminal(): void {
+			foreach (
+				[
+					[ 'provider_error' => 'invalid_response', 'http_status' => 200 ],
+					[ 'provider_error' => 'http_error', 'http_status' => 401 ],
+				] as $error_data
+			) {
+				$this->setUp();
+				$status     = $this->create_job( $this->two_chunk_story() );
+				$decomposer = new Story_Decomposition_Job_Decomposer_Fake();
+				$decomposer->analysis_errors[] = new WP_Error( 'worldgraph_llm_request_failed', 'Private provider response.', $error_data );
+
+				$failed = Decomposition_Job::step( (string) $status['job_id'], $decomposer );
+
+				$this->assertSame( 'failed', $failed['status'] );
+				$this->assertSame( 'worldgraph_llm_request_failed', $failed['error']['code'] );
+				$this->assertFalse( $failed['error']['retryable'] );
+				$this->assertStringNotContainsString( 'Private provider response', $failed['error']['message'] );
+				$this->assertSame( [], $this->shard_keys() );
+			}
+		}
+
+		public function test_synthesis_uses_bounded_evidence_reads_and_resolves_remote_rag_indexes(): void {
+			$status     = $this->create_job( $this->long_multi_chunk_story() );
+			$job_id     = (string) $status['job_id'];
+			$total      = (int) $status['analysis']['total'];
+			$decomposer = new Story_Decomposition_Job_Decomposer_Fake();
+			$this->assertGreaterThan( 7, $total );
+
+			for ( $completed = 1; $completed <= $total; $completed++ ) {
+				$status = Decomposition_Job::step( $job_id, $decomposer );
+				$this->assertSame( $completed, $status['analysis']['completed'] );
+			}
+			$state          = $this->job_state( $job_id );
+			$last_chunk_id  = (string) $state['plan']['chunks'][ $total - 1 ]['id'];
+			$run_scope      = (string) $state['run_scope'];
+			$decomposer->related_indexes = [ $total - 1, $total - 1, -1, $total ];
+			$GLOBALS['worldgraph_decomposition_job_shard_reads'] = [];
+
+			$status = Decomposition_Job::step( $job_id, $decomposer );
+
+			$this->assertSame( 1, $status['synthesis']['completed'] );
+			$this->assertSame( 4, $decomposer->retrieval_candidate_counts[0] );
+			$this->assertContains( $last_chunk_id, $decomposer->synthesis_related_chunk_ids[0] );
+			$this->assertLessThanOrEqual( 3, count( $decomposer->synthesis_related_chunk_ids[0] ) );
+			$this->assertLessThanOrEqual( 5, $GLOBALS['worldgraph_decomposition_job_shard_reads']['analysis'] ?? 0 );
+			$this->assertSame( [ $run_scope ], $decomposer->retrieval_run_scopes );
+			$this->assertSame( [ $run_scope ], $decomposer->synthesis_run_scopes );
 		}
 
 		public function test_cancellation_poll_reissues_delete_and_lock_uses_owned_prefix(): void {
@@ -526,6 +853,7 @@ namespace {
 			$this->assertMatchesRegularExpression( '/function setTerminalError\(text\).*?restartLink\.hidden = false/s', $javascript );
 			$this->assertStringContainsString( "typeof payload.job === 'object'", $javascript );
 			$this->assertStringContainsString( "validStatuses.indexOf(job.status) === -1", $javascript );
+			$this->assertStringContainsString( "status === 'ready' && error.retryable", $javascript );
 		}
 
 		/** Create a private job with the common persisted-source shape. */
@@ -566,18 +894,45 @@ namespace {
 			);
 		}
 
-		/** Return the sorted private shard kinds durably queued before deletion. */
-		private function cleanup_kinds( array $state ): array {
+		/** Return all pending cancellation marker keys. */
+		private function cancel_keys(): array {
+			return array_values(
+				array_filter(
+					array_keys( $GLOBALS['worldgraph_decomposition_job_transients'] ),
+					static fn( string $key ): bool => str_starts_with( $key, 'worldgraph_story_decomp_cancel_' )
+				)
+			);
+		}
+
+		/** Return the sorted kinds physically deleted after the terminal checkpoint. */
+		private function deletion_kinds(): array {
 			$kinds = array_values(
 				array_unique(
 					array_map(
-						static fn( array $reference ): string => (string) ( $reference['kind'] ?? '' ),
-						array_values( (array) ( $state['cleanup_shards'] ?? [] ) )
+						static fn( array $deletion ): string => (string) ( $deletion['kind'] ?? '' ),
+						array_values( (array) ( $GLOBALS['worldgraph_decomposition_job_shard_deletions'] ?? [] ) )
 					)
 				)
 			);
 			sort( $kinds );
 			return $kinds;
+		}
+
+		/** Return all captured terminal RAG cleanup actions. */
+		private function rag_cleanup_actions(): array {
+			return array_values(
+				array_filter(
+					(array) ( $GLOBALS['worldgraph_decomposition_job_actions'] ?? [] ),
+					static fn( array $action ): bool => 'worldgraph_story_rag_cleanup' === (string) ( $action['hook'] ?? '' )
+				)
+			);
+		}
+
+		/** Require exactly one captured terminal RAG cleanup action. */
+		private function only_rag_cleanup_action(): array {
+			$actions = $this->rag_cleanup_actions();
+			$this->assertCount( 1, $actions );
+			return $actions[0];
 		}
 
 		/** Produce two chapter-sized semantic chunks under the unknown-model profile. */
@@ -586,6 +941,17 @@ namespace {
 				. str_repeat( $marker . '. The traveler crossed the quiet bridge. ', 42 )
 				. "\n\nCHAPTER TWO\n\n"
 				. str_repeat( 'At sunrise the traveler returned safely. ', 58 );
+		}
+
+		/** Produce enough text to exercise nonlocal retrieval outside the radius. */
+		private function long_multi_chunk_story(): string {
+			$story = '';
+			for ( $chapter = 1; $chapter <= 9; $chapter++ ) {
+				$story .= "CHAPTER {$chapter}\n\n";
+				$story .= str_repeat( "The traveler recorded event {$chapter} beside the distant marker. ", 36 );
+				$story .= "\n\n";
+			}
+			return $story;
 		}
 	}
 }

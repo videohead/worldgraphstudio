@@ -317,6 +317,7 @@ administrator-only compatibility routes are:
 POST /wp-json/worldgraph/v1/import/validate
 POST /wp-json/worldgraph/v1/import
 POST /wp-json/worldgraph/v1/import/decompose
+POST /wp-json/worldgraph/v1/import/decompositions
 GET  /wp-json/worldgraph/v1/import/decompositions/{job_id}
 POST /wp-json/worldgraph/v1/import/decompositions/{job_id}
 DELETE /wp-json/worldgraph/v1/import/decompositions/{job_id}
@@ -331,20 +332,27 @@ creates or updates supported Story Graph entities, assigns taxonomies, builds
 relationships, and reports resolved counts. Canonical JSON uses these routes
 and the WordPress Import screen without an LLM.
 
-`/import/decompose` is preview-only. It accepts an `attachment_id` for a real
-WordPress attachment stored inside the uploads tree. An eligible
-`connection_id` may select the manageable LLM Connection for a non-canonical
-source; when omitted, the route resolves the site's default compatible
-Connection. Canonical World Graph Studio JSON requires no Connection. The
-current source extractor accepts JSON, TXT, Markdown, Fountain, RTF, PDF, EPUB,
-DOCX, and ODT files up
-to 20 MB; extracted non-canonical text is limited to 500,000 characters. PDFs
-must have an extractable text layer; encrypted PDFs are rejected, and scanned or
-image-only PDFs return an OCR-required error. Non-canonical sources are sent
-only to the selected OpenAI-compatible, OpenAI, or Anthropic Connection. The
-route remains the synchronous compatibility operation: it performs the same
-bounded, two-pass plan in one request, then normalizes and dry-run validates the
-candidate before returning.
+`/import/decompose` is a deliberately small, preview-only synchronous
+compatibility operation. It accepts an `attachment_id` for a real WordPress
+attachment stored inside the uploads tree. An eligible `connection_id` may
+select the manageable LLM Connection for a non-canonical source; when omitted,
+the route resolves the site's default compatible Connection. Canonical World
+Graph Studio JSON requires no Connection and can still be validated and
+returned synchronously. A non-canonical source is accepted by this route only
+when its extracted text is at most 1,400 actual UTF-8 characters and its initial
+structural plan contains exactly one span. Any larger or multi-span source
+returns HTTP 409 with
+`worldgraph_story_decomposition_job_required`; the client must create and
+advance a resumable job through `/import/decompositions` instead.
+
+The current source extractor accepts JSON, TXT, Markdown, Fountain, RTF, PDF,
+EPUB, DOCX, and ODT files up to 20 MB; extracted non-canonical text is limited
+to 500,000 characters. PDFs must have an extractable text layer; encrypted PDFs
+are rejected, and scanned or image-only PDFs return an OCR-required error.
+Non-canonical sources are sent only to the selected OpenAI-compatible, OpenAI,
+or Anthropic Connection. A permitted one-span synchronous request performs the
+same bounded, two-pass analysis and graph assembly, then normalizes and dry-run
+validates the candidate before returning.
 
 PHP is authoritative for that plan. Boundary candidates include EPUB spine,
 heading, and horizontal-rule metadata plus detected Markdown/prose headings,
@@ -356,10 +364,12 @@ after a span is carried as separate context rather than duplicated into that
 span.
 
 With usable model metadata, a primary span targets at most 12,000 characters
-and has a 16,000-character hard maximum. Without metadata, it targets 2,500
-characters with a 3,000-character hard maximum. The initial plan allows up to
-192 spans; the synchronous route retains that ceiling, while a resumable job
-can retain at most 512 spans after targeted evidence-pass subdivision. Each
+and has a 16,000-character hard maximum. Without metadata, the conservative
+profile targets 1,100 characters with a 1,400-character hard maximum, 128
+characters of context on either side, and a 768-token output allowance. Both
+the planning engine and resumable job permit at most 1,000 primary spans,
+including targeted evidence-pass subdivision. The synchronous REST route has
+the stricter one-initial-span/1,400-character boundary described above. Each
 span/pass has at most three model attempts. An advertised model context window
 below 2,048 tokens is rejected, and requested output remains capped both at
 4,096 tokens and by the selected Connection's lower configured `max_tokens`.
@@ -386,18 +396,35 @@ bounded structured evidence and must not expose source text or vectors; the
 result is bounded again before it enters the model envelope.
 
 The optional bundled `plugins/story-rag-decomposer/` bridge is disabled by
-default (`worldgraph_story_rag_enabled`) and requires the separately installed
-and activated WPVDB plugin at `wp-content/plugins/wpvdb`, with a valid active
-embedding provider/model. It sends bounded evidence or query input to that
-embedding provider, but writes only numeric vectors and bounded identifiers to
-private user-and-source-scoped WordPress transients for at most two hours. It
-does not use WPVDB's shared/indexable embeddings table and does not persist
-manuscript, evidence, or query text. Same-user/same-source cosine lookup returns
-at most three neighbors; an unavailable dependency, configuration or provider
-error, or invalid/mismatched vector falls back to the incoming lexical result.
-This bridge adds no request parameter or raw response field.
+default (`worldgraph_story_rag_enabled`). It is not part of the base decomposer:
+using it **requires** WPVDB to be separately installed and activated as the
+top-level `wp-content/plugins/wpvdb` plugin and configured with a valid active
+embedding provider/model, alongside `worldgraph/` in the target WordPress
+installation. World Graph Studio does not install WPVDB. The base Story Import
+& Export pipeline and lexical retriever remain usable without it.
 
-An abbreviated synchronous response shape is:
+The bridge sends at most 12,000 characters of bounded evidence or 6,000
+characters of query text to WPVDB's active embedding provider. It writes no
+manuscript, evidence, query text, or vectors to WPVDB's shared/indexable
+embeddings table. It retains at most 128 uniformly sampled numeric vectors and
+bounded identifiers in private user-and-run-scoped WordPress transients and can
+address evidence positions across the 1,000-span corpus. Each RAG transient has
+an absolute expiration capped by its owning run. Resumable jobs start with the
+fixed 806,760-second active deadline, and later vector/index writes cannot
+extend it. A synchronous request receives a separate run scope and bounded
+deadline and requests terminal cleanup on success or failure.
+WPVDB Core briefly uses its shared `wpvdb` object-cache group during each call;
+the bridge HMAC-scopes the input to the current user and decomposition run,
+evicts that exact cache key before the call, and makes a best-effort eviction
+when it ends. Same-user/same-run cosine lookup returns at most three neighbors.
+Terminal jobs request per-run cleanup after their durable checkpoint commits,
+with expiration as the abandoned-run or failed-deletion backstop. An
+unavailable dependency, configuration or provider error, or invalid/mismatched
+vector falls back to the incoming lexical result. This bridge adds no request
+parameter or raw response field.
+
+An abbreviated synchronous response shape for canonical JSON or a permitted
+one-span non-canonical source is:
 
 ```json
 {
@@ -408,16 +435,16 @@ An abbreviated synchronous response shape is:
     "attachment_id": 123,
     "filename": "story.pdf",
     "format": "pdf",
-    "characters": 48210
+    "characters": 1200
   },
   "decomposition": {
     "generated": true,
-    "attempts": 16,
-    "tokens": 9210,
+    "attempts": 2,
+    "tokens": 980,
     "backend": "openai_compatible",
     "model": "configured-model",
     "connection_id": 45,
-    "chunks": 8,
+    "chunks": 1,
     "passes": 2
   }
 }
@@ -434,22 +461,59 @@ attachment after confirmation or cancellation.
 ### Resumable decomposition jobs
 
 The WordPress Import screen creates a decomposition job when its upload is not
-already canonical JSON. Job creation remains behind the capability- and
-nonce-protected admin upload action; these routes operate on an existing job:
+already canonical JSON. An authenticated REST client creates the same kind of
+job with `POST /import/decompositions`. The collection operation accepts:
+
+```json
+{
+  "attachment_id": 123,
+  "connection_id": 45,
+  "overwrite": false
+}
+```
+
+`attachment_id` is required and must identify an authorized persisted source
+inside WordPress uploads. `connection_id` is optional and defaults to `0`,
+which resolves the site's default compatible LLM Connection. `overwrite`
+defaults to `false` and is frozen into the eventual preview/confirmation
+boundary. A canonical JSON attachment does not need a decomposition job and is
+rejected here with HTTP 409 and
+`worldgraph_story_decomposition_not_required`; use `/import/decompose` for its
+synchronous preview or `/import/validate` and `/import` directly.
+
+Successful creation returns HTTP 202, the standard no-store headers, the safe
+allowlisted status projection in `{ "success": true, "job": { ... } }`, and a
+`Location` header naming
+`/wp-json/worldgraph/v1/import/decompositions/{job_id}`. The collection and
+item operations are:
 
 | Method | Behavior |
 | --- | --- |
+| `POST /import/decompositions` | Create one private resumable job for a persisted non-canonical source and return HTTP 202 plus its item `Location`. |
 | `GET /import/decompositions/{job_id}` | Return the current safe progress projection without advancing the job. |
 | `POST /import/decompositions/{job_id}` | Perform exactly one analysis, synthesis, repair/subdivision, or finalization checkpoint and return the new safe projection. |
 | `DELETE /import/decompositions/{job_id}` | Request cancellation; no Story Graph records are written and the source attachment is retained. |
 
 The `job_id` is an unguessable 256-bit base64url token, and the saved state is
-also scoped to the current WordPress user. All three methods require
+also scoped to the current WordPress user. All four operations require
 `manage_options`; the wp-admin client authenticates them with its logged-in
-cookie and REST nonce. A job has a fixed two-hour expiry that successful steps
-do not extend. A per-job lock rejects concurrent step requests. Completion
-creates the ordinary immutable import preview, which has its separate
-30-minute review window.
+cookie and REST nonce. An active job has a fixed 806,760-second deadline (9
+days, 8 hours, and 6 minutes) that successful steps do not extend. This covers
+two passes over the 1,000-span maximum using the six-minute request window plus
+a 24-hour resume grace. A per-job lock rejects concurrent step requests.
+Completion creates the ordinary immutable import preview, which has its
+separate 30-minute review window and becomes the completed job's deadline.
+
+The checkpoint state holds authenticated references to separate, user/job-
+scoped transient shards for prepared chunks, evidence, partial documents, and
+compact graph memory. Each shard is capped at 512 KiB and verified on write and
+read. Reference-removing state is committed before obsolete shards are
+deleted; a durable cleanup list retries failed deletion on a later authorized
+load, and shard expiration is the final backstop. Completion, terminal failure,
+and cancellation clear derivative shards and request optional per-run RAG
+cleanup after the terminal checkpoint commits. Temporary provider/transport
+errors keep the same checkpoint resumable for three failed retries; a fourth
+failure at that checkpoint makes the job terminal.
 
 An abbreviated job status is:
 
@@ -499,7 +563,8 @@ IDs. Connections, Templates, generation jobs, WordPress users/status, and
 fields outside the importer contract are excluded.
 
 Import and decomposition require `manage_options`. Synchronous decomposition
-additionally requires permission to read the attachment and manage the
+and decomposition-job creation additionally require permission to read the
+attachment; non-canonical processing also requires permission to manage the
 explicitly selected or default-resolved Connection. Decomposition jobs are
 scoped to the creating user as well as the unguessable job token.
 Export requires `manage_options` plus `read_post` for the named Project.

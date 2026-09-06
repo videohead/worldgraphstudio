@@ -99,7 +99,7 @@ class AI_Editor {
 	public static function register_settings(): void {
 		register_setting( 'worldgraph_ai', 'worldgraph_comfy_local_url', [
 			'type'              => 'string',
-			'default'           => 'http://host.lando.internal:8188',
+			'default'           => 'http://host.docker.internal:8188',
 			'sanitize_callback' => 'esc_url_raw',
 		] );
 
@@ -111,7 +111,7 @@ class AI_Editor {
 
 		register_setting( 'worldgraph_ai', 'worldgraph_ai_url', [
 			'type'              => 'string',
-			'default'           => 'http://localhost:11434/v1',
+			'default'           => 'http://host.docker.internal:11434/v1',
 			'sanitize_callback' => 'esc_url_raw',
 		] );
 
@@ -297,7 +297,7 @@ class AI_Editor {
 						<th scope="row">Local ComfyUI MCP</th>
 						<td>
 							<label for="worldgraph_comfy_local_url">ComfyUI API URL</label><br />
-							<input type="url" name="worldgraph_comfy_local_url" id="worldgraph_comfy_local_url" value="<?php echo esc_attr( get_option( 'worldgraph_comfy_local_url', 'http://host.lando.internal:8188' ) ); ?>" class="regular-text" placeholder="http://host.lando.internal:8188" />
+							<input type="url" name="worldgraph_comfy_local_url" id="worldgraph_comfy_local_url" value="<?php echo esc_attr( get_option( 'worldgraph_comfy_local_url', 'http://host.docker.internal:8188' ) ); ?>" class="regular-text" placeholder="http://host.docker.internal:8188" />
 							<p class="description">The address reachable from the WordPress container, not the browser's localhost.</p>
 							<p class="description">The checkpoint/model and workflow JSON for this connection are set on its Template, not here &mdash; one Connection can back many checkpoints. <?php self::render_default_template_link(); ?></p>
 						</td>
@@ -318,7 +318,7 @@ class AI_Editor {
 						<th scope="row"><label for="worldgraph_ai_url">OpenAI-Compatible Base URL</label></th>
 						<td>
 							<input type="url" name="worldgraph_ai_url" id="worldgraph_ai_url" value="<?php echo esc_attr( get_option( 'worldgraph_ai_url' ) ); ?>" class="regular-text" />
-							<p class="description">Examples: http://host.lando.internal:11434/v1, http://host.lando.internal:1234/v1, or a compatible hosted endpoint.</p>
+							<p class="description">Examples: http://host.docker.internal:11434/v1, http://host.docker.internal:1234/v1, or a compatible hosted endpoint.</p>
 						</td>
 					</tr>
 					<tr>

@@ -20,12 +20,12 @@ Project-level Generate should queue a complete rough cut, reuse identity/referen
 
 ## Available fallback
 
-The resumable WordPress assembler is the verified fallback. In Lando, FFmpeg
-runs in `appserver`, where PHP and WP-Cron execute; the executable in the
-separate `cli` container is not an automatic runtime fallback without an
-authenticated job bridge. The repository installs FFmpeg in `appserver`, and
-the local acceptance pass assembled batch 506 as a 12-segment, 75-second,
-1280×720 H.264/AAC rough cut with burned subtitles.
+The resumable WordPress assembler is the verified fallback. FFmpeg runs in the
+Docker Compose `wordpress` service, where PHP and WP-Cron execute; an
+executable in the separate `node` container is not an automatic runtime
+fallback without an authenticated job bridge. The repository installs FFmpeg
+in `wordpress`, and the local acceptance pass assembled batch 506 as a
+12-segment, 75-second, 1280×720 H.264/AAC rough cut with burned subtitles.
 
 "I want to be able to import a story and be able to generate the whole story as a single demonstration video with complementary stills for the characters, audio, voiceover, music, sound etc where possible in the model, on screen titles or subtitle graphics where not possible.
 Individual scenes and shots can be modified, updated, new text input and then re-rendered once there is an existing pass, but that first Generate pass should at least be able to be watched by a human end to end (even if there are flaws and obvious problems). If a character is re-used then the generated image for that character should at least be provided i2v, and first frame last frame should be used for shot sequences so it can be stitched together automatically.

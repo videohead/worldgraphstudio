@@ -19,24 +19,25 @@ The standard ComfyUI HTTP server on port `8188` does not speak MCP. Do not
 construct an MCP URL by appending `/mcp` to the normal ComfyUI URL:
 
 ```text
-http://host.lando.internal:8188/mcp
+http://host.docker.internal:8188/mcp
 ```
 
 That URL is valid only if a separate MCP server is actually listening there.
 
 ## Local URLs
 
-For the repository's Lando environment, the usual configuration is:
+For the repository's Docker Compose environment, the usual configuration is:
 
 ```text
-ComfyUI API URL:  http://host.lando.internal:8188
-MCP URL:          optional, for example http://host.lando.internal:9000/mcp
+ComfyUI API URL:  http://host.docker.internal:8188
+MCP URL:          optional, for example http://host.docker.internal:9000/mcp
 ```
 
-The API URL must be reachable from the WordPress `appserver` container:
+The API URL must be reachable from the WordPress `wordpress` container:
 
 - `localhost` refers to the WordPress container, not the development host.
-- `host.lando.internal` resolves from Lando containers to the host machine.
+- `host.docker.internal` resolves from the Compose containers to the host
+  machine through the configured host-gateway mapping.
 - If ComfyUI runs in another Docker Compose project, publish its port to the
   host, for example `8188:8188`.
 - If ComfyUI runs as a service on the same Docker network, its service hostname
@@ -49,10 +50,9 @@ empty gives a functional HTTP-only local configuration.
 ## External ComfyUI Docker project
 
 The World Graph Studio repository does not contain the ComfyUI Docker Compose
-project. The startup scripts in this repository expect that project to live in
-a sibling directory and run its Compose stack before starting Lando. They
-currently wait for ComfyUI on port `8188` only; they do not install, start, or
-health-check an MCP server.
+project. Run that project separately and publish the endpoints needed by the
+World Graph Studio stack. The local setup checks ComfyUI on port `8188` only;
+it does not install, start, or health-check an MCP server.
 
 If the ComfyUI Docker project is in another folder, add the MCP process there.
 The MCP process may run in its own container or alongside ComfyUI in the same
@@ -63,7 +63,7 @@ container, depending on the MCP server's deployment requirements. It must:
 3. bind to `0.0.0.0` inside its container when the endpoint is published;
 4. be able to reach the ComfyUI service and any workflow/model paths it needs;
 5. be included in the ComfyUI project's Compose startup; and
-6. be reachable from the WordPress `appserver` container.
+6. be reachable from the WordPress `wordpress` container.
 
 For example, the external project might publish these host ports:
 
@@ -87,15 +87,15 @@ When both services publish ports on the development host, configure the
 WordPress setup wizard with:
 
 ```text
-Local ComfyUI API URL:  http://host.lando.internal:8188
-Local ComfyUI MCP URL:  http://host.lando.internal:9000/mcp
+Local ComfyUI API URL:  http://host.docker.internal:8188
+Local ComfyUI MCP URL:  http://host.docker.internal:9000/mcp
 ```
 
 If the MCP service uses another host port or route, enter that actual URL. If
 the MCP service is reachable through a shared Docker network instead, use its
-Docker service hostname only when that hostname is resolvable from the Lando
-`appserver` container. Publishing the port to the host and using
-`host.lando.internal` is the straightforward arrangement for a separate
+Docker service hostname only when that hostname is resolvable from the
+`wordpress` container. Publishing the port to the host and using
+`host.docker.internal` is the straightforward arrangement for a separate
 Compose project.
 
 The external project's startup should verify both endpoints before reporting
@@ -111,7 +111,7 @@ non-secret deployment metadata. For example:
 ```json
 {
   "transport": "streamable-http",
-  "host": "host.lando.internal",
+  "host": "host.docker.internal",
   "port": 9000,
   "path": "/mcp",
   "docker_service": "comfyui-mcp",
@@ -135,13 +135,13 @@ Before entering the MCP URL in WordPress, confirm:
 - the MCP route is real, for example `/mcp`, rather than an appended route on
   ComfyUI's `8188` server;
 - the MCP server can reach the ComfyUI service; and
-- the WordPress appserver can reach both services through
-  `host.lando.internal`.
+- the WordPress service can reach both services through
+  `host.docker.internal`.
 
-Do not add a second MCP service to this World Graph Studio Lando project unless
-the deployment intentionally moves ownership of the MCP runtime here. The
-normal ownership boundary is the external ComfyUI project: it runs ComfyUI and
-its optional MCP service, while World Graph Studio stores the endpoint and
+Do not add a second MCP service to the World Graph Studio Compose project
+unless the deployment intentionally moves ownership of the MCP runtime here.
+The normal ownership boundary is the external ComfyUI project: it runs ComfyUI
+and its optional MCP service, while World Graph Studio stores the endpoint and
 connects to it.
 
 ## Setup Wizard
@@ -270,7 +270,7 @@ workflow and its requirements are installed locally.
 
 From the WordPress container, verify that the configured API URL resolves to
 ComfyUI and that `GET /system_stats` returns a successful response. Replace
-`localhost` with `host.lando.internal` when ComfyUI is running on the Lando
+`localhost` with `host.docker.internal` when ComfyUI is running on the Docker
 host.
 
 ### `/mcp` returns an error on port `8188`

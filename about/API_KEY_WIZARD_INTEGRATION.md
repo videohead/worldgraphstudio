@@ -53,10 +53,10 @@ tracked environment files private.
 ## Useful checks
 
 ```bash
-lando wp option get worldgraph_gen_connection_mode
-lando wp option get worldgraph_ai_backend
-lando wp option get worldgraph_ai_model
-lando wp option get worldgraph_setup_complete
+docker compose exec wordpress wp option get worldgraph_gen_connection_mode
+docker compose exec wordpress wp option get worldgraph_ai_backend
+docker compose exec wordpress wp option get worldgraph_ai_model
+docker compose exec wordpress wp option get worldgraph_setup_complete
 ```
 
 Do not print credential options in shared terminal logs. Use **World Graph

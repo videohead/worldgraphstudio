@@ -4,12 +4,12 @@
 
 .env
 .venv
-.lando/
 scripts/backup.sql
 scripts/backup.sql.gz
 scripts/wordpress.*
 backup.sql.gz
 wordpress.*
+.vscode/*
 
 # Wordpress
 wordpress/wp-admin/
@@ -273,3 +273,5 @@ wordpress/wp-content/plugins/worldgraph/assets/js/search-widget.js
 *:Zone.Identifier
 wordpress/license.txt
 wordpress/readme.html
+.vscode/mcp.json
+.vscode/settings.json

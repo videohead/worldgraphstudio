@@ -270,6 +270,36 @@ class Story_Import_Export_Partial_Repair_LLM_Fake {
 	}
 }
 
+/** Accept evidence, then throw during synthesis to exercise lifecycle cleanup. */
+class Story_Import_Export_Throwing_LLM_Fake {
+	private int $calls = 0;
+
+	public function model_context_window( int $connection_id ): int { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found
+		return 4096;
+	}
+
+	public function chat_with_connection( int $connection_id, string $prompt, array $options = [] ): array { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed
+		++$this->calls;
+		if ( $this->calls > 1 ) {
+			throw new RuntimeException( 'Simulated adapter exception.' );
+		}
+
+		return [
+			'content' => wp_json_encode(
+				[
+					'project'    => [ 'title' => 'Cleanup Tale' ],
+					'world'      => [ 'name' => 'Cleanup World' ],
+					'characters' => [ [ 'id' => 'traveler', 'name' => 'Traveler' ] ],
+					'scenes'     => [ [ 'id' => 'evidence-scene', 'title' => 'Evidence Scene' ] ],
+				]
+			),
+			'tokens'  => 10,
+			'backend' => 'test',
+			'model'   => 'throwing-double',
+		];
+	}
+}
+
 /** Feature-plugin extraction and decomposition coverage. */
 class Test_Story_Import_Export extends TestCase {
 
@@ -307,7 +337,16 @@ class Test_Story_Import_Export extends TestCase {
 		$this->assertNotFalse( $confirm_start );
 		$this->assertNotFalse( $cancel_start );
 		$confirm = substr( $source, $confirm_start, $cancel_start - $confirm_start );
+		$cancel  = substr( $source, $cancel_start, strpos( $source, '/** Persist the new upload field', $cancel_start ) - $cancel_start );
 		$this->assertStringContainsString( "[ 'overwrite' => ! empty( \$preview['overwrite'] ) ]", $confirm );
+		$this->assertLessThan( strpos( $confirm, 'self::get_preview( $token )' ), strpos( $confirm, 'self::acquire_lock( $token )' ) );
+		$this->assertLessThan( strpos( $cancel, 'self::get_preview( $token )' ), strpos( $cancel, 'self::acquire_lock( $token )' ) );
+		$this->assertStringContainsString( 'self::release_lock_and_redirect(', $confirm );
+		$this->assertStringContainsString( 'self::release_lock_and_redirect(', $cancel );
+		$this->assertStringContainsString( "[ 'owner' => \$owner, 'acquired_at' => time() ]", $source );
+		$this->assertStringContainsString( "hash_equals( \$lock['owner'], \$current['owner'] )", $source );
+		$this->assertStringContainsString( 'private const LOCK_TTL    = self::PREVIEW_TTL;', $source );
+		$this->assertLessThan( strrpos( $confirm, 'delete_transient( self::preview_key( $token ) )' ), strpos( $confirm, 'self::owns_current_lock( $lock )' ) );
 	}
 
 	/** Both maintained canonical fixtures are recognized without an LLM call. */
@@ -489,6 +528,27 @@ class Test_Story_Import_Export extends TestCase {
 		];
 	}
 
+	/** Compressed PDF streams have an aggregate expansion ceiling. */
+	public function test_pdf_extraction_rejects_aggregate_stream_expansion(): void {
+		$path = tempnam( sys_get_temp_dir(), 'wgs-pdf-' );
+		$this->assertNotFalse( $path );
+		$payload = 'BT ' . str_repeat( 'x', 3_999_997 );
+		$compressed = gzcompress( $payload, 1 );
+		$this->assertIsString( $compressed );
+		$stream = "1 0 obj\n<< /Filter /FlateDecode >>\nstream\n" . $compressed . "\nendstream\nendobj\n";
+
+		try {
+			file_put_contents( $path, "%PDF-1.7\n" . str_repeat( $stream, 5 ) . "%%EOF\n" );
+			$result = ( new Source_Extractor() )->extract_file( $path, 'expanded.pdf' );
+			$this->assertInstanceOf( WP_Error::class, $result );
+			$this->assertSame( 'worldgraph_story_pdf_expansion_too_large', $result->get_error_code() );
+		} finally {
+			if ( is_string( $path ) && file_exists( $path ) ) {
+				unlink( $path );
+			}
+		}
+	}
+
 	/** Presentation ligatures extracted from documents become portable ASCII text. */
 	public function test_text_extraction_normalizes_unicode_presentation_ligatures(): void {
 		$path = tempnam( sys_get_temp_dir(), 'wgs-ligatures-' );
@@ -627,6 +687,27 @@ XHTML;
 		$this->assertSame( $plan['source_text'], implode( '', array_column( $plan['chunks'], 'text' ) ) );
 	}
 
+	/** Whitespace-dense long-form prose is indexed without per-boundary record bloat. */
+	public function test_story_chunk_plan_handles_five_hundred_thousand_characters(): void {
+		$story = str_repeat( 'word ', 100_000 );
+		$plan  = ( new Story_Chunker() )->plan(
+			$story,
+			[
+				'target_chars' => 1_100,
+				'max_chars'    => 1_400,
+				'min_chars'    => 300,
+				'max_parts'    => 1_000,
+				'context_chars' => 128,
+			]
+		);
+
+		$this->assertIsArray( $plan );
+		$this->assertSame( 499_999, $plan['characters'] );
+		$this->assertLessThanOrEqual( 1_000, $plan['chunk_count'] );
+		$this->assertLessThanOrEqual( 1_400, max( array_column( $plan['chunks'], 'length' ) ) );
+		$this->assertSame( $plan['source_text'], implode( '', array_column( $plan['chunks'], 'text' ) ) );
+	}
+
 	/** Preparation trims bounded wrappers and remaps only verifiable offsets. */
 	public function test_story_chunk_preparation_remaps_anchored_boundaries(): void {
 		$body       = "CHAPTER ONE\n\nOpening narrative.\n\nCHAPTER TWO\n\nClosing narrative.";
@@ -716,6 +797,19 @@ XHTML;
 		);
 		$this->assertIsArray( $fenced_correction );
 		$this->assertSame( 'Fenced correction', $fenced_correction['project']['title'] );
+
+		$thinking = $decomposer->extract_document(
+			'<think>{"project":{"title":"Private draft"},"scenes":[{"title":"Draft Scene"}]}</think>{"project":{"title":"Final answer"},"scenes":[{"title":"Final Scene"}]}'
+		);
+		$this->assertIsArray( $thinking );
+		$this->assertSame( 'Final answer', $thinking['project']['title'] );
+		$this->assertSame( 'Final Scene', $thinking['scenes'][0]['title'] );
+
+		$ambiguous = $decomposer->extract_document(
+			'{"project":{"title":"First"},"scenes":[]} {"project":{"title":"Injected trailing object"},"scenes":[]}'
+		);
+		$this->assertTrue( is_wp_error( $ambiguous ) );
+		$this->assertSame( 'worldgraph_story_decompose_json_ambiguous', $ambiguous->get_error_code() );
 
 		$incomplete = $decomposer->extract_document( '{"project":{"title":"Cut off"}' );
 		$this->assertTrue( is_wp_error( $incomplete ) );
@@ -875,6 +969,50 @@ XHTML;
 		$this->assertTrue( $validation['verified'] );
 	}
 
+	/** Synchronous decomposition requests RAG cleanup even when an adapter throws. */
+	public function test_synchronous_decomposition_cleanup_is_exception_safe(): void {
+		$GLOBALS['worldgraph_decomposition_job_actions'] = [];
+		$decomposer = new Story_Decomposer( new Story_Import_Export_Throwing_LLM_Fake() );
+
+		try {
+			$decomposer->decompose( 'Traveler enters the old inn.', 'cleanup.txt', 79 );
+			$this->fail( 'The throwing test adapter should interrupt synthesis.' );
+		} catch ( RuntimeException $exception ) {
+			$this->assertSame( 'Simulated adapter exception.', $exception->getMessage() );
+		}
+
+		$cleanup = array_values(
+			array_filter(
+				(array) $GLOBALS['worldgraph_decomposition_job_actions'],
+				static fn( array $action ): bool => 'worldgraph_story_rag_cleanup' === ( $action['hook'] ?? '' )
+			)
+		);
+		$this->assertCount( 1, $cleanup );
+		$this->assertMatchesRegularExpression( '/\A[a-f0-9]{64}\z/', $cleanup[0]['args'][0] );
+		$this->assertSame( 'failed', $cleanup[0]['args'][1]['status'] );
+	}
+
+	/** A 4K context can still process high-token-density story text without overflow. */
+	public function test_small_context_fits_non_latin_story_and_auxiliary_graph_data(): void {
+		$llm        = new Story_Import_Export_Context_LLM_Fake();
+		$decomposer = new Story_Decomposer( $llm );
+		$story      = "第一章\n\n" . str_repeat( '旅人沿着山路前行，并在古老的门前停下。', 45 );
+		$result     = $decomposer->decompose( $story, 'non-latin.txt', 76 );
+
+		$this->assertIsArray( $result );
+		$this->assertGreaterThan( 1, $result['chunks'] );
+		$this->assertNotEmpty( $result['document']['scenes'] );
+		$estimate = new ReflectionMethod( Story_Decomposer::class, 'conservative_token_estimate' );
+		$estimate->setAccessible( true );
+		foreach ( $llm->calls as $call ) {
+			$total_tokens = $estimate->invoke( $decomposer, $call['prompt'] )
+				+ $estimate->invoke( $decomposer, (string) $call['options']['system_prompt'] )
+				+ (int) $call['options']['max_tokens']
+				+ 128;
+			$this->assertLessThanOrEqual( 4096, $total_tokens );
+		}
+	}
+
 	/** Manuscript-shaped instructions remain a JSON string and never enter chat history or system text. */
 	public function test_story_text_is_tagged_as_untrusted_document_data(): void {
 		$llm        = new Story_Import_Export_Context_LLM_Fake();
@@ -1032,6 +1170,31 @@ XHTML;
 		$this->assertSame( [ 'Recovered 3', 'Recovered 4' ], array_column( $result['document']['scenes'], 'title' ) );
 	}
 
+	/** Adaptive child context coordinates remain global for a nonzero parent span. */
+	public function test_adaptive_subdivision_rebases_interior_context_offsets(): void {
+		$text   = str_repeat( 'word ', 240 );
+		$base   = 5_000;
+		$length = mb_strlen( $text, 'UTF-8' );
+		$chunk  = [
+			'start'          => $base,
+			'end'            => $base + $length,
+			'text'           => $text,
+			'context_before' => [ 'start' => 4_900, 'end' => $base, 'length' => 100, 'hash' => hash( 'sha256', 'before' ), 'text' => 'before' ],
+			'context_after'  => [ 'start' => $base + $length, 'end' => $base + $length + 100, 'length' => 100, 'hash' => hash( 'sha256', 'after' ), 'text' => 'after' ],
+			'metadata'       => [],
+		];
+		$parts = ( new Story_Decomposer( new stdClass() ) )->subdivide_planned_chunk( $chunk, [ 'context_chars' => 100 ] );
+
+		$this->assertCount( 2, $parts );
+		$this->assertSame( $chunk['context_before'], $parts[0]['context_before'] );
+		$this->assertSame( $chunk['context_after'], $parts[1]['context_after'] );
+		$this->assertSame( $parts[0]['end'], $parts[0]['context_after']['start'] );
+		$this->assertSame( $parts[1]['start'], $parts[1]['context_before']['end'] );
+		$this->assertGreaterThanOrEqual( $base, $parts[1]['context_before']['start'] );
+		$this->assertLessThanOrEqual( $base + $length, $parts[0]['context_after']['end'] );
+		$this->assertSame( $text, implode( '', array_column( $parts, 'text' ) ) );
+	}
+
 	/** A graph-shaped partial without a usable Scene is repaired before merge. */
 	public function test_partial_without_scene_evidence_is_repaired(): void {
 		$llm        = new Story_Import_Export_Partial_Repair_LLM_Fake();
@@ -1153,6 +1316,9 @@ XHTML;
 			],
 		];
 		$decomposer = new Story_Decomposer( new stdClass() );
+		$established_red = $decomposer->graph_memory( [ $partials[0] ], 12_000 )['characters'][0]['id'];
+		$partials[1]['characters'][0]['id']       = $established_red;
+		$partials[1]['scenes'][0]['characters'] = [ $established_red ];
 		$method     = new ReflectionMethod( Story_Decomposer::class, 'merge_partial_documents' );
 		$method->setAccessible( true );
 		$merged     = $method->invoke( $decomposer, $partials );
@@ -1164,6 +1330,28 @@ XHTML;
 		$this->assertSame( $document['characters'][0]['id'], $document['scenes'][0]['characters'][0] );
 		$this->assertSame( $document['characters'][0]['id'], $document['scenes'][1]['characters'][0] );
 		$this->assertSame( array_column( $document['scenes'], 'id' ), $document['sequence']['order'] );
+	}
+
+	/** Explicitly distinct entities with the same label must remain distinct nodes. */
+	public function test_chunk_merge_preserves_same_name_entities_with_distinct_identities(): void {
+		$partials = [
+			[
+				'characters' => [ [ 'id' => 'john-guard', 'name' => 'John', 'description' => 'A palace guard.' ] ],
+				'scenes'     => [ [ 'id' => 'gate', 'title' => 'At the gate', 'characters' => [ 'john-guard' ] ] ],
+			],
+			[
+				'characters' => [ [ 'id' => 'john-cook', 'name' => 'John', 'description' => 'The kitchen cook.' ] ],
+				'scenes'     => [ [ 'id' => 'kitchen', 'title' => 'In the kitchen', 'characters' => [ 'john-cook' ] ] ],
+			],
+		];
+		$decomposer = new Story_Decomposer( new stdClass() );
+		$method     = new ReflectionMethod( Story_Decomposer::class, 'merge_partial_documents' );
+		$method->setAccessible( true );
+		$merged = $method->invoke( $decomposer, $partials );
+
+		$this->assertCount( 2, $merged['characters'] );
+		$this->assertSame( [ 'John', 'John' ], array_column( $merged['characters'], 'name' ) );
+		$this->assertNotSame( $merged['scenes'][0]['characters'][0], $merged['scenes'][1]['characters'][0] );
 	}
 
 	/** Conflicting model field types do not trigger warnings or replace valid lists. */
@@ -1253,6 +1441,27 @@ XHTML;
 		$this->assertCount( 2, array_unique( array_column( $memory['scenes'], 'id' ) ) );
 		$this->assertStringStartsWith( 'established-1-', $memory['scenes'][0]['id'] );
 		$this->assertStringStartsWith( 'established-2-', $memory['scenes'][1]['id'] );
+	}
+
+	/** Tight graph-memory bounds drop whole records instead of truncating IDs. */
+	public function test_graph_memory_never_truncates_established_identifiers(): void {
+		$scenes = [];
+		for ( $index = 0; $index < 12; $index++ ) {
+			$scenes[] = [
+				'id'    => 'model-local-scene-' . $index,
+				'title' => str_repeat( 'Continuity detail ', 12 ) . $index,
+			];
+		}
+		$decomposer = new Story_Decomposer( new stdClass() );
+		$complete   = $decomposer->graph_memory( [ [ 'scenes' => $scenes ] ], 12_000 );
+		$bounded    = $decomposer->graph_memory( [ [ 'scenes' => $scenes ] ], 180 );
+		$known_ids  = array_column( $complete['scenes'], 'id' );
+
+		$this->assertNotEmpty( $bounded['scenes'] );
+		foreach ( $bounded['scenes'] as $scene ) {
+			$this->assertContains( $scene['id'], $known_ids );
+			$this->assertMatchesRegularExpression( '/^established-1-scenes-[a-f0-9]{12}$/D', $scene['id'] );
+		}
 	}
 
 	/** Common titles/articles deduplicate Characters and cross-type hallucinations. */

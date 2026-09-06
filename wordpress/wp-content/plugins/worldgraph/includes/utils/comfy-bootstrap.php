@@ -356,7 +356,7 @@ class Comfy_Bootstrap {
 				'endpoint',
 				__( 'ComfyUI address', 'worldgraph' ),
 				'todo',
-				__( 'No local ComfyUI URL is set. Enter one in the Generation Connection section, e.g. http://host.lando.internal:8188 when ComfyUI runs on the Lando host.', 'worldgraph' )
+				__( 'No local ComfyUI URL is set. Enter one in the Generation Connection section, e.g. http://host.docker.internal:8188 when ComfyUI runs on the Docker host.', 'worldgraph' )
 			);
 
 			return self::report( $endpoint, 0, $steps );

@@ -81,20 +81,34 @@ evidence, then synthesizes each span against bounded related observations and a
 compact evolving graph. The default related-evidence retrieval is private and
 lexical, with hooks for a bounded private index. The wp-admin JavaScript
 advances the user-scoped transient job one checkpoint at a time and can resume
-it after an interrupted request. Only the final normalized, dry-run-validated
-version 1.2 candidate is reviewable or importable, and the administrator must
-explicitly confirm before any Story Graph records are written. Uploaded source
-files remain in WordPress uploads.
+it after an interrupted request. Prepared text and intermediates are stored as
+verified, bounded transient shards rather than one monolithic job value; plans
+for the 500,000-character extraction ceiling may contain up to 1,000 spans.
+Only the final normalized, dry-run-validated version 1.2 candidate is
+reviewable or importable, and the administrator must explicitly confirm before
+any Story Graph records are written. Uploaded source files remain in WordPress
+uploads.
 
 The bundled `plugins/story-rag-decomposer/` bridge is an optional,
-disabled-by-default enhancement to that evidence retrieval. It requires a
-separately installed and activated WPVDB plugin with a configured embedding
-provider and model. It sends bounded inputs to that provider, but stores only
-numeric vectors and bounded identifiers in private, user/source-scoped
-transients for at most two hours; it never inserts private manuscript or
-evidence text into WPVDB's shared embeddings table. Missing configuration and
-runtime errors fall back to the built-in lexical retriever and do not block
-story decomposition.
+disabled-by-default enhancement to that evidence retrieval. WPVDB is a hard
+requirement for this enhancement only: operators must separately install and
+activate it as the top-level `wp-content/plugins/wpvdb` plugin and configure an
+active embedding provider and model before enabling Story RAG Decomposer.
+World Graph Studio does not install or contain WPVDB, and the base decomposer
+continues to work with lexical retrieval without it.
+
+The bridge sends bounded inputs to the configured embedding provider, but
+stores at most 128 uniformly sampled numeric vectors and opaque identifiers in
+private, user/run-scoped transients whose expiration cannot exceed the owning
+run's fixed deadline. Resumable runs begin with the 806,760-second active-job
+deadline; synchronous runs receive a separate bounded scope and request
+terminal cleanup. The bridge never inserts private text or vectors into
+WPVDB's embeddings table. WPVDB Core briefly uses its shared object cache while
+servicing a call; the bridge HMAC-scopes the input and best-effort evicts the
+exact entry before and after the call. Terminal jobs request per-run cleanup
+after their durable checkpoint commits, with transient expiration as backstop.
+Missing configuration and runtime errors fall back to the built-in lexical
+retriever and do not block story decomposition.
 
 ## Closed additional-script roadmap item
 
@@ -153,9 +167,12 @@ commitments, and they do not reopen the closed roadmap category.
   cancelling or completing an import does not delete the original file.
 - PDF ingestion requires an extractable text layer. Image-only or scanned PDFs
   return an OCR-required error and must be made searchable before retrying.
-- The compatibility REST routes for validation, import, synchronous
-  decomposition preview, resumable decomposition-job status/step/cancellation,
-  and export are delivered, but the optional headless application still lacks
+- The compatibility REST routes for validation, import, persisted-attachment
+  decomposition-job creation/status/step/cancellation, bounded synchronous
+  preview, and export are delivered. The synchronous path accepts canonical
+  JSON or a non-canonical source of at most 1,400 UTF-8 characters whose initial
+  plan is exactly one span; other non-canonical sources use the resumable
+  collection route. The optional headless application still lacks
   authenticated creator UI and therefore does not have interchange parity.
 - Story text is model input data, never conversational history: decomposition
   uses an untrusted JSON story envelope under server-owned system instructions.

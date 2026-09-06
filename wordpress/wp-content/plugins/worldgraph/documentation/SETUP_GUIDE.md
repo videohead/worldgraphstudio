@@ -21,10 +21,11 @@ Place the plugin at:
 
 `wp-content/plugins/worldgraph/worldgraph.php`
 
-Activate it in WordPress Plugins or with the repository's Lando tooling:
+Activate it in WordPress Plugins or with the repository's Docker Compose
+tooling:
 
 ```bash
-lando wp plugin activate worldgraph
+docker compose exec wordpress wp plugin activate worldgraph
 ```
 
 Activation checks SCF, registers the current `worldgraph` content contract,
@@ -148,16 +149,16 @@ consent, and troubleshooting.
 
 Use this when ComfyUI runs on the same workstation or a reachable private host.
 
-For the repository's Lando environment, a ComfyUI process on the development
-host is normally:
+For the repository's Docker Compose environment, a ComfyUI process on the
+development host is normally:
 
-`http://host.lando.internal:8188`
+`http://host.docker.internal:8188`
 
-Do not use `localhost` from WordPress; inside the appserver container it points
+Do not use `localhost` from WordPress; inside the `wordpress` container it points
 back to the container. Do not append `/mcp` to the ComfyUI URL. The optional
 MCP field is for a separate MCP server process, for example:
 
-`http://host.lando.internal:9000/mcp`
+`http://host.docker.internal:9000/mcp`
 
 The wizard's test calls `GET /system_stats` on the entered HTTP endpoint.
 Saving:
@@ -282,9 +283,9 @@ supports:
 | Anthropic | Hosted API; URL may be blank |
 | Dual | Local primary with the configured cloud fallback settings |
 
-For an LLM running on the Lando host, use a container-reachable URL such as:
+For an LLM running on the Docker host, use a container-reachable URL such as:
 
-`http://host.lando.internal:11434/v1`
+`http://host.docker.internal:11434/v1`
 
 Enter the model identifier, maximum response tokens, and temperature. **Test LLM
 Connection** verifies the unsaved values and loads provider model names when the
@@ -336,8 +337,8 @@ protect database backups, and never commit credentials.
 ### Plugin and routes
 
 ```bash
-lando wp plugin status worldgraph
-lando wp option get worldgraph_version
+docker compose exec wordpress wp plugin status worldgraph
+docker compose exec wordpress wp option get worldgraph_version
 ```
 
 The canonical REST base is:
@@ -399,8 +400,8 @@ audio is not a direct item-output mode.
 ### WP-Cron
 
 ```bash
-lando wp cron event list
-lando wp cron event run worldgraph_process_generation_batch
+docker compose exec wordpress wp cron event list
+docker compose exec wordpress wp cron event run worldgraph_process_generation_batch
 ```
 
 In production, use the host scheduler to request `wp-cron.php` or run due
@@ -411,11 +412,12 @@ Project Demonstration assembly also uses the separately scheduled
 FFmpeg. The binary defaults to `ffmpeg`; define `WORLDGRAPH_FFMPEG_BINARY` when
 an explicit safe path is required. Missing FFmpeg leaves the generated child
 media available but reports an assembly error instead of a completed rough cut.
-The default Lando configuration installs FFmpeg in `appserver`, which owns PHP
-and WP-Cron. Run `lando rebuild -y` after adopting that configuration, then
-verify it with `lando exec appserver -- ffmpeg -version`. The FFmpeg executable
-in Lando's separate `cli` service is developer tooling; PHP cannot use it as an
-automatic fallback across the container boundary.
+The Docker Compose `wordpress` image installs FFmpeg because that service owns
+PHP and WP-Cron. After changing image dependencies, rebuild it with
+`docker compose up -d --build wordpress`, then verify it with
+`docker compose exec wordpress ffmpeg -version`. A binary in the separate
+`node` service is developer tooling; PHP cannot use it as an automatic
+fallback across the container boundary.
 
 ## Generate a test asset
 
@@ -459,7 +461,7 @@ Resetting the completion flag is only necessary if you want World Graph Studio
 admin screens to redirect back to setup:
 
 ```bash
-lando wp option update worldgraph_setup_complete 0
+docker compose exec wordpress wp option update worldgraph_setup_complete 0
 ```
 
 Advanced provider fields, additional Connections, health tests, and ComfyUI
@@ -474,7 +476,7 @@ activate World Graph Studio again.
 
 ### WordPress cannot reach local ComfyUI
 
-- Use `host.lando.internal` from the Lando appserver.
+- Use `host.docker.internal` from the Docker Compose `wordpress` service.
 - Confirm ComfyUI listens on a host interface reachable by the container.
 - Check the Connection's `endpoint_url`, not only the legacy option.
 - Test `/system_stats` from the WordPress runtime.

@@ -143,6 +143,10 @@ namespace WorldGraphStoryRAG {
 	}
 
 	function set_transient( string $key, $value, int $expiration ): bool {
+		if ( ! empty( $GLOBALS['worldgraph_story_rag_fail_index_writes'] ) && is_array( $value ) && isset( $value['entries'] ) ) {
+			--$GLOBALS['worldgraph_story_rag_fail_index_writes'];
+			return false;
+		}
 		$GLOBALS['worldgraph_story_rag_transients'][ $key ] = [
 			'value'      => $value,
 			'expiration' => $expiration,
@@ -152,6 +156,15 @@ namespace WorldGraphStoryRAG {
 
 	function delete_transient( string $key ): bool {
 		unset( $GLOBALS['worldgraph_story_rag_transients'][ $key ] );
+		return true;
+	}
+
+	function wp_salt( string $scheme = 'auth' ): string { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found
+		return 'worldgraph-story-rag-test-installation-secret';
+	}
+
+	function wp_cache_delete( string $key, string $group = '' ): bool {
+		$GLOBALS['worldgraph_story_rag_cache_deletes'][] = compact( 'key', 'group' );
 		return true;
 	}
 }
@@ -170,12 +183,15 @@ namespace WorldGraph\Tests {
 
 	final class Story_RAG_Decomposer_Test extends TestCase {
 		private const SOURCE_HASH = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+		private const RUN_SCOPE   = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
 
 		protected function setUp(): void {
 			$GLOBALS['worldgraph_story_rag_options']    = [ 'worldgraph_story_rag_enabled' => false ];
 			$GLOBALS['worldgraph_story_rag_user_id']    = 17;
 			$GLOBALS['worldgraph_story_rag_transients'] = [];
 			$GLOBALS['worldgraph_story_rag_hooks']      = [];
+			$GLOBALS['worldgraph_story_rag_cache_deletes'] = [];
+			$GLOBALS['worldgraph_story_rag_fail_index_writes'] = 0;
 			\WPVDB\Settings::$configured                = true;
 			\WPVDB\Settings::$provider                  = 'openai';
 			\WPVDB\Settings::$model                     = 'text-embedding-test';
@@ -195,7 +211,11 @@ namespace WorldGraph\Tests {
 			$this->assertStringContainsString( "plugins/story-rag-decomposer/story-rag-decomposer.php", $bootstrap );
 			$this->assertStringContainsString( "add_option( 'worldgraph_story_rag_enabled', false )", $bootstrap );
 			$this->assertStringContainsString( "'story-rag-decomposer'", $registry );
+			$this->assertStringContainsString( 'WPVDB must be installed and activated as a separate top-level WordPress plugin', $registry );
+			$this->assertStringContainsString( 'https://github.com/Automattic/wpvdb', $registry );
 			$this->assertStringContainsString( 'WorldGraphStoryRAG\\is_configured()', $registry );
+			$this->assertStringContainsString( 'Story_RAG_Retrieval::init_cleanup();', $plugin );
+			$this->assertLessThan( strpos( $plugin, 'if ( ! is_enabled() )' ), strpos( $plugin, 'Story_RAG_Retrieval::init_cleanup();' ) );
 		}
 
 		public function test_configuration_requires_wpvdb_provider_and_model(): void {
@@ -211,10 +231,13 @@ namespace WorldGraph\Tests {
 
 		public function test_hooks_cover_evidence_retrieval_and_explicit_cleanup(): void {
 			Story_RAG_Retrieval::init();
+			$decomposer = (string) file_get_contents( dirname( __DIR__ ) . '/plugins/story-import-export/includes/class-story-decomposer.php' );
 
 			$this->assertSame( 3, $GLOBALS['worldgraph_story_rag_hooks']['actions']['worldgraph_story_decomposition_evidence_ready']['accepted_args'] );
 			$this->assertSame( 4, $GLOBALS['worldgraph_story_rag_hooks']['filters']['worldgraph_story_decomposition_retrieval_context']['accepted_args'] );
 			$this->assertSame( 2, $GLOBALS['worldgraph_story_rag_hooks']['actions']['worldgraph_story_rag_cleanup']['accepted_args'] );
+			$this->assertStringContainsString( "'run_scope'     => \$this->valid_run_scope", $decomposer );
+			$this->assertStringContainsString( 'retrieve_planned_evidence( array $chunk, array $evidence, int $current_index, array $profile = [] )', $decomposer );
 		}
 
 		public function test_evidence_storage_contains_only_vectors_and_identifiers(): void {
@@ -224,7 +247,7 @@ namespace WorldGraph\Tests {
 			$evidence['credential']    = 'PRIVATE_API_SECRET';
 			$evidence['story_text']    = 'PRIVATE_MANUSCRIPT_TEXT';
 
-			Story_RAG_Retrieval::capture_evidence( $evidence, $this->chunk( 'chapter-1', 0 ), [] );
+			Story_RAG_Retrieval::capture_evidence( $evidence, $this->chunk( 'chapter-1', 0 ), $this->metadata() );
 
 			$this->assertCount( 2, $GLOBALS['worldgraph_story_rag_transients'] );
 			$stored = (string) json_encode( $GLOBALS['worldgraph_story_rag_transients'] );
@@ -238,9 +261,127 @@ namespace WorldGraph\Tests {
 			$this->assertStringNotContainsString( 'PRIVATE_MANUSCRIPT_TEXT', \WPVDB\Core::$calls[0]['text'] );
 			$this->assertSame( 'openai', \WPVDB\Core::$calls[0]['provider'] );
 			$this->assertSame( 'text-embedding-test', \WPVDB\Core::$calls[0]['model'] );
+			$this->assertStringNotContainsString( self::SOURCE_HASH, \WPVDB\Core::$calls[0]['text'] );
+			$cache_key = 'embedding_text-embedding-test_' . hash( 'sha256', \WPVDB\Core::$calls[0]['text'] );
+			$this->assertSame(
+				[
+					[ 'key' => $cache_key, 'group' => 'wpvdb' ],
+					[ 'key' => $cache_key, 'group' => 'wpvdb' ],
+				],
+				$GLOBALS['worldgraph_story_rag_cache_deletes']
+			);
 
 			foreach ( $GLOBALS['worldgraph_story_rag_transients'] as $record ) {
-				$this->assertSame( 7200, $record['expiration'] );
+				$this->assertSame( 806760, $record['expiration'] );
+			}
+		}
+
+		public function test_embedding_cache_scope_differs_between_users(): void {
+			$evidence = $this->evidence( 'chapter-1', 1, 'Same bounded evidence' );
+			$chunk    = $this->chunk( 'chapter-1', 1 );
+			\WPVDB\Core::$responses = [ $this->vector( 1.0, 0.0 ), $this->vector( 1.0, 0.0 ) ];
+
+			Story_RAG_Retrieval::capture_evidence( $evidence, $chunk, $this->metadata() );
+			$GLOBALS['worldgraph_story_rag_user_id'] = 18;
+			Story_RAG_Retrieval::capture_evidence( $evidence, $chunk, $this->metadata( 18, str_repeat( 'c', 64 ) ) );
+
+			$this->assertCount( 2, \WPVDB\Core::$calls );
+			$this->assertNotSame( \WPVDB\Core::$calls[0]['text'], \WPVDB\Core::$calls[1]['text'] );
+			$this->assertStringContainsString( 'Same bounded evidence', \WPVDB\Core::$calls[0]['text'] );
+			$this->assertStringContainsString( 'Same bounded evidence', \WPVDB\Core::$calls[1]['text'] );
+			$this->assertCount( 4, $GLOBALS['worldgraph_story_rag_cache_deletes'] );
+		}
+
+		public function test_same_source_runs_are_isolated_and_cleanup_is_run_scoped(): void {
+			$other_scope = str_repeat( 'c', 64 );
+			$evidence    = $this->evidence( 'chapter-1', 1, 'Scoped evidence' );
+			$chunk       = $this->chunk( 'chapter-1', 1 );
+			\WPVDB\Core::$responses = [ $this->vector( 1.0, 0.0 ), $this->vector( 1.0, 0.0 ) ];
+
+			Story_RAG_Retrieval::capture_evidence( $evidence, $chunk, $this->metadata() );
+			Story_RAG_Retrieval::capture_evidence( $evidence, $chunk, $this->metadata( 17, $other_scope ) );
+			$this->assertCount( 4, $GLOBALS['worldgraph_story_rag_transients'] );
+
+			Story_RAG_Retrieval::cleanup( self::RUN_SCOPE, [ 'user_id' => 17, 'source_sha256' => self::SOURCE_HASH, 'status' => 'complete' ] );
+			$this->assertCount( 2, $GLOBALS['worldgraph_story_rag_transients'] );
+			$this->assertStringContainsString( $other_scope, (string) json_encode( $GLOBALS['worldgraph_story_rag_transients'] ) );
+		}
+
+		public function test_long_corpus_vectors_are_sampled_across_the_whole_story(): void {
+			\WPVDB\Core::$responses = array_fill( 0, 128, $this->vector( 1.0, 0.0 ) );
+			for ( $index = 0; $index < 256; ++$index ) {
+				Story_RAG_Retrieval::capture_evidence(
+					$this->evidence( 'chapter-' . $index, $index, 'Evidence ' . $index ),
+					$this->chunk( 'chapter-' . $index, $index, 256 ),
+					$this->metadata()
+				);
+			}
+
+			$indexes = [];
+			foreach ( $GLOBALS['worldgraph_story_rag_transients'] as $record ) {
+				if ( is_array( $record['value']['entries'] ?? null ) ) {
+					$indexes = array_column( $record['value']['entries'], 'chunk_index' );
+					break;
+				}
+			}
+			$this->assertCount( 128, $indexes );
+			$this->assertSame( 0, min( $indexes ) );
+			$this->assertSame( 254, max( $indexes ) );
+			$this->assertCount( 128, \WPVDB\Core::$calls );
+		}
+
+		public function test_sampling_rebases_when_adaptive_subdivision_changes_total(): void {
+			\WPVDB\Core::$responses = array_fill( 0, 129, $this->vector( 1.0, 0.0 ) );
+			for ( $index = 0; $index < 128; ++$index ) {
+				Story_RAG_Retrieval::capture_evidence(
+					$this->evidence( 'chapter-' . $index, $index, 'Evidence ' . $index ),
+					$this->chunk( 'chapter-' . $index, $index, 128 ),
+					$this->metadata()
+				);
+			}
+			Story_RAG_Retrieval::capture_evidence(
+				$this->evidence( 'chapter-255', 255, 'Late evidence' ),
+				$this->chunk( 'chapter-255', 255, 256 ),
+				$this->metadata()
+			);
+
+			$entries = [];
+			foreach ( $GLOBALS['worldgraph_story_rag_transients'] as $record ) {
+				if ( is_array( $record['value']['entries'] ?? null ) ) {
+					$entries = $record['value']['entries'];
+					break;
+				}
+			}
+			$this->assertNotEmpty( $entries );
+			$this->assertSame( 256, max( array_column( $entries, 'chunk_total' ) ) );
+			$this->assertSame( 255, max( array_column( $entries, 'chunk_index' ) ) );
+			$this->assertCount( count( $entries ), array_unique( array_column( $entries, 'sample_bucket' ) ) );
+			$this->assertCount( 129, \WPVDB\Core::$calls );
+		}
+
+		public function test_index_commit_failure_preserves_previous_sample(): void {
+			\WPVDB\Core::$responses = [ $this->vector( 0.0, 1.0 ), $this->vector( 1.0, 0.0 ) ];
+			Story_RAG_Retrieval::capture_evidence( $this->evidence( 'chapter-1', 1, 'First sample' ), $this->chunk( 'chapter-1', 1, 256 ), $this->metadata() );
+			$before = $GLOBALS['worldgraph_story_rag_transients'];
+
+			$GLOBALS['worldgraph_story_rag_fail_index_writes'] = 1;
+			Story_RAG_Retrieval::capture_evidence( $this->evidence( 'chapter-0', 0, 'Replacement sample' ), $this->chunk( 'chapter-0', 0, 256 ), $this->metadata() );
+
+			$this->assertSame( $before, $GLOBALS['worldgraph_story_rag_transients'] );
+		}
+
+		public function test_vector_ttl_never_outlives_owning_job_deadline(): void {
+			\WPVDB\Core::$responses[] = $this->vector( 1.0, 0.0 );
+			$before = time();
+			Story_RAG_Retrieval::capture_evidence(
+				$this->evidence( 'chapter-0', 0, 'Deadline bounded' ),
+				$this->chunk( 'chapter-0', 0 ),
+				$this->metadata( 17, self::RUN_SCOPE, [ 'expires_at' => $before + 300 ] )
+			);
+
+			foreach ( $GLOBALS['worldgraph_story_rag_transients'] as $record ) {
+				$this->assertGreaterThanOrEqual( 299, $record['expiration'] );
+				$this->assertLessThanOrEqual( 300, $record['expiration'] );
 			}
 		}
 
@@ -260,7 +401,7 @@ namespace WorldGraph\Tests {
 			];
 
 			foreach ( $corpus as $index => $evidence ) {
-				Story_RAG_Retrieval::capture_evidence( $evidence, $this->chunk( 'chapter-' . $index, $index ), [] );
+				Story_RAG_Retrieval::capture_evidence( $evidence, $this->chunk( 'chapter-' . $index, $index, count( $corpus ) ), $this->metadata() );
 			}
 
 			$incoming = [
@@ -272,7 +413,7 @@ namespace WorldGraph\Tests {
 				$incoming,
 				$this->chunk( 'chapter-1', 1 ),
 				$corpus,
-				[ 'current_index' => 1, 'user_id' => 17 ]
+				$this->metadata( 17, self::RUN_SCOPE, [ 'current_index' => 1 ] )
 			);
 
 			$this->assertSame( 'wpvdb-private-vector', $result['backend'] );
@@ -283,34 +424,53 @@ namespace WorldGraph\Tests {
 			$this->assertStringNotContainsString( 'text-embedding-test', (string) json_encode( $result ) );
 		}
 
+		public function test_retrieval_preserves_corpus_indexes_above_vector_window(): void {
+			$corpus = [];
+			for ( $index = 0; $index <= 201; ++$index ) {
+				$corpus[] = $this->evidence( 'chapter-' . $index, $index, 'Evidence ' . $index );
+			}
+			\WPVDB\Core::$responses = [ $this->vector( 1.0, 0.0 ), $this->vector( 1.0, 0.0 ) ];
+			Story_RAG_Retrieval::capture_evidence( $corpus[200], $this->chunk( 'chapter-200', 200, 202 ), $this->metadata() );
+
+			$result = Story_RAG_Retrieval::retrieve(
+				[ 'backend' => 'lexical', 'current' => $corpus[201], 'related' => [] ],
+				$this->chunk( 'chapter-201', 201 ),
+				$corpus,
+				$this->metadata( 17, self::RUN_SCOPE, [ 'current_index' => 201 ] )
+			);
+
+			$this->assertSame( 'wpvdb-private-vector', $result['backend'] );
+			$this->assertSame( [ $corpus[200] ], $result['related'] );
+		}
+
 		public function test_errors_bad_dimensions_and_scope_mismatches_preserve_lexical_result(): void {
 			$evidence = $this->evidence( 'chapter-0', 0, 'First' );
 			\WPVDB\Core::$responses[] = $this->vector( 1.0, 0.0 );
-			Story_RAG_Retrieval::capture_evidence( $evidence, $this->chunk( 'chapter-0', 0 ), [] );
+			Story_RAG_Retrieval::capture_evidence( $evidence, $this->chunk( 'chapter-0', 0 ), $this->metadata() );
 
 			$incoming = [ 'backend' => 'lexical', 'current' => $evidence, 'related' => [] ];
 			\WPVDB\Core::$responses[] = array_fill( 0, 9, 1.0 );
 			$this->assertSame(
 				$incoming,
-				Story_RAG_Retrieval::retrieve( $incoming, $this->chunk( 'chapter-0', 0 ), [ $evidence ], [ 'current_index' => 0, 'user_id' => 17 ] )
+				Story_RAG_Retrieval::retrieve( $incoming, $this->chunk( 'chapter-0', 0 ), [ $evidence ], $this->metadata( 17, self::RUN_SCOPE, [ 'current_index' => 0 ] ) )
 			);
 
 			\WPVDB\Core::$responses[] = new \WP_Error( 'embedding_rate_limited' );
 			$this->assertSame(
 				$incoming,
-				Story_RAG_Retrieval::retrieve( $incoming, $this->chunk( 'chapter-0', 0 ), [ $evidence ], [ 'current_index' => 0, 'user_id' => 17 ] )
+				Story_RAG_Retrieval::retrieve( $incoming, $this->chunk( 'chapter-0', 0 ), [ $evidence ], $this->metadata( 17, self::RUN_SCOPE, [ 'current_index' => 0 ] ) )
 			);
 
 			$GLOBALS['worldgraph_story_rag_user_id'] = 18;
 			$this->assertSame(
 				$incoming,
-				Story_RAG_Retrieval::retrieve( $incoming, $this->chunk( 'chapter-0', 0 ), [ $evidence ], [ 'current_index' => 0, 'user_id' => 18 ] )
+				Story_RAG_Retrieval::retrieve( $incoming, $this->chunk( 'chapter-0', 0 ), [ $evidence ], $this->metadata( 18, self::RUN_SCOPE, [ 'current_index' => 0 ] ) )
 			);
 
 			$GLOBALS['worldgraph_story_rag_user_id'] = 17;
 			$other_source                             = $this->chunk( 'chapter-0', 0 );
 			$other_source['metadata']['source_hash']  = str_repeat( 'b', 64 );
-			$this->assertSame( $incoming, Story_RAG_Retrieval::retrieve( $incoming, $other_source, [ $evidence ], [ 'current_index' => 0, 'user_id' => 17 ] ) );
+			$this->assertSame( $incoming, Story_RAG_Retrieval::retrieve( $incoming, $other_source, [ $evidence ], $this->metadata( 17, self::RUN_SCOPE, [ 'current_index' => 0 ] ) ) );
 		}
 
 		public function test_nonfinite_and_oversized_vectors_are_never_stored(): void {
@@ -318,19 +478,19 @@ namespace WorldGraph\Tests {
 			$nonfinite[3] = INF;
 			\WPVDB\Core::$responses = [ $nonfinite, array_fill( 0, 4097, 1.0 ) ];
 
-			Story_RAG_Retrieval::capture_evidence( $this->evidence( 'chapter-0', 0, 'First' ), $this->chunk( 'chapter-0', 0 ), [] );
-			Story_RAG_Retrieval::capture_evidence( $this->evidence( 'chapter-1', 1, 'Second' ), $this->chunk( 'chapter-1', 1 ), [] );
+			Story_RAG_Retrieval::capture_evidence( $this->evidence( 'chapter-0', 0, 'First' ), $this->chunk( 'chapter-0', 0 ), $this->metadata() );
+			Story_RAG_Retrieval::capture_evidence( $this->evidence( 'chapter-1', 1, 'Second' ), $this->chunk( 'chapter-1', 1 ), $this->metadata() );
 
 			$this->assertSame( [], $GLOBALS['worldgraph_story_rag_transients'] );
 		}
 
 		public function test_cleanup_removes_the_scoped_index_and_vectors(): void {
 			\WPVDB\Core::$responses = [ $this->vector( 1.0, 0.0 ), $this->vector( 0.0, 1.0 ) ];
-			Story_RAG_Retrieval::capture_evidence( $this->evidence( 'chapter-0', 0, 'First' ), $this->chunk( 'chapter-0', 0 ), [] );
-			Story_RAG_Retrieval::capture_evidence( $this->evidence( 'chapter-1', 1, 'Second' ), $this->chunk( 'chapter-1', 1 ), [] );
+			Story_RAG_Retrieval::capture_evidence( $this->evidence( 'chapter-0', 0, 'First' ), $this->chunk( 'chapter-0', 0 ), $this->metadata() );
+			Story_RAG_Retrieval::capture_evidence( $this->evidence( 'chapter-1', 1, 'Second' ), $this->chunk( 'chapter-1', 1 ), $this->metadata() );
 			$this->assertCount( 3, $GLOBALS['worldgraph_story_rag_transients'] );
 
-			Story_RAG_Retrieval::cleanup( self::SOURCE_HASH, 17 );
+			Story_RAG_Retrieval::cleanup( self::RUN_SCOPE, [ 'user_id' => 17, 'source_sha256' => self::SOURCE_HASH, 'status' => 'complete' ] );
 
 			$this->assertSame( [], $GLOBALS['worldgraph_story_rag_transients'] );
 		}
@@ -350,14 +510,20 @@ namespace WorldGraph\Tests {
 		}
 
 		/** Return one server-created chunk descriptor. */
-		private function chunk( string $chunk_id, int $index ): array {
+		private function chunk( string $chunk_id, int $index, int $total = 4 ): array {
 			return [
 				'id'       => $chunk_id,
 				'index'    => $index,
+				'total'    => max( $index + 1, $total ),
 				'label'    => 'Chapter ' . ( $index + 1 ),
 				'text'     => 'Private manuscript query ' . $index,
 				'metadata' => [ 'source_hash' => self::SOURCE_HASH ],
 			];
+		}
+
+		/** Return one server-owned RAG hook context. */
+		private function metadata( int $user_id = 17, string $run_scope = self::RUN_SCOPE, array $extra = [] ): array {
+			return array_merge( [ 'user_id' => $user_id, 'run_scope' => $run_scope ], $extra );
 		}
 	}
 }

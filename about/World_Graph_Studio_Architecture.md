@@ -55,10 +55,11 @@ The standard deployment contains:
 | WP-Cron | Generation queue submission, polling, and scheduled provider work |
 | Optional external services | LLM inference, generative workflows, VideoDraft synchronization, and other configured delivered integrations |
 
-The local development environment uses Lando or a plain Docker Compose stack
-(see [`developers/`](../developers/)); neither is a production dependency. No
-separate Python API, router, queue server, or orchestration service is
-required by the application.
+The local development environment uses the repository-root Docker Compose
+stack. Its default services are WordPress, MariaDB, and Node.js tooling;
+PHPUnit and phpMyAdmin are profile-gated tools. Docker Compose is not a
+production dependency. No separate Python API, router, queue server, or
+orchestration service is required by the application.
 
 ## Repository architecture
 

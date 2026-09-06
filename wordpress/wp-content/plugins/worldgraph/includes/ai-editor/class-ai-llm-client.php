@@ -288,9 +288,17 @@ class AI_LLM_Client {
 		}
 		if ( ! empty( $result['error'] ) ) {
 			$this->log_connection_failure( $connection_id, $backend, $model, $endpoint, $result );
+			$error_data = [
+				'provider_error' => substr( sanitize_key( (string) $result['error'] ), 0, 64 ),
+			];
+			$http_status = absint( $result['http_status'] ?? 0 );
+			if ( $http_status >= 100 && $http_status <= 599 ) {
+				$error_data['http_status'] = $http_status;
+			}
 			return new \WP_Error(
 				'worldgraph_llm_request_failed',
-				sanitize_text_field( (string) ( $result['content'] ?? __( 'The selected LLM Connection could not complete the request.', 'worldgraph' ) ) )
+				sanitize_text_field( (string) ( $result['content'] ?? __( 'The selected LLM Connection could not complete the request.', 'worldgraph' ) ) ),
+				$error_data
 			);
 		}
 
@@ -1331,7 +1339,7 @@ class AI_LLM_Client {
 			$error = $response->get_error_message();
 			$host  = wp_parse_url( $url, PHP_URL_HOST );
 			if ( in_array( $host, [ 'localhost', '127.0.0.1', '::1' ], true ) ) {
-				$error .= ' WordPress makes this request from its container, where localhost is not your development host. Use host.lando.internal (Lando) or a Docker service hostname.';
+				$error .= ' WordPress makes this request from its container, where localhost is not your development host. Use host.docker.internal or a Docker service hostname.';
 			}
 
 			return [

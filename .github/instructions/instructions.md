@@ -8,53 +8,69 @@ an optional external generation service used by the relevant plugin.
 
 ## Local Entry Points
 
-When Docker Compose containers are already running, use these service entry points for local
-validation:
+The default Docker Compose stack runs `wordpress`, `database`, and `node`. Use
+these entry points for local validation:
 
-- WordPress app: http://localhost:8000
+- WordPress app: http://localhost:8080/
+- Optional headless frontend: http://localhost:3000/
 - ComfyUI HTTP API: http://localhost:8188
 - Optional ComfyUI MCP: a deployment-specific, separate Streamable HTTP
   endpoint (for example, http://localhost:9000/mcp); port 8188 is not MCP
 - Local LLM: http://localhost:11434
 
-Run `docker compose -f developers/docker-compose.yml ps` to inspect the running
-services before testing. WordPress is the application and control plane; do not
-assume a separate Python, queue, or orchestration service exists.
+Published project ports bind only to the host loopback interface. phpMyAdmin is
+also loopback-only and starts only through the `tools` profile:
+
+```bash
+docker compose --profile tools up -d phpmyadmin
+```
+
+It is then available at http://localhost:8081/.
+
+Use `docker compose ps` to confirm service state before testing. WordPress is
+the application and control plane; do not assume a separate Python, queue, or
+orchestration service exists.
 
 ## Docker Compose Runtime Ownership
 
 Use the service that owns the runtime required by the command:
 
-| Runtime | Compose service | Project path |
+| Runtime | Docker Compose service | Project path |
 | --- | --- | --- |
-| WordPress, PHP, and WP-CLI | `appserver` | `/app/wordpress` |
-| Node.js, npm, Playwright, and JavaScript checks | `cli` | `/app` |
+| WordPress, PHP, and WP-CLI | `wordpress` | `/var/www/html` |
+| Node.js, npm, Playwright, and JavaScript checks | `node` | `/app` |
+| PHPUnit | on-demand `phpunit` (`tools` profile) | `/app` |
 | MariaDB | `database` | N/A |
+| Database administration | `phpmyadmin` (`tools` profile) | N/A |
 
-WP-CLI belongs in `appserver`, not the Node-based `cli` service. Run it with:
+WP-CLI belongs in `wordpress`, not the Node-based `node` service. The intended
+project command, run from the repository root, is:
 
 ```bash
-docker compose -f developers/docker-compose.yml exec appserver wp <command> [arguments]
+docker compose exec wordpress wp <command> [arguments]
 ```
 
-WP-CLI runs in `/var/www/html`. A pinned WP-CLI Phar is installed and
-checksum-verified by the appserver build. If the command reports
-`executable file not found in $PATH`, confirm the container state:
+A pinned WP-CLI Phar is installed and checksum-verified by the `wordpress`
+image. Existing containers created before that build step was added may still
+lack the executable. If the command fails with an OCI error such as
+`exec: "wp": executable file not found in $PATH`, confirm the container state:
 
 ```bash
-docker compose -f developers/docker-compose.yml exec appserver sh -lc 'command -v wp'
+docker compose exec wordpress sh -lc 'command -v wp'
 ```
 
 An empty result means WP-CLI is not installed in the PHP runtime. Do not retry
-the command in `cli`: that service intentionally provides Node.js and does not
-own the WordPress PHP runtime. Rebuild the appserver with
-`docker compose -f developers/docker-compose.yml up -d --build appserver`.
+the command in `node`: that service intentionally provides Node.js and does
+not own the WordPress PHP runtime. Rebuild the service with
+`docker compose up -d --build wordpress`, then retry. WP-CLI should run against
+the live WordPress root at `/var/www/html`; pass `--path=/var/www/html` when
+invoking it from another working directory.
 
 For PHP-only diagnostics that do not require WP-CLI, use the installed PHP
 runtime directly:
 
 ```bash
-docker compose -f developers/docker-compose.yml exec appserver php -r '<php code>'
+docker compose exec wordpress php -r '<php code>'
 ```
 
 This is a diagnostic fallback, not a general replacement for WP-CLI commands.
@@ -213,19 +229,16 @@ https://codex.wordpress.org/WordPress_Coding_Standards
 ### Node and npm usage
 
 Use container-managed Node.js by default. For this repository, run Node/npm
-commands in the Compose `cli` service (or the `headless` service when running
+commands in the Docker Compose `node` service (or the `headless` service when running
 the optional Next.js frontend). This avoids host-version drift and ad-hoc local
 toolchain installs.
 
 Examples:
 
 ```bash
-docker compose -f developers/docker-compose.yml exec cli sh -lc 'node -v && npm -v'
-docker compose -f developers/docker-compose.yml exec cli sh -lc 'cd /app/headless && npm run build'
+docker compose exec node sh -lc 'node -v && npm -v'
+docker compose --profile headless run --rm headless npm run build
 ```
-
-Only use host-installed Node/npm when you intentionally run the headless app
-outside Docker Compose.
 
 ### WordPress
 
@@ -266,9 +279,15 @@ outside Docker Compose.
 
 ### Docker Compose
 
-- Use Docker Compose for local environment management.
-- Keep database data in named volumes; the WordPress source tree is bind-mounted
-  for development.
+- Use the repository-root Docker Compose stack for local environment
+  management.
+- The default stack contains only `wordpress`, `database`, and `node`; start
+  profile-gated tools only when needed.
+- Bind every published development port to the host loopback interface.
+- Keep WordPress and database data in named volumes; never bind-mount them.
+- The `db_data` and `wordpress_data` volumes do not import prior local data.
+  Preserve the old database and uploads before switching, and never run
+  `docker compose down -v` until the migration is verified.
 - Run ComfyUI behind its GPU-enabled service when GPU support is available.
 - Never commit sensitive `.env` files.
 - Restart containers only when changing Docker configuration, dependencies, or
@@ -285,22 +304,27 @@ outside Docker Compose.
 
 ### Runtime Commands
 
-- Run WordPress and PHP commands in `appserver`; run Node.js commands in `cli`.
-- Use `docker compose -f developers/docker-compose.yml exec appserver wp` only
-  after `command -v wp` succeeds in `appserver`. An OCI
+- Docker Compose is the required environment for local validation.
+- Run WordPress and PHP commands in `wordpress`; run Node.js commands in `node`.
+- Run PHPUnit on demand with
+  `docker compose --profile tools run --rm phpunit`; do not keep the test
+  container running.
+- Use `docker compose exec wordpress wp` only after `command -v wp` succeeds
+  in `wordpress`. An OCI
   `executable file not found` error means the image lacks WP-CLI; it does not
-  mean WP-CLI belongs in the Node `cli` service.
-- Node.js is available in the Compose `cli` service, not the host or `appserver`
+  mean WP-CLI belongs in the Node service.
+- Node.js is available in the `node` service, not the host or `wordpress`
   service. Run JavaScript checks with
-  `docker compose -f developers/docker-compose.yml exec cli node --check /app/path/to/file.js`.
+  `docker compose exec node node --check /app/path/to/file.js`.
 
 ### WordPress: Do Not Restart
 
 - WordPress runs PHP directly and does not need restarting after PHP changes.
+- Do not run `docker compose restart wordpress` for PHP changes.
 - If old code is still served, clear OPcache with:
 
   ```bash
-  docker compose -f developers/docker-compose.yml exec appserver php -r "opcache_reset();"
+  docker compose exec wordpress php -r "opcache_reset();"
   ```
 
 ### WordPress: WP_Widget Method Signatures
@@ -364,7 +388,7 @@ Testing documentation and utilities are maintained in `.github/testing/`. The
 World Graph Studio plugin includes a `tests/` directory for unit and integration tests.
 
 Key testing principles:
-- Run tests in the Docker Compose service that owns their runtime
+- Run tests locally through Docker Compose to ensure environment consistency
 - Test narrowly after each code change
 - Ensure all tests pass before merging changes
 - Use the testing utilities and documentation in `.github/testing/` for setup and execution

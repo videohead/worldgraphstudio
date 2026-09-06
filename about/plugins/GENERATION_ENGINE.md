@@ -694,9 +694,9 @@ retained and batch status exposes a bounded assembly error/diagnostic. The
 repository does not imply that FFmpeg or provider models are installed on a
 particular host.
 
-Automatic local assembly currently runs in the WordPress PHP runtime. Lando
-installs FFmpeg in `appserver` for that reason; `lando ffmpeg` targets the
-separate `cli` container and is not callable by the WP-Cron worker. ComfyUI may
+Automatic local assembly currently runs in the WordPress PHP runtime. The
+Docker Compose `wordpress` image installs FFmpeg for that reason; a binary in
+the separate `node` container is not callable by the WP-Cron worker. ComfyUI may
 become the preferred backend only when the selected Connection exposes a
 capability-verified, narrowly scoped assembly Template/node that accepts a
 bounded manifest and constructs fixed FFmpeg argument vectors internally. The

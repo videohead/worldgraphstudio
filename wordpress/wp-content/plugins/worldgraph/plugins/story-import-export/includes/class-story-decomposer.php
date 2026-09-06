@@ -100,77 +100,87 @@ class Story_Decomposer {
 			return $created;
 		}
 
-		$plan       = $created['plan'];
-		$profile    = $created['profile'];
-		$chunks     = array_values( (array) ( $plan['chunks'] ?? [] ) );
-		$evidence   = [];
-		$documents  = [];
-		$metrics    = [ 'attempts' => 0, 'tokens' => 0, 'backend' => '', 'model' => '' ];
-		$index      = 0;
-		$this->log_decomposition_progress(
-			$connection_id,
-			'Starting evidence pass.',
-			[
-				'pass'       => 'evidence',
-				'chunk'      => 0,
-				'chunks'     => count( $chunks ),
-				'progress'   => 0,
-				'source_hash' => (string) ( $plan['source_hash'] ?? '' ),
-			]
-		);
+		$plan                      = $created['plan'];
+		$profile                   = $created['profile'];
+		$profile['run_scope']      = hash( 'sha256', random_bytes( 32 ) );
+		$profile['run_expires_at'] = time() + ( class_exists( Decomposition_Job::class ) ? Decomposition_Job::ACTIVE_TTL : 806_760 );
+		$cleanup_status            = 'failed';
 
-		while ( $index < count( $chunks ) ) {
-			$total  = count( $chunks );
-			$chunk  = $chunks[ $index ];
-			$result = $this->analyze_planned_chunk( $chunk, $index + 1, $total, $filename, $connection_id, $profile );
-			if ( is_wp_error( $result ) ) {
-				$this->accumulate_error_metrics( $metrics, $result );
-				$parts = $this->can_subdivide( $result, $chunks, $profile ) ? $this->subdivide_planned_chunk( $chunk, $profile ) : [];
-				if (
-					is_array( $parts )
-					&& count( $parts ) >= 2
-					&& hash_equals( (string) $chunk['text'], implode( '', array_column( $parts, 'text' ) ) )
-				) {
-					array_splice( $chunks, $index, 1, $parts );
-					$chunks = $this->reindex_chunks( $chunks );
-					continue;
+		try {
+			$chunks    = array_values( (array) ( $plan['chunks'] ?? [] ) );
+			$evidence  = [];
+			$documents = [];
+			$metrics   = [ 'attempts' => 0, 'tokens' => 0, 'backend' => '', 'model' => '' ];
+			$index     = 0;
+			$this->log_decomposition_progress(
+				$connection_id,
+				'Starting evidence pass.',
+				[
+					'pass'        => 'evidence',
+					'chunk'       => 0,
+					'chunks'      => count( $chunks ),
+					'progress'    => 0,
+					'source_hash' => (string) ( $plan['source_hash'] ?? '' ),
+				]
+			);
+
+			while ( $index < count( $chunks ) ) {
+				$total  = count( $chunks );
+				$chunk  = $chunks[ $index ];
+				$result = $this->analyze_planned_chunk( $chunk, $index + 1, $total, $filename, $connection_id, $profile );
+				if ( is_wp_error( $result ) ) {
+					$this->accumulate_error_metrics( $metrics, $result );
+					$parts = $this->can_subdivide( $result, $chunks, $profile ) ? $this->subdivide_planned_chunk( $chunk, $profile ) : [];
+					if (
+						is_array( $parts )
+						&& count( $parts ) >= 2
+						&& hash_equals( (string) $chunk['text'], implode( '', array_column( $parts, 'text' ) ) )
+					) {
+						array_splice( $chunks, $index, 1, $parts );
+						$chunks = $this->reindex_chunks( $chunks );
+						continue;
+					}
+					return $this->part_error( $result, $index + 1, $total, 'evidence' );
 				}
-				return $this->part_error( $result, $index + 1, $total, 'evidence' );
+				$evidence[] = $result['evidence'];
+				$this->accumulate_metrics( $metrics, $result );
+				++$index;
 			}
-			$evidence[] = $result['evidence'];
-			$this->accumulate_metrics( $metrics, $result );
-			++$index;
-		}
 
-		$chunks = $this->reindex_chunks( $chunks );
-		$total  = count( $chunks );
-		$this->log_decomposition_progress(
-			$connection_id,
-			'Starting graph synthesis pass.',
-			[ 'pass' => 'synthesis', 'chunk' => 0, 'chunks' => $total, 'progress' => 50 ]
-		);
-		foreach ( $chunks as $index => $chunk ) {
-			$retrieved = $this->retrieve_planned_evidence( $chunk, $evidence, $index );
-			$result    = $this->synthesize_planned_chunk( $chunk, $retrieved, $documents, $index + 1, $total, $filename, $connection_id, $profile );
-			if ( is_wp_error( $result ) ) {
-				$this->accumulate_error_metrics( $metrics, $result );
-				return $this->part_error( $result, $index + 1, $total, 'synthesis' );
+			$chunks = $this->reindex_chunks( $chunks );
+			$total  = count( $chunks );
+			$this->log_decomposition_progress(
+				$connection_id,
+				'Starting graph synthesis pass.',
+				[ 'pass' => 'synthesis', 'chunk' => 0, 'chunks' => $total, 'progress' => 50 ]
+			);
+			foreach ( $chunks as $index => $chunk ) {
+				$retrieved = $this->retrieve_planned_evidence( $chunk, $evidence, $index, $profile );
+				$result    = $this->synthesize_planned_chunk( $chunk, $retrieved, $documents, $index + 1, $total, $filename, $connection_id, $profile );
+				if ( is_wp_error( $result ) ) {
+					$this->accumulate_error_metrics( $metrics, $result );
+					return $this->part_error( $result, $index + 1, $total, 'synthesis' );
+				}
+				$documents[] = $result['document'];
+				$this->accumulate_metrics( $metrics, $result );
 			}
-			$documents[] = $result['document'];
-			$this->accumulate_metrics( $metrics, $result );
-		}
 
-		$plan['chunks']      = $chunks;
-		$plan['chunk_count'] = $total;
-		return $this->finalize_planned_documents(
-			$documents,
-			(string) $created['source_text'],
-			$filename,
-			(string) $created['source_title'],
-			$connection_id,
-			$metrics,
-			$plan
-		);
+			$plan['chunks']      = $chunks;
+			$plan['chunk_count'] = $total;
+			$result              = $this->finalize_planned_documents(
+				$documents,
+				(string) $created['source_text'],
+				$filename,
+				(string) $created['source_title'],
+				$connection_id,
+				$metrics,
+				$plan
+			);
+			$cleanup_status = is_wp_error( $result ) ? 'failed' : 'completed';
+			return $result;
+		} finally {
+			$this->cleanup_rag_run( $profile, $plan, $cleanup_status );
+		}
 	}
 
 	/** Build the immutable, exact-coverage plan used by synchronous and stepped jobs. */
@@ -268,7 +278,24 @@ class Story_Decomposer {
 		 * Implementations must not log or expose the source text.
 		 */
 		if ( function_exists( 'do_action' ) ) {
-			do_action( 'worldgraph_story_decomposition_evidence_ready', $result['evidence'], $chunk, [ 'filename' => sanitize_file_name( $filename ), 'connection_id' => $connection_id ] );
+			$hook_chunk          = $chunk;
+			$hook_chunk['index'] = max( 0, $ordinal - 1 );
+			$hook_chunk['total'] = max( 1, $total );
+			try {
+				do_action(
+					'worldgraph_story_decomposition_evidence_ready',
+					$result['evidence'],
+					$hook_chunk,
+					[
+						'filename'      => sanitize_file_name( $filename ),
+						'connection_id' => $connection_id,
+						'run_scope'     => $this->valid_run_scope( $profile['run_scope'] ?? '' ),
+						'expires_at'    => absint( $profile['run_expires_at'] ?? 0 ),
+					]
+				);
+			} catch ( \Throwable ) {
+				// Optional indexing must never invalidate accepted core evidence.
+			}
 		}
 		return $result;
 	}
@@ -280,8 +307,8 @@ class Story_Decomposer {
 			return $system_prompt;
 		}
 
-		$evidence_chars = max( 300, absint( $profile['evidence_chars'] ?? 2_500 ) );
-		$memory_chars   = max( 300, absint( $profile['memory_chars'] ?? 3_000 ) );
+		$evidence_chars = max( 0, absint( $profile['evidence_chars'] ?? 2_500 ) );
+		$memory_chars   = max( 0, absint( $profile['memory_chars'] ?? 3_000 ) );
 		$context_chars  = max( 0, absint( $profile['context_chars'] ?? self::CONTEXT_CHARS ) );
 		$prompt         = false;
 		for ( $fit_attempt = 0; $fit_attempt < 6; $fit_attempt++ ) {
@@ -294,8 +321,8 @@ class Story_Decomposer {
 				$prompt = $candidate;
 				break;
 			}
-			$evidence_chars = max( 300, (int) floor( $evidence_chars / 2 ) );
-			$memory_chars   = max( 300, (int) floor( $memory_chars / 2 ) );
+			$evidence_chars = (int) floor( $evidence_chars / 2 );
+			$memory_chars   = (int) floor( $memory_chars / 2 );
 			$context_chars  = (int) floor( $context_chars / 2 );
 		}
 		if ( false === $prompt ) {
@@ -307,7 +334,7 @@ class Story_Decomposer {
 
 	/** Merge partials, normalize portable v1.2 JSON, and invoke authoritative dry-run validation. */
 	public function finalize_planned_documents( array $documents, string $source_text, string $filename, string $source_title, int $connection_id, array $metrics = [], array $plan = [] ) {
-		$document = $this->normalize_document( $this->merge_partial_documents( $documents, $source_text, $source_title ), $source_text, $filename, $source_title );
+		$document = $this->normalize_document( $this->merge_partial_documents( $documents, $source_text, $source_title ), $source_text, $filename, $source_title, true );
 		if ( empty( $document['scenes'] ) ) {
 			return new \WP_Error( 'worldgraph_story_decompose_scenes_missing', __( 'The generated story document did not contain any Scenes.', 'worldgraph' ) );
 		}
@@ -382,6 +409,12 @@ class Story_Decomposer {
 		foreach ( $planned['chunks'] as $index => $part ) {
 			$part['start']    = $base + absint( $part['start'] ?? 0 );
 			$part['end']      = $base + absint( $part['end'] ?? 0 );
+			foreach ( [ 'context_before', 'context_after' ] as $context_key ) {
+				if ( is_array( $part[ $context_key ] ?? null ) ) {
+					$part[ $context_key ]['start'] = $base + absint( $part[ $context_key ]['start'] ?? 0 );
+					$part[ $context_key ]['end']   = $base + absint( $part[ $context_key ]['end'] ?? 0 );
+				}
+			}
 			$part['metadata'] = array_merge( (array) ( $chunk['metadata'] ?? [] ), (array) ( $part['metadata'] ?? [] ), [ 'adaptive_subdivision' => true ] );
 			if ( 0 === $index && isset( $chunk['context_before'] ) ) {
 				$part['context_before'] = $chunk['context_before'];
@@ -455,7 +488,7 @@ class Story_Decomposer {
 	}
 
 	/** Return current evidence plus bounded, lexically related observations. */
-	public function retrieve_planned_evidence( array $chunk, array $evidence, int $current_index ): array {
+	public function retrieve_planned_evidence( array $chunk, array $evidence, int $current_index, array $profile = [] ): array {
 		$query_terms = $this->retrieval_terms( (string) ( $chunk['label'] ?? '' ) . ' ' . (string) ( $chunk['text'] ?? '' ) );
 		$ranked      = [];
 		$current     = is_array( $evidence[ $current_index ] ?? null ) ? $evidence[ $current_index ] : [];
@@ -483,18 +516,54 @@ class Story_Decomposer {
 		 * retrieval. It must return structured evidence and must not expose vectors.
 		 */
 		if ( function_exists( 'apply_filters' ) ) {
-			$filtered = apply_filters(
-				'worldgraph_story_decomposition_retrieval_context',
-				$result,
-				$chunk,
-				$evidence,
-				[ 'current_index' => $current_index, 'user_id' => function_exists( 'get_current_user_id' ) ? get_current_user_id() : 0 ]
-			);
-			if ( is_array( $filtered ) ) {
-				$result = $filtered;
+			try {
+				$filtered = apply_filters(
+					'worldgraph_story_decomposition_retrieval_context',
+					$result,
+					$chunk,
+					$evidence,
+					[
+						'current_index' => $current_index,
+						'user_id'       => function_exists( 'get_current_user_id' ) ? get_current_user_id() : 0,
+						'run_scope'     => $this->valid_run_scope( $profile['run_scope'] ?? '' ),
+						'expires_at'    => absint( $profile['run_expires_at'] ?? 0 ),
+					]
+				);
+				if ( is_array( $filtered ) ) {
+					$result = $filtered;
+				}
+			} catch ( \Throwable ) {
+				// Keep the bounded lexical bundle when an optional retriever fails.
 			}
 		}
 		return $result;
+	}
+
+	/** Validate an internal, opaque SHA-256 run scope without exposing it to prompts. */
+	private function valid_run_scope( $candidate ): string {
+		$candidate = is_string( $candidate ) ? strtolower( $candidate ) : '';
+		return 1 === preg_match( '/^[a-f0-9]{64}$/D', $candidate ) ? $candidate : '';
+	}
+
+	/** Remove optional private RAG vectors after a synchronous run terminates. */
+	private function cleanup_rag_run( array $profile, array $plan, string $status ): void {
+		$run_scope = $this->valid_run_scope( $profile['run_scope'] ?? '' );
+		if ( '' === $run_scope || ! function_exists( 'do_action' ) ) {
+			return;
+		}
+		try {
+			do_action(
+				'worldgraph_story_rag_cleanup',
+				$run_scope,
+				[
+					'user_id'       => function_exists( 'get_current_user_id' ) ? get_current_user_id() : 0,
+					'source_sha256' => sanitize_text_field( (string) ( $plan['source_hash'] ?? '' ) ),
+					'status'        => sanitize_key( $status ),
+				]
+			);
+		} catch ( \Throwable ) {
+			// Expiration remains the cleanup backstop for optional retrievers.
+		}
 	}
 
 	/** Build a set of useful normalized words for the deterministic RAG fallback. */
@@ -513,6 +582,9 @@ class Story_Decomposer {
 
 	/** Create a compact identity/continuity view of already accepted graph parts. */
 	public function graph_memory( array $documents, int $max_chars = 3_000 ): array {
+		if ( $max_chars <= 0 ) {
+			return [];
+		}
 		$memory = [ 'project' => [], 'world' => [], 'characters' => [], 'locations' => [], 'props' => [], 'organizations' => [], 'episodes' => [], 'scenes' => [] ];
 		$semantic_indexes = [];
 		foreach ( $documents as $chunk_index => $document ) {
@@ -527,8 +599,8 @@ class Story_Decomposer {
 				}
 			}
 			foreach ( [ 'characters', 'locations', 'props', 'organizations', 'episodes', 'scenes' ] as $section ) {
-				foreach ( array_values( array_filter( (array) ( $document[ $section ] ?? [] ), 'is_array' ) ) as $entity ) {
-					$compact = [ 'id' => $this->established_reference( (int) $chunk_index, $section, $entity ) ];
+				foreach ( array_values( array_filter( (array) ( $document[ $section ] ?? [] ), 'is_array' ) ) as $entity_index => $entity ) {
+					$compact = [ 'id' => $this->established_reference( (int) $chunk_index, $section, $entity, $entity_index ) ];
 					foreach ( [ 'name', 'title', 'organization_name', 'location', 'episode', 'time_of_day' ] as $field ) {
 						if ( is_scalar( $entity[ $field ] ?? null ) && '' !== trim( (string) $entity[ $field ] ) ) {
 							$compact[ $field ] = sanitize_text_field( (string) $entity[ $field ] );
@@ -543,10 +615,7 @@ class Story_Decomposer {
 					if ( 'scenes' === $section && is_scalar( $entity['continues_scene'] ?? null ) && '' !== trim( (string) $entity['continues_scene'] ) ) {
 						$compact['id'] = sanitize_text_field( (string) $entity['continues_scene'] );
 					}
-					$label = (string) ( $compact['name'] ?? $compact['title'] ?? $compact['organization_name'] ?? '' );
-					$key   = 'scenes' === $section || '' === $this->alias_key( $label )
-						? (string) $compact['id']
-						: $this->alias_key( $label );
+					$key = (string) $compact['id'];
 					if ( isset( $semantic_indexes[ $section ][ $key ] ) ) {
 						$this->merge_record( $memory[ $section ][ $semantic_indexes[ $section ][ $key ] ], $compact );
 					} else {
@@ -561,12 +630,28 @@ class Story_Decomposer {
 				$memory[ $section ] = array_slice( $memory[ $section ], -12 );
 			}
 		}
-		return $this->bounded_json_value( $memory, max( 600, $max_chars ) );
+		$memory = array_filter( $memory, static fn( $section ): bool => is_array( $section ) && [] !== $section );
+		// When the model context is exceptionally small, retain recent Scene
+		// continuity ahead of descriptive catalogs. Removing whole sections also
+		// preserves every surviving identifier byte-for-byte.
+		foreach ( [ 'world', 'project', 'organizations', 'props', 'locations', 'episodes', 'characters' ] as $section ) {
+			$encoded = wp_json_encode( $memory, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
+			if ( false !== $encoded && mb_strlen( $encoded, 'UTF-8' ) <= $max_chars ) {
+				break;
+			}
+			if ( count( $memory ) > 1 ) {
+				unset( $memory[ $section ] );
+			}
+		}
+		return $this->bounded_json_value( $memory, $max_chars );
 	}
 
 	/** Bound a structured value without ever converting it into prompt instructions. */
 	private function bounded_json_value( array $value, int $max_chars ): array {
-		$max_chars = max( 300, $max_chars );
+		$max_chars = max( 0, $max_chars );
+		if ( 0 === $max_chars ) {
+			return [];
+		}
 		$json      = wp_json_encode( $value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
 		if ( false !== $json && mb_strlen( $json, 'UTF-8' ) <= $max_chars ) {
 			return $value;
@@ -583,39 +668,69 @@ class Story_Decomposer {
 	}
 
 	/** Remove or shorten the largest nested JSON member until a hard bound fits. */
-	private function shrink_structured_value( array &$value ): bool {
+	private function shrink_structured_value( array &$value, string $parent_key = '' ): bool {
 		if ( empty( $value ) ) {
 			return false;
 		}
-		$largest_key  = null;
-		$largest_size = -1;
+		$was_list = array_is_list( $value );
+		$sizes    = [];
 		foreach ( $value as $key => $item ) {
 			$encoded = wp_json_encode( $item, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
-			$size    = false === $encoded ? 0 : mb_strlen( $encoded, 'UTF-8' );
-			if ( $size > $largest_size ) {
-				$largest_key  = $key;
-				$largest_size = $size;
-			}
+			$sizes[ $key ] = false === $encoded ? 0 : mb_strlen( $encoded, 'UTF-8' );
 		}
-		if ( null === $largest_key ) {
-			return false;
-		}
-
-		$item = &$value[ $largest_key ];
-		if ( is_array( $item ) && ! empty( $item ) ) {
-			if ( $this->shrink_structured_value( $item ) ) {
+		arsort( $sizes, SORT_NUMERIC );
+		foreach ( array_keys( $sizes ) as $key ) {
+			$item = &$value[ $key ];
+			if ( is_array( $item ) && ! empty( $item ) ) {
+				if ( $this->shrink_structured_value( $item, (string) $key ) ) {
+					return true;
+				}
+				unset( $item, $value[ $key ] );
+				if ( $was_list ) {
+					$value = array_values( $value );
+				}
 				return true;
 			}
-		}
-		if ( is_string( $item ) && mb_strlen( $item, 'UTF-8' ) > 32 ) {
-			$item = mb_substr( $item, 0, max( 16, (int) floor( mb_strlen( $item, 'UTF-8' ) / 2 ) ), 'UTF-8' );
+			if ( $this->structured_identifier_field( (string) $key, $parent_key ) ) {
+				unset( $item );
+				continue;
+			}
+			if ( is_string( $item ) && mb_strlen( $item, 'UTF-8' ) > 32 ) {
+				$item = mb_substr( $item, 0, max( 16, (int) floor( mb_strlen( $item, 'UTF-8' ) / 2 ) ), 'UTF-8' );
+				return true;
+			}
+			unset( $item, $value[ $key ] );
+			if ( $was_list ) {
+				$value = array_values( $value );
+			}
 			return true;
 		}
-		unset( $value[ $largest_key ] );
-		if ( array_is_list( $value ) ) {
-			$value = array_values( $value );
-		}
-		return true;
+		return false;
+	}
+
+	/** Identify atomic graph IDs/references that must be retained whole or dropped whole. */
+	private function structured_identifier_field( string $key, string $parent_key ): bool {
+		$fields = [
+			'id',
+			'source_id',
+			'source_hash',
+			'hash',
+			'chunk_id',
+			'continues_scene',
+			'source_scene',
+			'source_shot',
+			'avatar_asset',
+			'visual_reference',
+			'owner_character',
+			'leadership',
+			'location',
+			'episode',
+			'character',
+			'scene',
+			'shot',
+		];
+		$reference_lists = [ 'associates', 'relations', 'members', 'scenes', 'characters', 'props', 'order', 'aliases' ];
+		return in_array( $key, $fields, true ) || in_array( $parent_key, $reference_lists, true );
 	}
 
 	/** Bound optional neighboring context without changing primary chunk coverage. */
@@ -1079,7 +1194,10 @@ PROMPT;
 		}
 
 		$system_tokens        = $this->conservative_token_estimate( $system_prompt );
-		$envelope_reserve     = 512;
+		// Reserve serialized field names/coordinates separately from story data.
+		// Story and auxiliary character budgets then assume the conservative
+		// worst case of two tokens per Unicode code point.
+		$envelope_reserve     = 640;
 		$minimum_input_tokens = self::MIN_CHUNK_CHARS * 2;
 		$available_output     = $context_window - $system_tokens - $envelope_reserve - $minimum_input_tokens - 128;
 		if ( $available_output < self::PART_OUTPUT_MIN ) {
@@ -1096,16 +1214,18 @@ PROMPT;
 			min( self::PART_OUTPUT_MAX, (int) floor( $context_window * 0.25 ), $available_output )
 		);
 		$max_prompt_tokens = max( 1, $context_window - $max_tokens - $system_tokens - 128 );
-		$content_budget     = max( self::MIN_CHUNK_CHARS, $max_prompt_tokens - $envelope_reserve );
-		$chunk_chars       = max( self::MIN_CHUNK_CHARS, min( self::TARGET_CHUNK_CHARS, (int) floor( $content_budget * 0.45 ) ) );
-		$max_chunk_chars   = max( $chunk_chars, min( self::MAX_CHUNK_CHARS, (int) floor( $content_budget * 0.52 ) ) );
+		$content_tokens     = max( $minimum_input_tokens, $max_prompt_tokens - $envelope_reserve );
+		$content_chars      = max( self::MIN_CHUNK_CHARS, (int) floor( $content_tokens / 2 ) );
+		$chunk_chars        = max( self::MIN_CHUNK_CHARS, min( self::TARGET_CHUNK_CHARS, (int) floor( $content_chars * 0.65 ) ) );
+		$max_chunk_chars    = max( $chunk_chars, min( self::MAX_CHUNK_CHARS, (int) floor( $content_chars * 0.72 ) ) );
+		$auxiliary_chars    = max( 0, $content_chars - $max_chunk_chars );
 
 		$profile['context_window']  = $context_window;
 		$profile['chunk_chars']     = $chunk_chars;
 		$profile['max_chunk_chars'] = $max_chunk_chars;
-		$profile['context_chars']   = min( self::CONTEXT_CHARS, max( 64, (int) floor( $content_budget * 0.04 ) ) );
-		$profile['evidence_chars']  = min( 4_000, max( 300, (int) floor( $content_budget * 0.10 ) ) );
-		$profile['memory_chars']    = min( 12_000, max( 300, (int) floor( $content_budget * 0.12 ) ) );
+		$profile['context_chars']   = min( self::CONTEXT_CHARS, (int) floor( $auxiliary_chars * 0.03 ) );
+		$profile['evidence_chars']  = min( 4_000, max( 160, (int) floor( $auxiliary_chars * 0.18 ) ) );
+		$profile['memory_chars']    = min( 12_000, max( 120, (int) floor( $auxiliary_chars * 0.70 ) ) );
 		$profile['max_tokens']      = $max_tokens;
 		$profile['max_prompt_tokens'] = $max_prompt_tokens;
 		$profile['force_chunks']    = true;
@@ -1159,8 +1279,10 @@ PROMPT;
 					$key = $this->merge_entity_key( $section, $entity, $chunk_index, $entity_index );
 					if ( 'characters' === $section ) {
 						$label   = (string) ( $entity['name'] ?? $entity['title'] ?? '' );
-						$raw_key = $this->entity_untyped_name_key( $label );
-						$key     = (string) ( $character_merge_keys[ $raw_key ] ?? $key );
+						$raw_key = $this->alias_key( $label );
+						if ( isset( $character_merge_keys[ $raw_key ] ) ) {
+							$key = 'character-alias:' . $character_merge_keys[ $raw_key ];
+						}
 					}
 					if ( ! isset( $indexes[ $section ][ $key ] ) ) {
 						$global_id = sprintf( 'merged_%s_%d', $prefix, count( $merged[ $section ] ) + 1 );
@@ -1321,6 +1443,7 @@ PROMPT;
 	private function source_ground_partial_documents( array $documents, string $source_text, string $source_title = '' ): array {
 		$evidence_text = $this->normalized_evidence_text( $source_text );
 		$source_title  = '' !== trim( $source_title ) ? sanitize_text_field( $source_title ) : $this->manuscript_title( $source_text );
+		$decisions     = [];
 		foreach ( $documents as &$document ) {
 			if ( ! is_array( $document ) ) {
 				continue;
@@ -1329,12 +1452,16 @@ PROMPT;
 				$document[ $section ] = array_values(
 					array_filter(
 						(array) ( $document[ $section ] ?? [] ),
-						function ( $entity ) use ( $evidence_text, $section, $source_title, $source_text ): bool {
+						function ( $entity ) use ( $evidence_text, $section, $source_title, $source_text, &$decisions ): bool {
 							if ( ! is_array( $entity ) ) {
 								return false;
 							}
 							$label = sanitize_text_field( (string) ( $entity['name'] ?? $entity['title'] ?? $entity['label'] ?? '' ) );
-							return $this->catalog_label_is_evidenced( $section, $label, $evidence_text, $source_title, $source_text );
+							$key   = $section . "\0" . $this->alias_key( $label );
+							if ( ! array_key_exists( $key, $decisions ) ) {
+								$decisions[ $key ] = $this->catalog_label_is_evidenced( $section, $label, $evidence_text, $source_title, $source_text );
+							}
+							return $decisions[ $key ];
 						}
 					)
 				);
@@ -1370,20 +1497,12 @@ PROMPT;
 		}
 	}
 
-	/** Stable deduplication key for a named partial entity. */
+	/** Stable identity key for one partial entity, preserving ambiguous namesakes. */
 	private function merge_entity_key( string $section, array $entity, int $chunk_index, int $entity_index ): string {
 		if ( 'episodes' === $section && ! empty( $entity['episode_number'] ) ) {
 			return 'number:' . absint( $entity['episode_number'] );
 		}
-		$label = (string) ( $entity['name'] ?? $entity['title'] ?? $entity['organization_name'] ?? '' );
-		if ( 'assets' === $section ) {
-			$label .= '|' . (string) ( $entity['asset_type'] ?? $entity['type'] ?? '' );
-		}
-		$key = $this->entity_name_key( $section, $label );
-		if ( '' === $key ) {
-			$key = 'chunk:' . $chunk_index . ':entity:' . $entity_index . ':' . $this->alias_key( (string) ( $entity['id'] ?? '' ) );
-		}
-		return $key;
+		return 'identity:' . $this->established_reference( $chunk_index, $section, $entity, $entity_index );
 	}
 
 	/** Resolve only unambiguous role-only and surname-only Character aliases. */
@@ -1392,7 +1511,7 @@ PROMPT;
 		foreach ( $documents as $document ) {
 			foreach ( array_values( array_filter( (array) ( $document['characters'] ?? [] ), 'is_array' ) ) as $entity ) {
 				$label = (string) ( $entity['name'] ?? $entity['title'] ?? '' );
-				$key   = $this->entity_untyped_name_key( $label );
+				$key   = $this->alias_key( $label );
 				if ( '' !== $key ) {
 					$labels[ $key ] = true;
 				}
@@ -1405,22 +1524,31 @@ PROMPT;
 			$keys[ $label ] = $this->entity_name_key( 'characters', $label );
 		}
 
-		$role_titles = [ 'captain', 'commander', 'doctor', 'dr', 'professor', 'prof', 'mister', 'mr', 'missus', 'mrs', 'miss', 'ms', 'sir', 'lady', 'lord', 'lieutenant', 'lt', 'sergeant', 'sgt' ];
+		$role_titles    = [ 'captain', 'commander', 'doctor', 'dr', 'professor', 'prof', 'mister', 'mr', 'missus', 'mrs', 'miss', 'ms', 'sir', 'lady', 'lord', 'lieutenant', 'lt', 'sergeant', 'sgt' ];
+		$surname_index  = [];
+		$role_index     = [];
+		foreach ( $labels as $candidate ) {
+			$parts = explode( ' ', $candidate );
+			if ( count( $parts ) < 2 ) {
+				continue;
+			}
+			$surname_index[ (string) end( $parts ) ][] = $candidate;
+			if ( in_array( $parts[0], $role_titles, true ) ) {
+				$role_index[ $parts[0] ][] = $candidate;
+			}
+		}
 		foreach ( $labels as $label ) {
 			if ( str_contains( $label, ' ' ) ) {
 				continue;
 			}
-			$matches = [];
-			foreach ( $labels as $candidate ) {
-				if ( $candidate === $label ) {
-					continue;
-				}
-				$is_surname = str_ends_with( $candidate, ' ' . $label );
-				$is_role    = in_array( $label, $role_titles, true ) && str_starts_with( $candidate, $label . ' ' );
-				if ( $is_surname || $is_role ) {
-					$matches[] = $candidate;
-				}
-			}
+			$matches = array_values(
+				array_unique(
+					array_merge(
+						(array) ( $surname_index[ $label ] ?? [] ),
+						(array) ( $role_index[ $label ] ?? [] )
+					)
+				)
+			);
 			if ( 1 === count( $matches ) ) {
 				$canonical = $this->entity_name_key( 'characters', $matches[0] );
 				$keys[ $label ]      = $canonical;
@@ -1428,7 +1556,22 @@ PROMPT;
 			}
 		}
 
-		return $keys;
+		$groups = [];
+		foreach ( $keys as $label => $canonical ) {
+			$groups[ $canonical ][] = $label;
+		}
+
+		$unambiguous_aliases = [];
+		foreach ( $groups as $canonical => $group_labels ) {
+			if ( count( array_unique( $group_labels ) ) < 2 ) {
+				continue;
+			}
+			foreach ( $group_labels as $label ) {
+				$unambiguous_aliases[ $label ] = $canonical;
+			}
+		}
+
+		return $unambiguous_aliases;
 	}
 
 	/** Normalize harmless naming variants used by different model parts. */
@@ -1498,7 +1641,11 @@ PROMPT;
 	private function add_chunk_alias( array &$maps, int $chunk_index, string $section, $alias, string $global_id ): void {
 		$key = $this->alias_key( is_scalar( $alias ) ? (string) $alias : '' );
 		if ( '' !== $key ) {
-			$maps[ $chunk_index ][ $section ][ $key ] = $global_id;
+			if ( ! array_key_exists( $key, $maps[ $chunk_index ][ $section ] ?? [] ) ) {
+				$maps[ $chunk_index ][ $section ][ $key ] = $global_id;
+			} elseif ( $maps[ $chunk_index ][ $section ][ $key ] !== $global_id ) {
+				$maps[ $chunk_index ][ $section ][ $key ] = '';
+			}
 			if ( ! array_key_exists( $key, $maps['_global'][ $section ] ?? [] ) ) {
 				$maps['_global'][ $section ][ $key ] = $global_id;
 			} elseif ( $maps['_global'][ $section ][ $key ] !== $global_id ) {
@@ -1525,25 +1672,39 @@ PROMPT;
 	}
 
 	/** Create a globally unambiguous ID for a model-local entity in graph memory. */
-	private function established_reference( int $chunk_index, string $section, array $entity ): string {
-		$identity = (string) ( $entity['id'] ?? $entity['name'] ?? $entity['title'] ?? $entity['organization_name'] ?? '' );
+	private function established_reference( int $chunk_index, string $section, array $entity, int $entity_index = 0 ): string {
+		$section_slug = sanitize_key( $section );
+		$explicit_id  = is_scalar( $entity['id'] ?? null ) ? trim( (string) $entity['id'] ) : '';
+		if ( 1 === preg_match( '/^established-\d+-' . preg_quote( $section_slug, '/' ) . '-[a-f0-9]{12}$/D', $explicit_id ) ) {
+			return $explicit_id;
+		}
+		$identity = '' !== $explicit_id
+			? $explicit_id
+			: (string) ( $entity['name'] ?? $entity['title'] ?? $entity['organization_name'] ?? '' ) . "\nentity:" . $entity_index;
 		return sprintf(
 			'established-%d-%s-%s',
 			$chunk_index + 1,
-			sanitize_key( $section ),
+			$section_slug,
 			substr( hash( 'sha256', $section . "\n" . $identity ), 0, 12 )
 		);
 	}
 
-	/** Extract the first recognizable balanced story JSON object from model text. */
+	/** Extract exactly one recognizable balanced story JSON object from model text. */
 	public function extract_document( string $content, bool $allow_evidence_only = false ) {
+		$content = preg_replace( '/<think\b[^>]*>.*?<\/think>/is', '', $content );
+		$content = is_string( $content ) ? $content : '';
+		$accepted = [];
 		if ( preg_match_all( '/```(?:json)?\s*(.*?)```/is', $content, $fenced_matches ) ) {
 			foreach ( $fenced_matches[1] as $fenced_content ) {
 				$fenced_document = $this->extract_document( (string) $fenced_content, $allow_evidence_only );
 				if ( ! is_wp_error( $fenced_document ) ) {
+					$accepted[] = $fenced_document;
+				} elseif ( 'worldgraph_story_decompose_json_ambiguous' === $fenced_document->get_error_code() ) {
 					return $fenced_document;
 				}
 			}
+			$content = preg_replace( '/```(?:json)?\s*.*?```/is', ' ', $content );
+			$content = is_string( $content ) ? $content : '';
 		}
 
 		$content = trim( preg_replace( '/^```(?:json)?\s*|\s*```$/i', '', trim( $content ) ) );
@@ -1599,16 +1760,26 @@ PROMPT;
 				if ( isset( $document['worldgraph'] ) && is_array( $document['worldgraph'] ) ) {
 					$document = $document['worldgraph'];
 				}
-				if ( isset( $document['scenes'] ) && is_array( $document['scenes'] ) ) {
-					return $document;
-				}
+				$recognized = isset( $document['scenes'] ) && is_array( $document['scenes'] );
 				if ( $allow_evidence_only && array_intersect( [ 'project', 'world', 'characters', 'locations', 'props', 'organizations' ], array_keys( $document ) ) ) {
-					return $document;
+					$recognized = true;
+				}
+				if ( $recognized ) {
+					$accepted[] = $document;
 				}
 			}
 
-			// A model may emit a diagnostic or rejected draft object before its correction.
+			// Unrecognized diagnostics may precede the single requested document.
 			$search = $end + 1;
+		}
+		if ( count( $accepted ) > 1 ) {
+			return new \WP_Error(
+				'worldgraph_story_decompose_json_ambiguous',
+				__( 'The LLM response contained more than one recognizable story document.', 'worldgraph' )
+			);
+		}
+		if ( 1 === count( $accepted ) ) {
+			return $accepted[0];
 		}
 
 		if ( ! $found ) {
@@ -1663,7 +1834,7 @@ PROMPT;
 	}
 
 	/** Normalize IDs, required sections, ordering, and typed references deterministically. */
-	public function normalize_document( array $document, string $source_text, string $filename, string $source_title_hint = '' ): array {
+	public function normalize_document( array $document, string $source_text, string $filename, string $source_title_hint = '', bool $source_grounded = false ): array {
 		$fingerprint = substr( hash( 'sha256', $filename . "\n" . $source_text ), 0, 12 );
 		$namespace   = 'story_' . $fingerprint;
 		$source_title = '' !== trim( $source_title_hint ) ? sanitize_text_field( $source_title_hint ) : $this->manuscript_title( $source_text );
@@ -1681,17 +1852,24 @@ PROMPT;
 		foreach ( self::ENTITY_SECTIONS as $section => $_prefix ) {
 			$document[ $section ] = is_array( $document[ $section ] ?? null ) ? array_values( array_filter( $document[ $section ], 'is_array' ) ) : [];
 		}
-		$evidence_text = $this->normalized_evidence_text( $source_text );
-		foreach ( [ 'characters', 'locations', 'props', 'organizations' ] as $section ) {
-			$document[ $section ] = array_values(
-				array_filter(
-					$document[ $section ],
-					function ( array $entity ) use ( $evidence_text, $section, $source_title, $source_text ): bool {
-						$label = sanitize_text_field( (string) ( $entity['name'] ?? $entity['title'] ?? $entity['label'] ?? '' ) );
-						return $this->catalog_label_is_evidenced( $section, $label, $evidence_text, $source_title, $source_text );
-					}
-				)
-			);
+		if ( ! $source_grounded ) {
+			$evidence_text = $this->normalized_evidence_text( $source_text );
+			$decisions     = [];
+			foreach ( [ 'characters', 'locations', 'props', 'organizations' ] as $section ) {
+				$document[ $section ] = array_values(
+					array_filter(
+						$document[ $section ],
+						function ( array $entity ) use ( $evidence_text, $section, $source_title, $source_text, &$decisions ): bool {
+							$label = sanitize_text_field( (string) ( $entity['name'] ?? $entity['title'] ?? $entity['label'] ?? '' ) );
+							$key   = $section . "\0" . $this->alias_key( $label );
+							if ( ! array_key_exists( $key, $decisions ) ) {
+								$decisions[ $key ] = $this->catalog_label_is_evidenced( $section, $label, $evidence_text, $source_title, $source_text );
+							}
+							return $decisions[ $key ];
+						}
+					)
+				);
+			}
 		}
 		$catalog_references = [
 			'locations' => [],

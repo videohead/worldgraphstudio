@@ -258,6 +258,30 @@ class Test_AI_LLM_Client extends TestCase {
 		$this->assertFalse( $client->captured_chat_options['cache'] );
 	}
 
+	/** Selected-Connection errors retain bounded status/type data for retry policy. */
+	public function test_connection_error_preserves_sanitized_retry_metadata(): void {
+		$client = new Mock_Connection_AI_LLM_Client();
+		$client->delegate_chat = true;
+		$GLOBALS['worldgraph_ai_post_response'] = [
+			'response' => [ 'code' => 401 ],
+			'body'     => '{"private":"provider body"}',
+		];
+
+		$unauthorized = $client->chat_with_connection( 17, 'story' );
+		$this->assertInstanceOf( \WP_Error::class, $unauthorized );
+		$this->assertSame( 'worldgraph_llm_request_failed', $unauthorized->get_error_code() );
+		$this->assertSame( [ 'provider_error' => 'http_error', 'http_status' => 401 ], $unauthorized->get_error_data() );
+		$this->assertStringNotContainsString( 'provider body', $unauthorized->get_error_message() );
+
+		$GLOBALS['worldgraph_ai_post_response'] = [
+			'response' => [ 'code' => 200 ],
+			'body'     => '{}',
+		];
+		$invalid = $client->chat_with_connection( 17, 'story' );
+		$this->assertInstanceOf( \WP_Error::class, $invalid );
+		$this->assertSame( [ 'provider_error' => 'invalid_response', 'http_status' => 200 ], $invalid->get_error_data() );
+	}
+
 	/** Qwen 3 decomposition requests disable reasoning so JSON can reach content. */
 	public function test_qwen_three_selected_connection_disables_thinking(): void {
 		$client = new Mock_Connection_AI_LLM_Client();

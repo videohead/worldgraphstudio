@@ -13,6 +13,7 @@ defined( 'ABSPATH' ) || exit;
 class Source_Extractor {
 	public const MAX_UPLOAD_BYTES = 20_971_520;
 	public const MAX_TEXT_CHARS   = 500_000;
+	private const MAX_PDF_STREAM_BYTES = 16_777_216;
 
 	private const TEXT_EXTENSIONS = [
 		'txt',
@@ -231,6 +232,7 @@ class Source_Extractor {
 
 		$streams = [];
 		$offset  = 0;
+		$stream_bytes = 0;
 		while ( false !== ( $stream_pos = strpos( $pdf, 'stream', $offset ) ) ) {
 			$line_end = strpos( $pdf, "\n", $stream_pos );
 			if ( false === $line_end ) {
@@ -261,6 +263,13 @@ class Source_Extractor {
 				$raw = $decoded;
 			}
 			if ( str_contains( $raw, 'BT' ) || str_contains( $raw, 'begincmap' ) ) {
+				$stream_bytes += strlen( $raw );
+				if ( $stream_bytes > self::MAX_PDF_STREAM_BYTES ) {
+					return new \WP_Error(
+						'worldgraph_story_pdf_expansion_too_large',
+						__( 'The PDF expands beyond the safe text-extraction limit. Export its text or EPUB version and upload that file instead.', 'worldgraph' )
+					);
+				}
 				$streams[] = $raw;
 			}
 		}

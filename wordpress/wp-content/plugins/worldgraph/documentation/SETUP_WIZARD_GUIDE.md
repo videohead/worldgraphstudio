@@ -88,9 +88,10 @@ bearer tokens.
 
 #### Local ComfyUI fields
 
-**Local ComfyUI API URL** is the normal ComfyUI HTTP endpoint. In Lando, use:
+**Local ComfyUI API URL** is the normal ComfyUI HTTP endpoint. In the local
+Docker Compose environment, use:
 
-`http://host.lando.internal:8188`
+`http://host.docker.internal:8188`
 
 **Local ComfyUI MCP URL** is optional and must point to a separate MCP server.
 ComfyUI's HTTP API does not become MCP by adding `/mcp`.
@@ -166,8 +167,8 @@ The form stores:
 - maximum response tokens; and
 - temperature.
 
-For a local service running on the Lando host, use a container-reachable URL,
-for example `http://host.lando.internal:11434/v1`.
+For a local service running on the Docker host, use a container-reachable URL,
+for example `http://host.docker.internal:11434/v1`.
 
 **Test LLM Connection** evaluates the current unsaved values. For a compatible
 endpoint it can populate the model datalist from the provider response.
@@ -201,7 +202,7 @@ updates them rather than creating another wizard-owned Connection.
 | --- | --- | --- |
 | `worldgraph_gen_connection_mode` | Current generation choice | `none` |
 | `worldgraph_comfy_connection_mode` | Compatibility mirror of the choice | `none` |
-| `worldgraph_comfy_local_url` | Local ComfyUI HTTP URL | form suggests `http://host.lando.internal:8188` |
+| `worldgraph_comfy_local_url` | Local ComfyUI HTTP URL | form suggests `http://host.docker.internal:8188` |
 | `worldgraph_comfy_local_mcp_url` | Optional separate local MCP URL | empty |
 | `worldgraph_ai_backend` | Primary LLM backend | `openai_compatible` |
 | `worldgraph_ai_url` | Primary LLM base URL | empty from a newly submitted blank form |
@@ -262,7 +263,7 @@ You can revisit the page without resetting anything:
 To restore first-run redirect behavior:
 
 ```bash
-lando wp option update worldgraph_setup_complete 0
+docker compose exec wordpress wp option update worldgraph_setup_complete 0
 ```
 
 Submitting the wizard sets it to true again.
@@ -270,10 +271,10 @@ Submitting the wizard sets it to true again.
 ## Verify saved configuration
 
 ```bash
-lando wp option get worldgraph_gen_connection_mode
-lando wp option get worldgraph_ai_backend
-lando wp option get worldgraph_ai_model
-lando wp option get worldgraph_setup_complete
+docker compose exec wordpress wp option get worldgraph_gen_connection_mode
+docker compose exec wordpress wp option get worldgraph_ai_backend
+docker compose exec wordpress wp option get worldgraph_ai_model
+docker compose exec wordpress wp option get worldgraph_setup_complete
 ```
 
 Do not print credential options in a shared terminal log. Use the Connections
@@ -291,15 +292,15 @@ cron, bulk activation, and users without `manage_options`.
 Submit the form once, or verify:
 
 ```bash
-lando wp option get worldgraph_setup_complete
+docker compose exec wordpress wp option get worldgraph_setup_complete
 ```
 
 ### Local ComfyUI test cannot connect
 
-- Use `host.lando.internal`, not `localhost`, for a service on the Lando
+- Use `host.docker.internal`, not `localhost`, for a service on the Docker
   host.
 - Confirm the URL is the ComfyUI HTTP base, not an MCP URL.
-- Confirm the host firewall and bind address allow the appserver container.
+- Confirm the host firewall and bind address allow the `wordpress` container.
 
 ### fal, ElevenLabs, Suno, or VideoDraft test succeeds but Templates are not visible
 
@@ -307,7 +308,7 @@ Saving schedules a single WP-Cron catalog event. Run due events and inspect the
 Connection's provider configuration:
 
 ```bash
-lando wp cron event run --due-now
+docker compose exec wordpress wp cron event run --due-now
 ```
 
 Then review the Connection's last catalog sync/error fields.

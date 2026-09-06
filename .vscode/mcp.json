@@ -1,4 +1,8 @@
 {
-  "codecomfy.comfyuiUrl": "http://localhost:8188",
-  "codecomfy.ffmpegPath": "path/to/ffmpeg.exe" // optional for video
+    "servers": {
+        "metis": {
+            "type": "http",
+            "url": "https://videohead.duckdns.org/metis-mcp/mcp"
+        }
+    }
 }

@@ -1528,7 +1528,7 @@ class Asset_Generator {
 	 * @return string|WP_Error Raw bytes, or an error.
 	 */
 	private static function download_bytes( string $url, string $adapter, int $job_id = 0 ) {
-		// Local ComfyUI runs on a trusted, non-public host (e.g. host.lando.internal),
+		// Local ComfyUI runs on a trusted, non-public host (e.g. host.docker.internal),
 		// which wp_safe_remote_get's SSRF check would otherwise reject.
 		$timeout = 'videodraft' === $adapter ? 600 : 60;
 		$args = [

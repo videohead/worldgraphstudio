@@ -1,6 +1,6 @@
 <?php
 /**
- * Private transient vector retrieval for Story Import & Export decomposition.
+ * User-and-source-scoped vector retrieval for Story Import & Export decomposition.
  *
  * @package WorldGraphStoryRAG
  */
@@ -13,15 +13,19 @@ defined( 'ABSPATH' ) || exit;
  * Adapts decomposition evidence to WPVDB embeddings without indexing the source.
  *
  * The WPVDB embeddings table is deliberately not used: private uploaded sources
- * are not WordPress indexable content. Only vectors and opaque identifiers are
- * retained in expiring transients.
+ * are not WordPress indexable content. This bridge retains only vectors and
+ * opaque identifiers in expiring transients and evicts WPVDB's shared object-
+ * cache entry immediately after each scoped embedding request.
  */
 final class Story_RAG_Retrieval {
-	/** Maximum private-vector lifetime in seconds. */
-	private const TTL = 7200;
+	/** Fallback lifetime aligned with the maximum 1,000-part resumable job. */
+	private const FALLBACK_TTL = 806_760;
 
 	/** Maximum evidence vectors retained for one user/source scope. */
 	private const MAX_ENTRIES = 128;
+
+	/** Maximum source-corpus positions addressable by the decomposer. */
+	private const MAX_CORPUS_ENTRIES = 1_000;
 
 	/** Supported embedding dimension bounds. */
 	private const MIN_DIMENSIONS = 8;
@@ -38,6 +42,11 @@ final class Story_RAG_Retrieval {
 	public static function init(): void {
 		add_action( 'worldgraph_story_decomposition_evidence_ready', [ __CLASS__, 'capture_evidence' ], 10, 3 );
 		add_filter( 'worldgraph_story_decomposition_retrieval_context', [ __CLASS__, 'retrieve' ], 10, 4 );
+		self::init_cleanup();
+	}
+
+	/** Keep terminal cleanup registered even when capture/retrieval is inactive. */
+	public static function init_cleanup(): void {
 		add_action( 'worldgraph_story_rag_cleanup', [ __CLASS__, 'cleanup' ], 10, 2 );
 	}
 
@@ -46,9 +55,9 @@ final class Story_RAG_Retrieval {
 	 *
 	 * @param mixed $evidence Structured evidence emitted by the analysis pass.
 	 * @param mixed $chunk    Server-created story chunk descriptor.
-	 * @param mixed $_metadata Server-created decomposition metadata.
+	 * @param mixed $metadata Server-created decomposition metadata.
 	 */
-	public static function capture_evidence( $evidence, $chunk, $_metadata = [] ): void {
+	public static function capture_evidence( $evidence, $chunk, $metadata = [] ): void {
 		if ( ! is_array( $evidence ) || ! is_array( $chunk ) ) {
 			return;
 		}
@@ -56,30 +65,48 @@ final class Story_RAG_Retrieval {
 		try {
 			$user_id     = self::current_user_id();
 			$source_hash = self::source_hash( $chunk );
+			$run_scope   = self::run_scope( $metadata );
 			$identity    = self::embedding_identity();
 			$chunk_id    = self::chunk_id( $chunk, $evidence );
 			$chunk_index = self::chunk_index( $chunk, $evidence );
+			$chunk_total = self::chunk_total( $chunk, $chunk_index );
+			$sample_bucket = self::sample_bucket( $chunk_index, $chunk_total );
 			$text        = self::evidence_text( $evidence );
 
-			if ( 0 === $user_id || '' === $source_hash || null === $identity || '' === $chunk_id || '' === $text ) {
+			if ( 0 === $user_id || '' === $source_hash || '' === $run_scope || null === $identity || '' === $chunk_id || '' === $text ) {
 				return;
 			}
 
-			$vector = \WPVDB\Core::get_embedding_for_model( $text, $identity['model'], $identity['provider'] );
+			$index_key = self::index_key( $user_id, $run_scope );
+			$index     = self::validated_index( get_transient( $index_key ), $user_id, $source_hash, $run_scope, $identity );
+			$ttl       = self::ttl( $metadata );
+			$evicted   = [];
+			if ( is_array( $index ) ) {
+				$normalized       = self::normalize_sample_entries( $index['entries'], $chunk_total );
+				$index['entries'] = $normalized['entries'];
+				$evicted          = $normalized['evicted'];
+				if ( ! self::sample_candidate_is_selected( $index['entries'], $chunk_id, $chunk_index, $chunk_total, $sample_bucket ) ) {
+					if ( ! empty( $evicted ) && set_transient( $index_key, $index, $ttl ) ) {
+						self::delete_entry_vectors( $evicted, $user_id, $run_scope, $identity );
+					}
+					return;
+				}
+			}
+
+			$vector = self::scoped_embedding( $text, $identity, $user_id, $source_hash, $run_scope );
 			$vector = self::validated_vector( $vector );
 			if ( null === $vector ) {
 				return;
 			}
 
-			$index_key  = self::index_key( $user_id, $source_hash );
-			$vector_key = self::vector_key( $user_id, $source_hash, $chunk_id, $identity );
-			$index      = self::validated_index( get_transient( $index_key ), $user_id, $source_hash, $identity );
+			$vector_key = self::vector_key( $user_id, $run_scope, $chunk_id, $identity );
 
 			if ( null === $index ) {
 				$index = [
-					'version'     => 1,
+					'version'     => 2,
 					'user_id'     => $user_id,
 					'source_hash' => $source_hash,
+					'run_scope'   => $run_scope,
 					'provider'    => $identity['provider'],
 					'model'       => $identity['model'],
 					'dimensions'  => count( $vector ),
@@ -91,31 +118,42 @@ final class Story_RAG_Retrieval {
 
 			$entries = [];
 			foreach ( $index['entries'] as $entry ) {
-				if ( $entry['chunk_id'] !== $chunk_id ) {
+				if ( $entry['chunk_id'] !== $chunk_id && (int) $entry['sample_bucket'] !== $sample_bucket ) {
 					$entries[] = $entry;
+				} else {
+					$evicted[] = $entry;
 				}
 			}
 			$entries[] = [
-				'chunk_id'    => $chunk_id,
-				'chunk_index' => $chunk_index,
+				'chunk_id'     => $chunk_id,
+				'chunk_index'  => $chunk_index,
+				'chunk_total'  => $chunk_total,
+				'sample_bucket' => $sample_bucket,
 			];
 
 			while ( count( $entries ) > self::MAX_ENTRIES ) {
-				$evicted = array_shift( $entries );
-				if ( is_array( $evicted ) && isset( $evicted['chunk_id'] ) ) {
-					delete_transient( self::vector_key( $user_id, $source_hash, (string) $evicted['chunk_id'], $identity ) );
+				$removed = array_shift( $entries );
+				if ( is_array( $removed ) ) {
+					$evicted[] = $removed;
 				}
 			}
 
 			$index['entries'] = $entries;
-			if ( ! set_transient( $vector_key, $vector, self::TTL ) ) {
+			$previous_vector = get_transient( $vector_key );
+			if ( ! set_transient( $vector_key, $vector, $ttl ) ) {
 				return;
 			}
 
 			// A positive expiration keeps database-backed WordPress transients non-autoloaded.
-			if ( ! set_transient( $index_key, $index, self::TTL ) ) {
-				delete_transient( $vector_key );
+			if ( ! set_transient( $index_key, $index, $ttl ) ) {
+				if ( is_array( $previous_vector ) ) {
+					set_transient( $vector_key, $previous_vector, $ttl );
+				} else {
+					delete_transient( $vector_key );
+				}
+				return;
 			}
+			self::delete_entry_vectors( $evicted, $user_id, $run_scope, $identity, $chunk_id );
 		} catch ( \Throwable ) {
 			return;
 		}
@@ -143,13 +181,14 @@ final class Story_RAG_Retrieval {
 			}
 
 			$source_hash = self::source_hash( $chunk );
+			$run_scope   = self::run_scope( $metadata );
 			$identity    = self::embedding_identity();
-			if ( '' === $source_hash || null === $identity ) {
+			if ( '' === $source_hash || '' === $run_scope || null === $identity ) {
 				return $incoming;
 			}
 
-			$index_key = self::index_key( $user_id, $source_hash );
-			$index     = self::validated_index( get_transient( $index_key ), $user_id, $source_hash, $identity );
+			$index_key = self::index_key( $user_id, $run_scope );
+			$index     = self::validated_index( get_transient( $index_key ), $user_id, $source_hash, $run_scope, $identity );
 			if ( null === $index || [] === $index['entries'] ) {
 				return $incoming;
 			}
@@ -159,7 +198,7 @@ final class Story_RAG_Retrieval {
 				return $incoming;
 			}
 
-			$query_vector = \WPVDB\Core::get_embedding_for_model( $query, $identity['model'], $identity['provider'] );
+			$query_vector = self::scoped_embedding( $query, $identity, $user_id, $source_hash, $run_scope );
 			$query_vector = self::validated_vector( $query_vector );
 			if ( null === $query_vector || count( $query_vector ) !== (int) $index['dimensions'] ) {
 				return $incoming;
@@ -176,14 +215,12 @@ final class Story_RAG_Retrieval {
 					: (int) $entry['chunk_index'];
 				if (
 					$entry['chunk_id'] === $current_chunk_id ||
-					$entry_index === $current_index ||
-					! isset( $corpus[ $entry_index ] ) ||
-					! is_array( $corpus[ $entry_index ] )
+					$entry_index === $current_index
 				) {
 					continue;
 				}
 
-				$vector = get_transient( self::vector_key( $user_id, $source_hash, $entry['chunk_id'], $identity ) );
+				$vector = get_transient( self::vector_key( $user_id, $run_scope, $entry['chunk_id'], $identity ) );
 				$vector = self::validated_vector( $vector );
 				if ( null === $vector || count( $vector ) !== count( $query_vector ) ) {
 					continue;
@@ -212,18 +249,28 @@ final class Story_RAG_Retrieval {
 				}
 			);
 
-			$related = [];
+			$related         = [];
+			$related_indexes = [];
 			foreach ( array_slice( $ranked, 0, self::TOP_K ) as $match ) {
-				$related[] = $corpus[ $match['index'] ];
+				if ( isset( $corpus[ $match['index'] ] ) && is_array( $corpus[ $match['index'] ] ) ) {
+					$related[] = $corpus[ $match['index'] ];
+				} else {
+					$related_indexes[] = (int) $match['index'];
+				}
 			}
 
-			return [
-				'backend' => 'wpvdb-private-vector',
-				'current' => isset( $incoming['current'] ) && is_array( $incoming['current'] )
+			$result = [
+				'backend'       => 'wpvdb-private-vector',
+				'indexed_count' => count( $index['entries'] ),
+				'current'       => isset( $incoming['current'] ) && is_array( $incoming['current'] )
 					? $incoming['current']
 					: ( is_array( $corpus[ $current_index ] ?? null ) ? $corpus[ $current_index ] : [] ),
 				'related' => $related,
 			];
+			if ( ! empty( $related_indexes ) ) {
+				$result['related_indexes'] = $related_indexes;
+			}
+			return $result;
 		} catch ( \Throwable ) {
 			return $incoming;
 		}
@@ -232,22 +279,23 @@ final class Story_RAG_Retrieval {
 	/**
 	 * Delete all private vectors for the current user's source scope.
 	 *
-	 * Consumers may fire `worldgraph_story_rag_cleanup` with a source hash and
-	 * current user ID. Expiration remains the mandatory backstop.
+	 * Consumers fire `worldgraph_story_rag_cleanup` with an opaque run scope and
+	 * server-owned metadata. Expiration remains the mandatory backstop.
 	 *
-	 * @param mixed $source_hash Source SHA-256 identifier.
-	 * @param mixed $user_id     Expected current user ID.
+	 * @param mixed $run_scope Opaque decomposition-run scope.
+	 * @param mixed $metadata  Expected current user/source metadata.
 	 */
-	public static function cleanup( $source_hash, $user_id = 0 ): void {
+	public static function cleanup( $run_scope, $metadata = [] ): void {
 		$current_user_id = self::current_user_id();
-		$source_hash     = self::valid_source_hash( $source_hash );
-		$user_id         = (int) $user_id;
+		$run_scope       = self::valid_run_scope( $run_scope );
+		$metadata        = is_array( $metadata ) ? $metadata : [];
+		$user_id         = absint( $metadata['user_id'] ?? 0 );
 
-		if ( 0 === $current_user_id || '' === $source_hash || ( $user_id > 0 && $user_id !== $current_user_id ) ) {
+		if ( 0 === $current_user_id || '' === $run_scope || 0 === $user_id || $user_id !== $current_user_id ) {
 			return;
 		}
 
-		$index_key = self::index_key( $current_user_id, $source_hash );
+		$index_key = self::index_key( $current_user_id, $run_scope );
 		$index     = get_transient( $index_key );
 		if ( is_array( $index ) ) {
 			$identity = [
@@ -258,7 +306,7 @@ final class Story_RAG_Retrieval {
 				foreach ( array_slice( $index['entries'], 0, self::MAX_ENTRIES ) as $entry ) {
 					$chunk_id = is_array( $entry ) ? self::bounded_identifier( $entry['chunk_id'] ?? '' ) : '';
 					if ( '' !== $chunk_id ) {
-						delete_transient( self::vector_key( $current_user_id, $source_hash, $chunk_id, $identity ) );
+						delete_transient( self::vector_key( $current_user_id, $run_scope, $chunk_id, $identity ) );
 					}
 				}
 			}
@@ -278,6 +326,29 @@ final class Story_RAG_Retrieval {
 			: self::bounded_identifier( \WPVDB\Settings::get_default_model() );
 
 		return '' === $provider || '' === $model ? null : compact( 'provider', 'model' );
+	}
+
+	/**
+	 * Scope WPVDB's text-derived cache key and immediately evict that cache entry.
+	 *
+	 * WPVDB caches Core embedding calls in the shared `wpvdb` object-cache group.
+	 * A keyed, installation-local scope prevents cross-user/source reuse. Input is
+	 * newline-normalized up front so the key we evict is also the key WPVDB stores.
+	 *
+	 * @return mixed WPVDB embedding response.
+	 */
+	private static function scoped_embedding( string $text, array $identity, int $user_id, string $source_hash, string $run_scope ) {
+		$scope       = hash_hmac( 'sha256', $user_id . "\0" . $source_hash . "\0" . $run_scope, wp_salt( 'auth' ) );
+		$text        = str_replace( [ "\r\n", "\r", "\n" ], ' ', $text );
+		$scoped_text = '[worldgraph-private-scope:' . $scope . '] ' . $text;
+		$cache_key   = 'embedding_' . $identity['model'] . '_' . hash( 'sha256', $scoped_text );
+
+		try {
+			wp_cache_delete( $cache_key, 'wpvdb' );
+			return \WPVDB\Core::get_embedding_for_model( $scoped_text, $identity['model'], $identity['provider'] );
+		} finally {
+			wp_cache_delete( $cache_key, 'wpvdb' );
+		}
 	}
 
 	/** Validate and normalize a provider vector. */
@@ -335,6 +406,17 @@ final class Story_RAG_Retrieval {
 		return 1 === preg_match( '/^[a-f0-9]{64}$/D', $candidate ) ? $candidate : '';
 	}
 
+	/** Read one server-generated decomposition run scope from hook metadata. */
+	private static function run_scope( $metadata ): string {
+		return self::valid_run_scope( is_array( $metadata ) ? ( $metadata['run_scope'] ?? '' ) : '' );
+	}
+
+	/** Validate an opaque HMAC run identifier. */
+	private static function valid_run_scope( $candidate ): string {
+		$candidate = is_string( $candidate ) ? strtolower( $candidate ) : '';
+		return 1 === preg_match( '/^[a-f0-9]{64}$/D', $candidate ) ? $candidate : '';
+	}
+
 	/** Return a stable opaque chunk identifier. */
 	private static function chunk_id( array $chunk, array $evidence ): string {
 		$candidate = self::bounded_identifier( $chunk['id'] ?? $evidence['_retrieval']['chunk_id'] ?? '' );
@@ -349,13 +431,87 @@ final class Story_RAG_Retrieval {
 	/** Return the corpus position attached by Story_Decomposer. */
 	private static function chunk_index( array $chunk, array $evidence ): int {
 		$index = $evidence['_retrieval']['chunk_index'] ?? $chunk['index'] ?? 0;
-		return max( 0, min( self::MAX_ENTRIES - 1, (int) $index ) );
+		return max( 0, min( self::MAX_CORPUS_ENTRIES - 1, (int) $index ) );
+	}
+
+	/** Return the bounded final plan size used for uniform vector sampling. */
+	private static function chunk_total( array $chunk, int $chunk_index ): int {
+		return max( $chunk_index + 1, min( self::MAX_CORPUS_ENTRIES, (int) ( $chunk['total'] ?? $chunk_index + 1 ) ) );
+	}
+
+	/** Map a source position into at most MAX_ENTRIES uniform corpus buckets. */
+	private static function sample_bucket( int $chunk_index, int $chunk_total ): int {
+		if ( $chunk_total <= self::MAX_ENTRIES ) {
+			return min( self::MAX_ENTRIES - 1, $chunk_index );
+		}
+		return min( self::MAX_ENTRIES - 1, (int) floor( $chunk_index * self::MAX_ENTRIES / $chunk_total ) );
+	}
+
+	/** Rebase retained samples when adaptive subdivision changes the plan total. */
+	private static function normalize_sample_entries( array $entries, int $chunk_total ): array {
+		$selected = [];
+		$evicted  = [];
+		foreach ( $entries as $entry ) {
+			$chunk_index           = max( 0, min( self::MAX_CORPUS_ENTRIES - 1, (int) ( $entry['chunk_index'] ?? 0 ) ) );
+			$bucket                = self::sample_bucket( $chunk_index, $chunk_total );
+			$entry['chunk_index']  = $chunk_index;
+			$entry['chunk_total']  = $chunk_total;
+			$entry['sample_bucket'] = $bucket;
+			if ( ! isset( $selected[ $bucket ] ) ) {
+				$selected[ $bucket ] = $entry;
+				continue;
+			}
+
+			$existing_index = (int) $selected[ $bucket ]['chunk_index'];
+			$candidate_distance = self::sample_distance( $chunk_index, $bucket, $chunk_total );
+			$existing_distance  = self::sample_distance( $existing_index, $bucket, $chunk_total );
+			if ( $candidate_distance < $existing_distance || ( $candidate_distance === $existing_distance && $chunk_index < $existing_index ) ) {
+				$evicted[]          = $selected[ $bucket ];
+				$selected[ $bucket ] = $entry;
+			} else {
+				$evicted[] = $entry;
+			}
+		}
+		ksort( $selected, SORT_NUMERIC );
+		return [ 'entries' => array_values( $selected ), 'evicted' => $evicted ];
+	}
+
+	/** Measure a position's integer distance from the center of a sample bucket. */
+	private static function sample_distance( int $chunk_index, int $sample_bucket, int $chunk_total ): int {
+		return abs( ( ( 2 * $chunk_index + 1 ) * self::MAX_ENTRIES ) - ( ( 2 * $sample_bucket + 1 ) * $chunk_total ) );
+	}
+
+	/** Prefer the position nearest a uniform bucket center, never a rolling tail. */
+	private static function sample_candidate_is_selected( array $entries, string $chunk_id, int $chunk_index, int $chunk_total, int $sample_bucket ): bool {
+		$candidate_distance = self::sample_distance( $chunk_index, $sample_bucket, $chunk_total );
+		foreach ( $entries as $entry ) {
+			if ( (string) ( $entry['chunk_id'] ?? '' ) === $chunk_id ) {
+				return true;
+			}
+			if ( (int) ( $entry['sample_bucket'] ?? -1 ) !== $sample_bucket ) {
+				continue;
+			}
+			$existing_index    = (int) ( $entry['chunk_index'] ?? 0 );
+			$existing_distance = self::sample_distance( $existing_index, $sample_bucket, $chunk_total );
+			return $candidate_distance < $existing_distance || ( $candidate_distance === $existing_distance && $chunk_index < $existing_index );
+		}
+		return count( $entries ) < self::MAX_ENTRIES;
+	}
+
+	/** Delete vectors whose identifiers are no longer referenced by a committed index. */
+	private static function delete_entry_vectors( array $entries, int $user_id, string $run_scope, array $identity, string $except_chunk_id = '' ): void {
+		foreach ( $entries as $entry ) {
+			$chunk_id = is_array( $entry ) ? (string) ( $entry['chunk_id'] ?? '' ) : '';
+			if ( '' !== $chunk_id && $chunk_id !== $except_chunk_id ) {
+				delete_transient( self::vector_key( $user_id, $run_scope, $chunk_id, $identity ) );
+			}
+		}
 	}
 
 	/** Map hashed server chunk identifiers back to evidence corpus positions. */
 	private static function corpus_ids( array $corpus ): array {
 		$result = [];
-		foreach ( array_slice( $corpus, 0, self::MAX_ENTRIES, true ) as $index => $evidence ) {
+		foreach ( array_slice( $corpus, 0, self::MAX_CORPUS_ENTRIES, true ) as $index => $evidence ) {
 			if ( ! is_array( $evidence ) ) {
 				continue;
 			}
@@ -414,12 +570,13 @@ final class Story_RAG_Retrieval {
 	}
 
 	/** Validate the identifier-only source index. */
-	private static function validated_index( $candidate, int $user_id, string $source_hash, array $identity ): ?array {
+	private static function validated_index( $candidate, int $user_id, string $source_hash, string $run_scope, array $identity ): ?array {
 		if (
 			! is_array( $candidate ) ||
-			1 !== (int) ( $candidate['version'] ?? 0 ) ||
+			2 !== (int) ( $candidate['version'] ?? 0 ) ||
 			$user_id !== (int) ( $candidate['user_id'] ?? 0 ) ||
 			$source_hash !== (string) ( $candidate['source_hash'] ?? '' ) ||
+			$run_scope !== (string) ( $candidate['run_scope'] ?? '' ) ||
 			$identity['provider'] !== (string) ( $candidate['provider'] ?? '' ) ||
 			$identity['model'] !== (string) ( $candidate['model'] ?? '' ) ||
 			! is_array( $candidate['entries'] ?? null )
@@ -439,8 +596,10 @@ final class Story_RAG_Retrieval {
 				continue;
 			}
 			$entries[] = [
-				'chunk_id'    => $chunk_id,
-				'chunk_index' => max( 0, min( self::MAX_ENTRIES - 1, (int) ( $entry['chunk_index'] ?? 0 ) ) ),
+				'chunk_id'      => $chunk_id,
+				'chunk_index'   => max( 0, min( self::MAX_CORPUS_ENTRIES - 1, (int) ( $entry['chunk_index'] ?? 0 ) ) ),
+				'chunk_total'   => max( 1, min( self::MAX_CORPUS_ENTRIES, (int) ( $entry['chunk_total'] ?? 1 ) ) ),
+				'sample_bucket' => max( 0, min( self::MAX_ENTRIES - 1, (int) ( $entry['sample_bucket'] ?? 0 ) ) ),
 			];
 		}
 
@@ -477,14 +636,23 @@ final class Story_RAG_Retrieval {
 	}
 
 	/** Build the identifier-only index transient key. */
-	private static function index_key( int $user_id, string $source_hash ): string {
-		return 'worldgraph_story_rag_i_' . $user_id . '_' . substr( $source_hash, 0, 40 );
+	private static function index_key( int $user_id, string $run_scope ): string {
+		return 'worldgraph_story_rag_i_' . $user_id . '_' . substr( $run_scope, 0, 40 );
 	}
 
 	/** Build a scoped vector transient key without placing source prose in the key. */
-	private static function vector_key( int $user_id, string $source_hash, string $chunk_id, array $identity ): string {
-		$seed = implode( '|', [ $source_hash, $chunk_id, $identity['provider'], $identity['model'] ] );
+	private static function vector_key( int $user_id, string $run_scope, string $chunk_id, array $identity ): string {
+		$seed = implode( '|', [ $run_scope, $chunk_id, $identity['provider'], $identity['model'] ] );
 		return 'worldgraph_story_rag_v_' . $user_id . '_' . substr( hash( 'sha256', $seed ), 0, 40 );
+	}
+
+	/** Match, but never outlive, the owning job's absolute retention window. */
+	private static function ttl( $metadata = [] ): int {
+		$ttl = class_exists( '\\WorldGraphStoryIO\\Decomposition_Job' )
+			? max( HOUR_IN_SECONDS, (int) \WorldGraphStoryIO\Decomposition_Job::ACTIVE_TTL )
+			: self::FALLBACK_TTL;
+		$expires_at = is_array( $metadata ) ? absint( $metadata['expires_at'] ?? 0 ) : 0;
+		return $expires_at > 0 ? max( 1, min( $ttl, $expires_at - time() ) ) : $ttl;
 	}
 
 	/** Return a positive WordPress user scope. */

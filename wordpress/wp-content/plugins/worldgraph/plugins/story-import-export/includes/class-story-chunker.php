@@ -20,6 +20,7 @@ class Story_Chunker {
 	private const MINIMUM_LIMIT = 32;
 	private const MAXIMUM_PARTS = 1_000;
 	private const CONTEXT_LIMIT = 20_000;
+	private const MAX_STRUCTURAL_BOUNDARIES = 10_000;
 
 	private const PRIORITIES = [
 		'chapter'   => 60,
@@ -281,7 +282,6 @@ class Story_Chunker {
 	private function boundary_candidates( string $text, array $external ): array {
 		$positions  = $this->textual_boundary_positions( $text );
 		$structural = [];
-		$this->collect_heading_candidates( $text, $structural );
 
 		foreach ( $external as $boundary ) {
 			if ( ! is_array( $boundary ) ) {
@@ -298,19 +298,24 @@ class Story_Chunker {
 						'type'     => $type,
 						'label'    => $this->clean_label( (string) ( $boundary['label'] ?? ucfirst( $type ) ) ),
 						'source'   => (string) ( $boundary['source'] ?? 'extractor' ),
+						'extractor_boundary' => true,
 					]
 				)
 			);
 		}
+		$this->collect_heading_candidates( $text, $structural );
 
 		ksort( $structural, SORT_NUMERIC );
 		$structural = array_values( $structural );
+		foreach ( $structural as &$candidate ) {
+			unset( $candidate['extractor_boundary'] );
+		}
+		unset( $candidate );
 		foreach ( $structural as $candidate ) {
 			$positions[ $candidate['type'] ][] = (int) $candidate['position'];
 		}
 		foreach ( $positions as &$type_positions ) {
 			sort( $type_positions, SORT_NUMERIC );
-			$type_positions = array_values( array_unique( $type_positions, SORT_NUMERIC ) );
 		}
 		unset( $type_positions );
 
@@ -421,6 +426,12 @@ class Story_Chunker {
 	private function add_structural_candidate( array &$candidates, array $candidate ): void {
 		$position = (int) ( $candidate['position'] ?? 0 );
 		$current  = $candidates[ $position ] ?? null;
+		if ( ! is_array( $current ) && count( $candidates ) >= self::MAX_STRUCTURAL_BOUNDARIES ) {
+			return;
+		}
+		if ( is_array( $current ) && ! empty( $current['extractor_boundary'] ) && empty( $candidate['extractor_boundary'] ) ) {
+			return;
+		}
 		if ( ! is_array( $current ) || $this->priority( (string) $candidate['type'] ) >= $this->priority( (string) $current['type'] ) ) {
 			$candidates[ $position ] = $candidate;
 		}
@@ -457,9 +468,14 @@ class Story_Chunker {
 
 	/** Find the nearest sorted position to an ideal point inside inclusive bounds. */
 	private function nearest_position_in_range( array $positions, int $minimum, int $maximum, int $ideal ): ?int {
-		$index = $this->lower_bound( $positions, $ideal );
+		$first = $this->lower_bound( $positions, $minimum );
+		$last  = $this->lower_bound( $positions, $maximum + 1 ) - 1;
+		if ( $first > $last ) {
+			return null;
+		}
+		$index = max( $first, min( $last, $this->lower_bound( $positions, $ideal ) ) );
 		$best  = null;
-		foreach ( [ $index - 1, $index, $this->lower_bound( $positions, $minimum ) ] as $candidate_index ) {
+		foreach ( [ $index - 1, $index ] as $candidate_index ) {
 			if ( ! isset( $positions[ $candidate_index ] ) ) {
 				continue;
 			}
@@ -493,21 +509,35 @@ class Story_Chunker {
 
 	/** Find the first sorted boundary at or after minimum and before maximum. */
 	private function first_position_in_range( array $positions, int $minimum, int $maximum ): ?int {
+		$index = $this->lower_bound( $positions, $minimum );
+		if ( isset( $positions[ $index ] ) && (int) $positions[ $index ] < $maximum ) {
+			return (int) $positions[ $index ];
+		}
+		return null;
+	}
+
+	/** Find the last sorted boundary after minimum and at or before maximum. */
+	private function last_position_in_range( array $positions, int $minimum, int $maximum ): ?int {
+		$index = $this->lower_bound( $positions, $maximum + 1 ) - 1;
+		if ( isset( $positions[ $index ] ) && (int) $positions[ $index ] > $minimum ) {
+			return (int) $positions[ $index ];
+		}
+		return null;
+	}
+
+	/** Return the first index whose sorted integer value is at least the needle. */
+	private function lower_bound( array $positions, int $needle ): int {
 		$low  = 0;
 		$high = count( $positions );
 		while ( $low < $high ) {
 			$middle = intdiv( $low + $high, 2 );
-			if ( (int) $positions[ $middle ] < $minimum ) {
+			if ( (int) $positions[ $middle ] < $needle ) {
 				$low = $middle + 1;
 			} else {
 				$high = $middle;
 			}
 		}
-
-		if ( isset( $positions[ $low ] ) && (int) $positions[ $low ] < $maximum ) {
-			return (int) $positions[ $low ];
-		}
-		return null;
+		return $low;
 	}
 
 	/** Find the nearest active chapter, section, or scene for a chunk label. */
@@ -539,20 +569,14 @@ class Story_Chunker {
 		}
 
 		if ( $before && $start > 0 ) {
-			foreach ( $candidates as $candidate ) {
-				$position = (int) ( $candidate['position'] ?? 0 );
-				if ( $position >= $start && $position < $end ) {
-					$start = $position;
-					break;
-				}
+			$boundary = $this->first_position_in_range( $candidates, $start, $end );
+			if ( null !== $boundary ) {
+				$start = $boundary;
 			}
 		} elseif ( ! $before ) {
-			for ( $index = count( $candidates ) - 1; $index >= 0; $index-- ) {
-				$position = (int) ( $candidates[ $index ]['position'] ?? 0 );
-				if ( $position > $start && $position <= $end ) {
-					$end = $position;
-					break;
-				}
+			$boundary = $this->last_position_in_range( $candidates, $start, $end );
+			if ( null !== $boundary ) {
+				$end = $boundary;
 			}
 		}
 

@@ -45,7 +45,9 @@ The presence of `veo` or `nova_reel` in the connection form is an extension poin
 2. Store the credential on the ComfyUI Connection for local evaluation, or use
    an environment reference such as `env://COMFYUI_API_KEY` in a managed
    deployment.
-3. Configure a reliable host scheduler for `wp-cron.php`; local Lando users can run `lando wp-cron`.
+3. Configure a reliable host scheduler for `wp-cron.php`; local Docker Compose
+   users can run due events with
+   `docker compose exec wordpress wp cron event run --due-now`.
 4. Enable the Generation Engine and submit a workflow from World Graph Studio.
 5. WordPress stores the generation record and polls Comfy Cloud through WP-Cron.
 

@@ -110,53 +110,23 @@ WordPress + World Graph Studio
 WordPress is the application and source of truth. External AI and generation
 services are replaceable connections; they do not own the Story Graph.
 
-## Quick Setup Guide
+## Local setup
 
-1. Install WordPress
-   - Recommended: WordPress Studio
-   - WordPress Studio is a free local WordPress development environment that lets you create and manage WordPress sites on your computer with minimal setup.
-   - Visit: https://developer.wordpress.com/studio/
-   - Download and install WordPress Studio for your operating system.
-   - Launch Studio.
-   - Create a new local WordPress site.
-   - Wait for Studio to complete the automatic installation.
-   - Open the WordPress Admin dashboard for your new site.
-   - Alternative: LocalWP
-   - LocalWP is another popular local development tool that automatically installs and configures WordPress, including SSL support.
-   - Visit: https://localwp.com/
-   - Download and install LocalWP.
-   - Click Create New Site.
-   - Enter a site name.
-   - Accept the preferred environment settings (or customize as needed).
-   - Create the site and allow WordPress to install automatically.
-   - Click WP Admin to open the WordPress dashboard.
+The supported local environment is Docker Compose. WordPress, PHP, MariaDB,
+WP-CLI, Node.js, and project dependencies stay in containers; the host needs
+only Docker and Git. Follow the Docker quick start below, then use the setup
+wizard to configure optional LLM and generation Connections.
 
-2. Install the Secure Custom Fields (SCF) plugin
-   - Secure Custom Fields (SCF) allows you to create and manage custom fields, field groups, custom post types, and taxonomies within WordPress.
-   - Log in to your WordPress Admin dashboard.
-   - Navigate to Plugins → Add Plugin.
-   - Search for Secure Custom Fields.
-   - Click Install Now.
-   - Click Activate.
-   - After activation, access SCF from the WordPress admin menu to begin creating custom fields and field groups.
-   - Plugin URL: https://wordpress.org/plugins/secure-custom-fields/
+The plugin works with ordinary WordPress themes. The optional
+`wordpress/wp-content/themes/worldgraph-child` theme uses Frost as its parent,
+so install Frost only if you choose to activate that child theme.
 
-3. Install the World Graph Studio plugin
-   - The plugin lives in wordpress/wp-content/plugins/worldgraph in this repository; you can copy it directly or zip and install it.
-   - Activate the plugin.
-   - Use the Setup Wizard to connect an LLM (API Key or BYOK) and a Generate connection (API Key or BYOK).
-   - Add additional connections to your other Generate engines as needed.
-   - Import an existing script or story and explore the tool.
+## Docker quick start
 
-## Theme files for a unified look
-- There's also a theme in wordpress/wp-content/themes/worldworldgraph-child
-- You will also need to install the frost theme (https://frostwp.com/)
-
-## Quick start (for Developers and people looking to get into the guts)
-
-The Docker Compose developer environment lives in
-[`developers/`](developers/). It starts the WordPress + PHP 8.2 + MariaDB +
-phpMyAdmin stack.
+The repository-root [`compose.yaml`](compose.yaml) is the sole local
+development environment. Its default stack contains WordPress + PHP 8.2,
+MariaDB, and Node.js tooling. The `tools` profile provides phpMyAdmin and
+PHPUnit, while the `headless` profile provides the optional frontend.
 
 ### Requirements
 
@@ -166,36 +136,89 @@ phpMyAdmin stack.
 - ComfyUI, Comfy Cloud, VideoDraft, or another configured provider only if you
   want automated asset generation
 
+### Start the Docker Compose environment
+
 ```bash
 git clone <repository-url> worldgraph
-cd worldgraph/developers
+cd worldgraph
 cp .env.example .env
-docker compose up -d
+docker compose up -d --build
+docker compose ps
 ```
 
-See [`developers/docker-compose.yml`](developers/docker-compose.yml) for
-service details. WordPress is served at `http://localhost:8000`.
+WordPress is served at `http://localhost:8080`. Published project ports bind
+only to the host loopback interface and are not exposed to the local network.
 
-WordPress core and Secure Custom Fields are deployment dependencies rather than
-tracked source in this repository. For a fresh checkout and database, install
-them before activating World Graph Studio:
+Start phpMyAdmin only when needed; it is then available at
+`http://localhost:8081`:
 
 ```bash
-docker compose exec appserver wp core download --force
-docker compose exec appserver wp config create \
-  --dbname=wordpress \
-  --dbuser=wordpress \
-  --dbpass=wordpress \
-  --dbhost=database \
-  --skip-check
-docker compose exec appserver wp core install \
-  --url=http://localhost:8000 \
+docker compose --profile tools up -d phpmyadmin
+```
+
+Log in with `WORDPRESS_DB_USER` and `WORDPRESS_DB_PASSWORD` from `.env`, then
+stop it with `docker compose stop phpmyadmin` when you are finished.
+
+The optional headless frontend is available at `http://localhost:3000` after
+its `headless` profile is started.
+
+### Migrating existing local data
+
+The new `db_data` and `wordpress_data` volumes do not automatically import a
+database or uploads from a previous local stack. Before switching, export the
+existing database and preserve or copy `wp-content/uploads`, then restore both
+into the new volumes and verify the site before removing the old environment.
+
+For the included import helper, start with a fresh Compose database, place an
+SQL export at `scripts/backup.sql` (or a gzip-compressed export at
+`scripts/backup.sql.gz`), and run:
+
+```bash
+./scripts/setup-db.sh
+```
+
+If the previous uploads are available at `wordpress/wp-content/uploads`, copy
+them into the running WordPress volume and restore the web-server ownership:
+
+```bash
+docker compose cp wordpress/wp-content/uploads/. \
+  wordpress:/var/www/html/wp-content/uploads/
+docker compose exec --user root wordpress \
+  chown -R www-data:www-data /var/www/html/wp-content/uploads
+```
+
+After restoring a database, inspect its public URL and update only the
+`siteurl` and `home` options when needed:
+
+```bash
+docker compose exec wordpress wp --skip-plugins --skip-themes \
+  option get siteurl
+docker compose exec wordpress wp --skip-plugins --skip-themes \
+  option get home
+docker compose exec wordpress wp --skip-plugins --skip-themes \
+  option update siteurl http://localhost:8080
+docker compose exec wordpress wp --skip-plugins --skip-themes \
+  option update home http://localhost:8080
+```
+
+Never run `docker compose down -v` until the migrated database, uploads, and
+site behavior have been verified. That command deletes the Compose-managed
+volumes.
+
+The `wordpress` image initializes WordPress core and `wp-config.php` in its
+named volume. Secure Custom Fields remains a deployment dependency rather than
+tracked source in this repository. For a fresh checkout and database, install
+the site and required plugin before activating World Graph Studio:
+
+```bash
+docker compose exec wordpress wp core install \
+  --url=http://localhost:8080 \
   --title="World Graph Studio" \
   --admin_user=admin \
-  --admin_password=<choose-a-password> \
-  --admin_email=<your-email>
-docker compose exec appserver wp plugin install secure-custom-fields --activate
-docker compose exec appserver wp plugin activate worldgraph
+  --admin_password='change-this-password' \
+  --admin_email='you@example.com'
+docker compose exec wordpress wp plugin install secure-custom-fields --activate
+docker compose exec wordpress wp plugin activate worldgraph
 ```
 
 World Graph Studio works with ordinary WordPress themes; no particular theme is
@@ -240,25 +263,22 @@ variables use `WORLDGRAPH_`.
 ### Node and npm usage
 
 Use container-managed Node.js by default. For this repository, run Node/npm
-commands in the Compose `cli` service (or the `headless` service when running
-the optional Next.js frontend). This avoids host-version drift and ad-hoc local
-toolchain installs.
+commands in the Docker Compose `node` service (or the `headless` service when
+running the optional Next.js frontend). This avoids host-version drift and
+ad-hoc local toolchain installs.
 
 Examples:
 
 ```bash
-docker compose -f developers/docker-compose.yml exec cli sh -lc 'node -v && npm -v'
-docker compose -f developers/docker-compose.yml exec cli sh -lc 'cd /app/headless && npm run build'
+docker compose exec node sh -lc 'node -v && npm -v'
+docker compose --profile headless run --rm headless npm run build
 ```
-
-Only use host-installed Node/npm when you intentionally run the headless app
-outside Docker Compose.
 
 Run the PHP test suite without writing PHPUnit's result cache:
 
 ```bash
-./vendor/bin/phpunit \
-  -c wordpress/wp-content/plugins/worldgraph/tests/phpunit.xml \
+docker compose --profile tools run --rm phpunit \
+  -c /app/wordpress/wp-content/plugins/worldgraph/tests/phpunit.xml \
   --testsuite "World Graph Studio" \
   --do-not-cache-result
 ```
