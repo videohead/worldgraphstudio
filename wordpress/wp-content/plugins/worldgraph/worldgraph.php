@@ -117,6 +117,10 @@ function autoloader( string $class ): void {
 		require_once $base_dir . 'ai-editor/class-ai-abilities.php';
 		return;
 	}
+	if ( 'AI\\Abilities\\Mcp_Server' === $relative_class ) {
+		require_once $base_dir . 'ai-editor/class-mcp-server.php';
+		return;
+	}
 	
 	// Handle special namespace mappings (singular → plural directories).
 	$special_mappings = [
@@ -376,11 +380,6 @@ function init(): void {
 	// Initialize AI Editor module (LLM, MAF bridge, Gutenberg panel, REST endpoints).
 	if ( class_exists( '\WorldGraph\AI\AI_Editor' ) ) {
 		\WorldGraph\AI\AI_Editor::init();
-
-		// Initialize World Graph Studio Abilities for MCP exposure (requires WP 6.9+).
-		if ( function_exists( 'wp_register_ability' ) ) {
-			\WorldGraph\AI\Abilities\Abilities::instance()->init();
-		}
 	}
 
 	// Load Celtx Sync integration.
@@ -478,6 +477,28 @@ function worldgraph_maybe_name_shot( int $post_id, \WP_Post $post, bool $update 
 	add_action( 'save_post_worldgraph_shot', __NAMESPACE__ . '\\worldgraph_maybe_name_shot', 5, 3 );
 }
 add_action( 'init', __NAMESPACE__ . '\\init' );
+
+// Register World Graph Studio abilities on the Abilities API hooks (WP 6.9+ / abilities-api plugin).
+add_action(
+	'wp_abilities_api_categories_init',
+	static function () {
+		if ( class_exists( '\WorldGraph\AI\AI_Editor' ) ) {
+			AI\Abilities\Abilities::instance()->register_category();
+		}
+	}
+);
+
+add_action(
+	'wp_abilities_api_init',
+	static function () {
+		if ( class_exists( '\WorldGraph\AI\AI_Editor' ) ) {
+			AI\Abilities\Abilities::instance()->init();
+		}
+	}
+);
+
+// Expose those abilities as a dedicated MCP server via the MCP Adapter plugin.
+AI\Abilities\Mcp_Server::init();
 register_activation_hook( __FILE__, __NAMESPACE__ . '\\activate' );
 register_deactivation_hook( __FILE__, __NAMESPACE__ . '\\deactivate' );
 

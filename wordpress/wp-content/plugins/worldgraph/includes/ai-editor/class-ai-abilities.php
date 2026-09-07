@@ -74,6 +74,7 @@ abstract class AbstractAbilityGroup {
         $args = wp_parse_args( $args, [
             'label'          => '',
             'description'    => '',
+            'category'       => $this->category_slug,
             'input_schema'   => [],
             'output_schema'  => [],
             'execute_callback' => null,
@@ -86,9 +87,17 @@ abstract class AbstractAbilityGroup {
             'mcp'    => [ 'type' => 'tool' ],
 		] );
 
+        // The Abilities API expects MCP hints nested under meta.mcp.
+        foreach ( [ 'uri', 'annotations' ] as $mcp_key ) {
+            if ( isset( $args['meta'][ $mcp_key ] ) ) {
+                $args['meta']['mcp'][ $mcp_key ] = $args['meta'][ $mcp_key ];
+                unset( $args['meta'][ $mcp_key ] );
+            }
+        }
+
         // Set default annotations if not provided.
-        if ( ! isset( $args['meta']['annotations'] ) ) {
-            $args['meta']['annotations'] = [
+        if ( ! isset( $args['meta']['mcp']['annotations'] ) ) {
+            $args['meta']['mcp']['annotations'] = [
                 'readonly'   => true,
                 'destructive' => false,
                 'idempotent'  => true,
@@ -380,8 +389,7 @@ class Context_Resources extends AbstractAbilityGroup {
             },
             'meta' => [
                 'public' => true,
-                'mcp'    => [ 'type' => 'resource' ],
-                'uri'    => 'worldgraph://post-context/{post_id}',
+                'mcp'    => [ 'type' => 'tool' ],
                 'annotations' => [
                     'readonly'    => true,
                     'destructive' => false,
@@ -422,8 +430,7 @@ class Context_Resources extends AbstractAbilityGroup {
             },
             'meta' => [
                 'public' => true,
-                'mcp'    => [ 'type' => 'resource' ],
-                'uri'    => 'worldgraph://character/{character_id}',
+                'mcp'    => [ 'type' => 'tool' ],
                 'annotations' => [
                     'readonly'    => true,
                     'destructive' => false,
@@ -465,8 +472,7 @@ class Context_Resources extends AbstractAbilityGroup {
             },
             'meta' => [
                 'public' => true,
-                'mcp'    => [ 'type' => 'resource' ],
-                'uri'    => 'worldgraph://scene/{scene_id}',
+                'mcp'    => [ 'type' => 'tool' ],
                 'annotations' => [
                     'readonly'    => true,
                     'destructive' => false,
@@ -492,10 +498,6 @@ class Prompt_Templates extends AbstractAbilityGroup {
         $this->register_ability( 'worldgraph/templates-manifest', [
             'label'       => 'Generation Templates Manifest',
             'description' => 'Discover active World Graph Studio generation templates and their provider-neutral schemas.',
-            'input_schema' => [
-                'type' => 'object',
-                'properties' => [],
-            ],
             'output_schema' => [
                 'type' => 'object',
                 'properties' => [
@@ -984,9 +986,6 @@ class Abilities {
      * Hooked into 'init' action.
      */
     public function init(): void {
-        // Register the World Graph Studio AI Editor category.
-        $this->register_category();
-
         // Register all ability groups.
         foreach ( $this->ability_groups as $group ) {
             $group->register();
@@ -996,9 +995,11 @@ class Abilities {
     /**
      * Register the World Graph Studio AI Editor ability category.
      *
+     * Hooked into 'wp_abilities_api_categories_init'.
+     *
      * @return WP_Error|int Result of wp_register_ability_category.
      */
-    private function register_category() {
+    public function register_category() {
         return \wp_register_ability_category( 'worldgraph-ai-editor', [
             'label'       => 'World Graph Studio AI Editor',
             'description' => 'Abilities for AI-powered story editing, content generation, and continuity checking.',
