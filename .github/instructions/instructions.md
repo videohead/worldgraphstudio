@@ -6,6 +6,11 @@ This file defines the active development conventions for World Graph Studio. Wor
 WordPress application whose canonical data model is the Story Graph. ComfyUI is
 an optional external generation service used by the relevant plugin.
 
+**Tool execution rule:** all tool calls that invoke `python`, `node`, `vite`,
+or `php` MUST run inside Docker containers (the `wordpress`, `node`, or
+on-demand `tools` services) — never on the host. The host has no project
+runtimes installed.
+
 ## Local Entry Points
 
 The default Docker Compose stack runs `wordpress`, `database`, and `node`. Use
