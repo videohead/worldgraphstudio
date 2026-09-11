@@ -64,21 +64,29 @@ class Test_Comfy_MCP_Smoke extends TestCase {
 
 	/**
 	 * A local Comfy connection generates through its own HTTP API. Its MCP
-	 * endpoint serves discovery and downloads, never generation. Comfy Cloud
-	 * is a distinct commercial provider type with its own fixed MCP client.
+	 * endpoint serves discovery and downloads, never generation.
 	 */
 	public function test_generation_batch_routes_local_comfy_to_local_api(): void {
 		$batch    = file_get_contents( dirname( __DIR__ ) . '/includes/utils/generation-batch.php' );
 		$registry = file_get_contents( dirname( __DIR__ ) . '/includes/connections/class-adapter-registry.php' );
+		$tests    = file_get_contents( dirname( __DIR__ ) . '/includes/connections/class-builtin-connection-tests.php' );
 
 		$this->assertNotFalse( $batch );
 		$this->assertNotFalse( $registry );
-		$this->assertStringContainsString( "'comfyui' => [", $registry );
-		$this->assertStringContainsString( "'comfy_cloud' => [", $registry );
-		$this->assertStringContainsString( "'client'             => 'WorldGraph\\\\Utils\\\\Local_ComfyUI'", $registry );
-		$this->assertStringContainsString( "'client'             => 'WorldGraph\\\\Utils\\\\Comfy_Cloud_MCP'", $registry );
+		$this->assertNotFalse( $tests );
+		$this->assertSame(
+			\WorldGraph\Utils\Local_ComfyUI::class,
+			\WorldGraph\Connections\Builtin_Adapter_Runtime::comfy_client( [ 'environment' => 'local' ] )
+		);
+		$this->assertSame(
+			\WorldGraph\Utils\Comfy_Cloud_MCP::class,
+			\WorldGraph\Connections\Builtin_Adapter_Runtime::comfy_client( [ 'environment' => 'production' ] )
+		);
+		$this->assertStringContainsString( "'client_resolver'    => [ Builtin_Adapter_Runtime::class, 'comfy_client' ]", $registry );
 		$this->assertStringContainsString( 'Connection_Adapters::generation_client(', $batch );
 		$this->assertStringContainsString( "update_post_meta( \$job_id, '_worldgraph_gen_adapter', 'local_comfyui' );", $batch );
 		$this->assertStringNotContainsString( 'Retrying via local ComfyUI API', $batch );
+		$this->assertStringContainsString( "'local' === sanitize_key( (string) ( \$record['environment'] ?? '' ) )", $tests );
+		$this->assertStringNotContainsString( 'Comfy_Cloud_MCP::ENDPOINT !== \$endpoint', $tests );
 	}
 }

@@ -25,24 +25,7 @@ final class Builtin_Connection_Tests {
 	private const TIMEOUT = 30;
 
 	/**
-	 * Test Comfy Cloud API credentials.
-	 *
-	 * @param int                  $connection_id Connection post ID.
-	 * @param array<string, mixed> $record        Connection record.
-	 * @return array{success:bool,message:string,health:array}
-	 */
-	public static function test_comfy_cloud( int $connection_id, array $record ): array {
-		unset( $connection_id );
-
-		$has_key = '' !== trim( (string) ( $record['credential_reference'] ?? '' ) );
-		return self::outcome(
-			$has_key,
-			$has_key ? 'Comfy Cloud credentials configured.' : 'Comfy Cloud API key is not configured.'
-		);
-	}
-
-	/**
-	 * Test a local ComfyUI HTTP endpoint.
+	 * Test the transport selected by the ComfyUI Connection environment.
 	 *
 	 * @param int                  $connection_id Connection post ID.
 	 * @param array<string, mixed> $record        Connection record.
@@ -51,7 +34,15 @@ final class Builtin_Connection_Tests {
 	public static function test_comfyui( int $connection_id, array $record ): array {
 		unset( $connection_id );
 
-		return self::test_local_comfyui( $record );
+		if ( 'local' === sanitize_key( (string) ( $record['environment'] ?? '' ) ) ) {
+			return self::test_local_comfyui( $record );
+		}
+
+		$has_key = '' !== trim( (string) ( $record['credential_reference'] ?? '' ) );
+		return self::outcome(
+			$has_key,
+			$has_key ? 'Comfy Cloud MCP credentials configured.' : 'Comfy Cloud MCP API key is not configured.'
+		);
 	}
 
 	/** Test a fal Streamable HTTP MCP connection and required generation tools. */
