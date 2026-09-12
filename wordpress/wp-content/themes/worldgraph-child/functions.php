@@ -79,7 +79,7 @@ function worldgraph_child_refresh_frost_pattern_cache() {
 add_action( 'init', 'worldgraph_child_refresh_frost_pattern_cache', 0 );
 
 /**
- * Enqueue the child stylesheet after Frost's stylesheet.
+ * Enqueue the child stylesheet.
  *
  * @return void
  */
@@ -89,7 +89,7 @@ function worldgraph_child_enqueue_styles() {
 	wp_enqueue_style(
 		'worldgraph-child',
 		get_stylesheet_uri(),
-		array( 'frost' ),
+		array(),
 		$theme->get( 'Version' )
 	);
 }

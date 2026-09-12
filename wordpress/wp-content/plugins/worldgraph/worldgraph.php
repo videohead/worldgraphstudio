@@ -378,8 +378,15 @@ function init(): void {
 		\WorldGraph\AI\AI_Editor::init();
 
 		// Initialize World Graph Studio Abilities for MCP exposure (requires WP 6.9+).
+		// wp_register_ability()/wp_register_ability_category() must run on the
+		// wp_abilities_api_init action, not init, or WP prints a notice per call.
 		if ( function_exists( 'wp_register_ability' ) ) {
-			\WorldGraph\AI\Abilities\Abilities::instance()->init();
+			add_action(
+				'wp_abilities_api_init',
+				static function () {
+					\WorldGraph\AI\Abilities\Abilities::instance()->init();
+				}
+			);
 		}
 	}
 

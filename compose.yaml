@@ -27,6 +27,13 @@ services:
       WORLDGRAPH_AI_FALLBACK_API_KEY: ${WORLDGRAPH_AI_FALLBACK_API_KEY:-}
       WORLDGRAPH_AI_IMAGE_API_KEY: ${WORLDGRAPH_AI_IMAGE_API_KEY:-}
       WORDPRESS_CONFIG_EXTRA: |
+        if ( isset( $$_SERVER['HTTP_X_FORWARDED_PREFIX'] ) ) {
+          $$forwarded_prefix = '/' . trim( explode( ',', (string) $$_SERVER['HTTP_X_FORWARDED_PREFIX'] )[0], '/' );
+          $$request_uri = (string) ( $$_SERVER['REQUEST_URI'] ?? '/' );
+          if ( '/' !== $$forwarded_prefix && ! str_starts_with( $$request_uri, $$forwarded_prefix . '/' ) && $$request_uri !== $$forwarded_prefix ) {
+            $$_SERVER['REQUEST_URI'] = $$forwarded_prefix . ( str_starts_with( $$request_uri, '/' ) ? $$request_uri : '/' . $$request_uri );
+          }
+        }
         if ( ! defined( 'WORLDGRAPH_AI_API_KEY' ) && false !== getenv( 'WORLDGRAPH_AI_API_KEY' ) && '' !== trim( (string) getenv( 'WORLDGRAPH_AI_API_KEY' ) ) ) {
           define( 'WORLDGRAPH_AI_API_KEY', trim( (string) getenv( 'WORLDGRAPH_AI_API_KEY' ) ) );
         }

@@ -981,7 +981,8 @@ class Abilities {
     /**
      * Initialize abilities registration.
      *
-     * Hooked into 'init' action.
+     * Hooked into the 'wp_abilities_api_init' action (WP 6.9+). Abilities and
+     * categories must be registered on this action, not 'init'.
      */
     public function init(): void {
         // Register the World Graph Studio AI Editor category.
