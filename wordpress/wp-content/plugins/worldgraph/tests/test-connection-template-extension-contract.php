@@ -135,6 +135,17 @@ class Test_Connection_Template_Extension_Contract extends TestCase {
 		$this->assertFalse( Connection_Adapters::supports_generation( 'veo' ) );
 	}
 
+	/** LiteLLM is a testable LLM adapter, not a media-generation job adapter. */
+	public function test_litellm_adapter_declares_its_openai_compatible_proxy_contract(): void {
+		$adapter = Connection_Adapters::get( 'litellm' );
+
+		$this->assertIsArray( $adapter );
+		$this->assertSame( 'LiteLLM', $adapter['label'] );
+		$this->assertSame( 'http://host.docker.internal:4000/v1', $adapter['endpoint'] );
+		$this->assertTrue( Connection_Adapters::supports( 'litellm', 'test' ) );
+		$this->assertFalse( Connection_Adapters::supports_generation( 'litellm' ) );
+	}
+
 	/** Provider health reports are bounded and discard sensitive-key values. */
 	public function test_connection_health_normalization_is_bounded_and_redacted(): void {
 		$normalize = new ReflectionMethod( Connection_Test_Service::class, 'normalize_health' );

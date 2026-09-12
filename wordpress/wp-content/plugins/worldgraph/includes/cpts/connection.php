@@ -69,6 +69,7 @@ class Connection {
 		add_action( 'acf/save_post', [ __CLASS__, 'after_scf_save' ], 20 );
 		add_action( 'worldgraph_after_rest_entity_save', [ __CLASS__, 'after_rest_save' ], 10, 3 );
 		add_action( 'wp_ajax_worldgraph_sync_connection_catalog', [ __CLASS__, 'ajax_sync_catalog' ] );
+		add_action( 'wp_ajax_worldgraph_discover_connection_models', [ __CLASS__, 'ajax_discover_models' ] );
 		add_action( 'wp_ajax_worldgraph_enable_connection_catalog_entry', [ __CLASS__, 'ajax_enable_catalog_entry' ] );
 		add_action( 'wp_ajax_worldgraph_disable_connection_catalog_entry', [ __CLASS__, 'ajax_disable_catalog_entry' ] );
 		add_action( 'wp_ajax_worldgraph_materialize_connection_catalog_entry', [ __CLASS__, 'ajax_materialize_catalog_entry' ] );
@@ -579,6 +580,7 @@ class Connection {
 				'endpointUrls'          => $endpoint_urls,
 				'mcpEndpointUrls'       => $mcp_endpoint_urls,
 				'initialCatalog'        => $initial_catalog,
+				'llmProviders'          => [ 'openai_compatible', 'litellm', 'openai', 'anthropic' ],
 				'i18n'                  => [
 					'statusLabels'             => [
 						'ready'        => __( 'Ready now', 'worldgraph' ),
@@ -636,6 +638,10 @@ class Connection {
 					'addAllIncomplete'         => __( 'The ready workflows could not all be added.', 'worldgraph' ),
 					'interfaceReady'           => __( 'Workflow setup is ready.', 'worldgraph' ),
 					'networkError'             => __( 'The provider setup request did not return a usable response.', 'worldgraph' ),
+					'loadModels'               => __( 'Load models', 'worldgraph' ),
+					'loadingModels'            => __( 'Loading models...', 'worldgraph' ),
+					'modelsLoaded'             => __( 'Available models loaded.', 'worldgraph' ),
+					'modelsUnavailable'        => __( 'No models were returned by this provider.', 'worldgraph' ),
 				],
 			]
 		);
@@ -916,6 +922,31 @@ class Connection {
 		}
 
 		wp_send_json_success( $result );
+	}
+
+	/** Return model identifiers from a saved LLM Connection without invoking a model. */
+	public static function ajax_discover_models(): void {
+		$connection_id = self::authorize_configurator_request();
+		$record = \WorldGraph\Utils\Connection_Repository::get( $connection_id );
+		$provider = sanitize_key( (string) ( $record['provider_type'] ?? '' ) );
+		if ( ! is_array( $record ) || ! in_array( $provider, [ 'openai_compatible', 'litellm', 'openai', 'anthropic' ], true ) ) {
+			wp_send_json_error( [ 'message' => __( 'This Connection does not support model discovery.', 'worldgraph' ) ], 400 );
+		}
+
+		$result = ( new \WorldGraph\AI\AI_LLM_Client() )->test_connection( [
+			'backend' => $provider,
+			'url'     => (string) ( $record['endpoint_url'] ?? '' ),
+			'model'   => '',
+			'api_key' => (string) ( $record['credential_reference'] ?? '' ),
+		] );
+		if ( empty( $result['healthy'] ) ) {
+			wp_send_json_error( [ 'message' => $result['error'] ?? __( 'Unable to load models from the provider.', 'worldgraph' ) ] );
+		}
+
+		wp_send_json_success( [
+			'message' => __( 'Available models loaded.', 'worldgraph' ),
+			'models'  => array_values( $result['models'] ?? [] ),
+		] );
 	}
 
 	/** Disable one provider catalog entry. */

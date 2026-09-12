@@ -17,7 +17,7 @@ class Import {
 	// active lock as stale while the same preview remains consumable.
 	private const LOCK_TTL    = self::PREVIEW_TTL;
 	private const FILE_TYPES  = [ 'json', 'txt', 'text', 'md', 'markdown', 'fountain', 'rtf', 'pdf', 'epub', 'docx', 'odt' ];
-	private const LLM_TYPES   = [ 'openai_compatible', 'openai', 'anthropic' ];
+	private const LLM_TYPES   = [ 'openai_compatible', 'litellm', 'openai', 'anthropic' ];
 
 	/** Register the legacy menu and form action. */
 	public static function init(): void {
@@ -441,7 +441,7 @@ class Import {
 		$connection = \WorldGraph\Utils\Connection_Repository::get( $connection_id );
 		$provider   = sanitize_key( (string) ( $connection['provider_type'] ?? '' ) );
 		if ( ! is_array( $connection ) || 'publish' !== (string) ( $connection['status_wp'] ?? '' ) || ! in_array( $provider, self::LLM_TYPES, true ) ) {
-			return new \WP_Error( 'worldgraph_story_connection_invalid', __( 'Configure a published OpenAI-compatible, OpenAI, or Anthropic LLM Connection as the site default.', 'worldgraph' ) );
+			return new \WP_Error( 'worldgraph_story_connection_invalid', __( 'Configure a published LiteLLM, OpenAI-compatible, OpenAI, or Anthropic LLM Connection as the site default.', 'worldgraph' ) );
 		}
 		if ( 'disabled' === (string) ( $connection['status'] ?? '' ) ) {
 			return new \WP_Error( 'worldgraph_story_connection_disabled', __( 'The configured default LLM Connection is disabled.', 'worldgraph' ) );

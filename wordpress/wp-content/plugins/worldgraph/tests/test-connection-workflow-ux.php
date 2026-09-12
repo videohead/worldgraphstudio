@@ -25,11 +25,26 @@ class Test_Connection_Workflow_UX extends TestCase {
 
 	/** The Connection editor behavior must live in an enqueued JavaScript asset. */
 	public function test_connection_editor_asset_exists_and_is_enqueued(): void {
-		$this->source( 'assets/js/connection-editor.js' );
+		$script = $this->source( 'assets/js/connection-editor.js' );
 		$editor = $this->source( 'includes/cpts/connection.php' );
 
 		$this->assertStringContainsString( 'wp_enqueue_script(', $editor );
 		$this->assertStringContainsString( "'assets/js/connection-editor.js'", $editor );
+		$this->assertStringContainsString( 'worldgraph_discover_connection_models', $editor );
+		$this->assertStringContainsString( 'installLlmModelSelector', $script );
+		$this->assertStringContainsString( "request('worldgraph_discover_connection_models')", $script );
+	}
+
+	/** Setup and saved Connections expose provider-backed LLM model selectors. */
+	public function test_llm_model_selection_uses_discovery_backed_dropdowns(): void {
+		$wizard = $this->source( 'includes/admin/setup-wizard.php' );
+		$setup_script = $this->source( 'assets/js/setup-wizard.js' );
+		$connection = $this->source( 'includes/cpts/connection.php' );
+
+		$this->assertStringContainsString( '<select class="regular-text" name="worldgraph_ai_model"', $wizard );
+		$this->assertStringContainsString( 'worldgraph_discover_llm_models', $wizard );
+		$this->assertStringContainsString( 'populateModels', $setup_script );
+		$this->assertStringContainsString( 'worldgraph_discover_connection_models', $connection );
 	}
 
 	/** Workflow discovery and bulk setup use concise operator-facing actions. */

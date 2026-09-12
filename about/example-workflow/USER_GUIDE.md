@@ -96,7 +96,7 @@ spans, including adaptive subdivisions. For an LLM decomposition:
 The repository's [sample EPUB](pg28554-images-3.epub) can be used to exercise
 the spine-order extraction, heading-aware planning, and resumable path below.
 
-1. Ensure that a published OpenAI-compatible, OpenAI, or Anthropic LLM
+1. Ensure that a published LiteLLM, OpenAI-compatible, OpenAI, or Anthropic LLM
    Connection is configured as the default and that you may manage it.
 2. Choose the source file and select **Create Import Preview**.
 3. Follow the progress view while the browser advances the decomposition one

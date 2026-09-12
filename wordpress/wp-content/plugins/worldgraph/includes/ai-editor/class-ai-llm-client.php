@@ -220,8 +220,8 @@ class AI_LLM_Client {
 		}
 
 		$backend = sanitize_key( (string) ( $connection['provider_type'] ?? '' ) );
-		if ( ! in_array( $backend, [ 'openai_compatible', 'openai', 'anthropic' ], true ) ) {
-			return new \WP_Error( 'worldgraph_llm_connection_provider_invalid', __( 'Select an OpenAI-compatible, OpenAI, or Anthropic LLM Connection.', 'worldgraph' ) );
+		if ( ! in_array( $backend, [ 'openai_compatible', 'litellm', 'openai', 'anthropic' ], true ) ) {
+			return new \WP_Error( 'worldgraph_llm_connection_provider_invalid', __( 'Select a LiteLLM, OpenAI-compatible, OpenAI, or Anthropic LLM Connection.', 'worldgraph' ) );
 		}
 		if ( 'disabled' === (string) ( $connection['status'] ?? '' ) ) {
 			return new \WP_Error( 'worldgraph_llm_connection_disabled', __( 'The selected LLM Connection is disabled.', 'worldgraph' ) );
@@ -726,6 +726,7 @@ class AI_LLM_Client {
 		switch ( $backend ) {
 			case 'local':
 			case 'openai_compatible':
+			case 'litellm':
 				return $this->call_openai_compatible( $prompt, $model, $max_tokens, $temperature, $system_prompt, $context, $history, $api_key, $backend, $endpoint, $enable_thinking );
 			case 'openai':
 				return $this->call_openai( $prompt, $model, $max_tokens, $temperature, $system_prompt, $context, $history, $api_key, $endpoint, $reasoning_effort );
@@ -1271,7 +1272,7 @@ class AI_LLM_Client {
 			$api_key = $resolved_key;
 		}
 
-		if ( ! in_array( $backend, [ 'openai_compatible', 'openai', 'anthropic', 'dual' ], true ) ) {
+		if ( ! in_array( $backend, [ 'openai_compatible', 'litellm', 'openai', 'anthropic', 'dual' ], true ) ) {
 			return [
 				'healthy' => false,
 				'backend' => $backend,
@@ -1285,6 +1286,34 @@ class AI_LLM_Client {
 					'healthy' => false,
 					'backend' => $backend,
 					'error'   => 'No Anthropic API key configured.',
+				];
+			}
+			if ( '' === trim( (string) $model ) ) {
+				$response = $this->remote_get(
+					'https://api.anthropic.com/v1/models',
+					[
+						'headers' => [
+							'Accept'            => 'application/json',
+							'x-api-key'         => $api_key,
+							'anthropic-version' => '2023-06-01',
+						],
+						'timeout'             => 5,
+						'limit_response_size' => 262_144,
+					]
+				);
+				if ( is_wp_error( $response ) ) {
+					return [ 'healthy' => false, 'backend' => $backend, 'error' => $response->get_error_message() ];
+				}
+				$status = wp_remote_retrieve_response_code( $response );
+				$body   = json_decode( wp_remote_retrieve_body( $response ), true );
+				$models = isset( $body['data'] ) && is_array( $body['data'] ) ? array_values( array_filter( array_column( $body['data'], 'id' ) ) ) : [];
+				return [
+					'healthy' => 200 === $status,
+					'backend' => $backend,
+					'url'     => 'https://api.anthropic.com/v1/models',
+					'status'  => $status,
+					'models'  => $models,
+					'error'   => 200 === $status ? '' : sprintf( 'Endpoint returned HTTP %d.', $status ),
 				];
 			}
 
@@ -1333,7 +1362,7 @@ class AI_LLM_Client {
 			'timeout' => 5,
 		];
 
-		$response = wp_remote_get( $url, $args );
+		$response = $this->remote_get( $url, $args );
 
 		if ( is_wp_error( $response ) ) {
 			$error = $response->get_error_message();
@@ -1375,6 +1404,17 @@ class AI_LLM_Client {
 				'status'  => $status,
 				'models'  => $models,
 				'error'   => sprintf( 'Endpoint returned HTTP %d.', $status ),
+			];
+		}
+
+		if ( '' === trim( (string) $model ) ) {
+			return [
+				'healthy' => true,
+				'backend' => $backend,
+				'url'     => $url,
+				'status'  => $status,
+				'models'  => array_values( $models ),
+				'error'   => '',
 			];
 		}
 

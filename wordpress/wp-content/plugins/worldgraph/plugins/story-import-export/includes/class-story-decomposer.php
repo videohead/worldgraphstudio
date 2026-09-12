@@ -11,7 +11,7 @@ defined( 'ABSPATH' ) || exit;
 
 /** Build and validate a candidate v1.2 import document from unstructured text. */
 class Story_Decomposer {
-	private const LLM_TYPES = [ 'openai_compatible', 'openai', 'anthropic' ];
+	private const LLM_TYPES = [ 'openai_compatible', 'litellm', 'openai', 'anthropic' ];
 	private const MAX_PART_ATTEMPTS = 3;
 	private const MAX_PROMPT_CHARS  = 500_000;
 	private const TARGET_CHUNK_CHARS = 12_000;

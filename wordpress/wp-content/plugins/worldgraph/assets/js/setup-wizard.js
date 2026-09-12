@@ -91,7 +91,21 @@
 	const llmUrlInput = document.getElementById( 'worldgraph_ai_url' );
 	const modelInput = document.getElementById( 'worldgraph_ai_model' );
 	const apiKeyInput = document.getElementById( 'worldgraph_ai_api_key' );
-	const modelList = document.getElementById( 'worldgraph-ai-models' );
+	const loadModelsButton = document.getElementById( 'worldgraph-load-llm-models' );
+
+	function populateModels( models ) {
+		const selectedModel = modelInput.value;
+		modelInput.replaceChildren( new Option( 'Select a model', '' ) );
+		if ( selectedModel && ! models.includes( selectedModel ) ) {
+			modelInput.append( new Option( selectedModel, selectedModel ) );
+		}
+		models.forEach( function ( model ) {
+			modelInput.append( new Option( model, model ) );
+		} );
+		modelInput.value = selectedModel && Array.from( modelInput.options ).some( function ( option ) {
+			return option.value === selectedModel;
+		} ) ? selectedModel : '';
+	}
 
 	if (
 		llmButton &&
@@ -121,12 +135,7 @@
 					const responseData = response.data && typeof response.data === 'object' ? response.data : {};
 					const models = Array.isArray( responseData.models ) ? responseData.models : [];
 
-					if ( modelList ) {
-						modelList.replaceChildren();
-						models.forEach( function ( model ) {
-							modelList.append( new Option( model, model ) );
-						} );
-					}
+					populateModels( models );
 
 					if ( response.success && ! modelInput.value.trim() && 1 === models.length ) {
 						modelInput.value = models[ 0 ];
@@ -144,6 +153,36 @@
 				} )
 				.finally( function () {
 					llmButton.disabled = false;
+				} );
+		} );
+	}
+
+	if ( loadModelsButton && backendInput && llmUrlInput && modelInput && apiKeyInput ) {
+		loadModelsButton.addEventListener( 'click', function () {
+			const data = new URLSearchParams( {
+				action: config.actions.discoverModels,
+				nonce: config.nonces.testLlm,
+				backend: backendInput.value,
+				url: llmUrlInput.value,
+				model: '',
+				api_key: apiKeyInput.value,
+			} );
+
+			loadModelsButton.disabled = true;
+			llmResult.textContent = config.i18n.loadingModels;
+			postTest( data )
+				.then( function ( response ) {
+					const models = Array.isArray( response.data && response.data.models ) ? response.data.models : [];
+					populateModels( models );
+					llmResult.textContent = responseMessage( response );
+					llmResult.style.color = response.success ? '#008a20' : '#b32d2e';
+				} )
+				.catch( function () {
+					llmResult.textContent = config.i18n.connectionTestUnavailable;
+					llmResult.style.color = '#b32d2e';
+				} )
+				.finally( function () {
+					loadModelsButton.disabled = false;
 				} );
 		} );
 	}

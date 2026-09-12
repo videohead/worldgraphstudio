@@ -339,7 +339,7 @@ class Connections {
 										<a class="button button-small" href="<?php echo esc_url( $test_url ); ?>"><?php esc_html_e( 'Check connection', 'worldgraph' ); ?></a>
 									<?php endif; ?>
 									<a class="button button-small" href="<?php echo esc_url( (string) $edit_url ); ?>"><?php esc_html_e( 'Manage setup', 'worldgraph' ); ?></a>
-									<?php if ( in_array( sanitize_key( (string) $connection['provider_type'] ), [ 'openai_compatible', 'openai', 'anthropic' ], true ) ) : ?>
+									<?php if ( in_array( sanitize_key( (string) $connection['provider_type'] ), [ 'openai_compatible', 'litellm', 'openai', 'anthropic' ], true ) ) : ?>
 										<a class="button button-small" href="<?php echo esc_url( $llm_test_url ); ?>"><?php esc_html_e( 'Test chat', 'worldgraph' ); ?></a>
 										<a class="button button-small" href="<?php echo esc_url( $decompose_test_url ); ?>"><?php esc_html_e( 'Test decomposition', 'worldgraph' ); ?></a>
 									<?php endif; ?>

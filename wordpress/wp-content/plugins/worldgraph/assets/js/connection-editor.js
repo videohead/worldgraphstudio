@@ -115,6 +115,67 @@
 		});
 	}
 
+	function installLlmModelSelector() {
+		var provider = findScfField('provider_type');
+		var modelInput = findScfField('model');
+		var providers = config.llmProviders || [];
+		if (!provider || !modelInput) {
+			return;
+		}
+
+		var selector = element('select', 'regular-text');
+		var loadButton = element('button', 'button', strings.loadModels || 'Load models');
+		var status = element('span', 'description');
+		loadButton.type = 'button';
+		loadButton.style.marginLeft = '8px';
+		status.style.marginLeft = '8px';
+		modelInput.insertAdjacentElement('afterend', status);
+		modelInput.insertAdjacentElement('afterend', loadButton);
+		modelInput.insertAdjacentElement('afterend', selector);
+
+		function populate(models) {
+			var current = modelInput.value;
+			clear(selector);
+			selector.appendChild(new Option('Select a model', ''));
+			if (current && models.indexOf(current) === -1) {
+				selector.appendChild(new Option(current, current));
+			}
+			models.forEach(function (model) {
+				selector.appendChild(new Option(model, model));
+			});
+			selector.value = current;
+		}
+
+		function updateVisibility() {
+			var supported = providers.indexOf(provider.value) !== -1;
+			modelInput.style.display = supported ? 'none' : '';
+			selector.style.display = supported ? '' : 'none';
+			loadButton.style.display = supported ? '' : 'none';
+			status.style.display = supported ? '' : 'none';
+		}
+
+		selector.addEventListener('change', function () {
+			modelInput.value = selector.value;
+			modelInput.dispatchEvent(new Event('change', { bubbles: true }));
+		});
+		loadButton.addEventListener('click', function () {
+			loadButton.disabled = true;
+			status.textContent = strings.loadingModels || 'Loading models...';
+			request('worldgraph_discover_connection_models').then(function (result) {
+				var models = Array.isArray(result.models) ? result.models : [];
+				populate(models);
+				status.textContent = models.length ? (result.message || strings.modelsLoaded) : strings.modelsUnavailable;
+			}).catch(function (error) {
+				status.textContent = error.message || strings.networkError;
+			}).then(function () {
+				loadButton.disabled = false;
+			});
+		});
+		provider.addEventListener('change', updateVisibility);
+		populate([]);
+		updateVisibility();
+	}
+
 	function installWorkflowConfigurator() {
 		var status = document.getElementById('worldgraph-connection-configurator-status');
 		var summary = document.getElementById('worldgraph-connection-configurator-summary');
@@ -424,5 +485,6 @@
 	}
 
 	installEndpointDefaults();
+	installLlmModelSelector();
 	installWorkflowConfigurator();
 }());

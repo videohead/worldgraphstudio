@@ -21,7 +21,7 @@ require_once __DIR__ . '/class-decomposition-job.php';
  */
 class Import_Controller extends Base_Controller {
 	/** Provider types eligible for story decomposition. */
-	private const LLM_TYPES = [ 'openai_compatible', 'openai', 'anthropic' ];
+	private const LLM_TYPES = [ 'openai_compatible', 'litellm', 'openai', 'anthropic' ];
 
 	/** Keep the legacy synchronous route confined to one small source section. */
 	private const MAX_SYNCHRONOUS_CHARACTERS = 1_400;
@@ -674,7 +674,7 @@ class Import_Controller extends Base_Controller {
 		if ( ! is_array( $connection ) ) {
 			return new WP_Error(
 				'worldgraph_story_connection_invalid',
-				__( 'Select a published OpenAI-compatible, OpenAI, or Anthropic LLM Connection.', 'worldgraph' )
+				__( 'Select a published LiteLLM, OpenAI-compatible, OpenAI, or Anthropic LLM Connection.', 'worldgraph' )
 			);
 		}
 
@@ -685,7 +685,7 @@ class Import_Controller extends Base_Controller {
 		) {
 			return new WP_Error(
 				'worldgraph_story_connection_invalid',
-				__( 'Select a published OpenAI-compatible, OpenAI, or Anthropic LLM Connection.', 'worldgraph' )
+				__( 'Select a published LiteLLM, OpenAI-compatible, OpenAI, or Anthropic LLM Connection.', 'worldgraph' )
 			);
 		}
 		if ( 'disabled' === (string) ( $connection['status'] ?? '' ) ) {

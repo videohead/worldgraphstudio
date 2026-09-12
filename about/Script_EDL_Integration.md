@@ -85,7 +85,7 @@ installation-specific users/status, and fields outside the importer contract.
 The same Import screen accepts persisted JSON, TXT, Markdown, Fountain, RTF,
 PDF, EPUB, DOCX, and ODT attachments. Canonical JSON is dry-run validated
 without calling an LLM. Other sources are converted to bounded UTF-8 text and
-sent only to the administrator-selected OpenAI-compatible, OpenAI, or Anthropic
+sent only to the administrator-selected LiteLLM, OpenAI-compatible, OpenAI, or Anthropic
 Connection. The returned candidate is normalized and dry-run validated by the
 canonical importer before it is shown.
 

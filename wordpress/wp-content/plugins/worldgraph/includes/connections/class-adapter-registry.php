@@ -474,6 +474,14 @@ class Adapter_Registry {
 				'files'     => [],
 				'callbacks' => [ 'test' => [ Builtin_Connection_Tests::class, 'test_llm' ] ],
 			],
+			'litellm' => [
+				'label'       => 'LiteLLM',
+				'description' => 'Route LLM requests through a LiteLLM OpenAI-compatible proxy.',
+				'icon'        => 'dashicons-randomize',
+				'endpoint'    => 'http://host.docker.internal:4000/v1',
+				'files'       => [],
+				'callbacks'   => [ 'test' => [ Builtin_Connection_Tests::class, 'test_llm' ] ],
+			],
 			'openai' => [
 				'label'     => 'OpenAI',
 				'endpoint'  => 'https://api.openai.com/v1',

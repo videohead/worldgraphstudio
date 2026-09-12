@@ -44,6 +44,7 @@
                 "higgsfield": "higgsfield",
                 "videodraft": "videodraft",
                 "openai_compatible": "openai_compatible",
+                "litellm": "litellm",
                 "openai": "openai",
                 "anthropic": "anthropic",
                 "dual": "dual",

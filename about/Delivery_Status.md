@@ -76,7 +76,7 @@ The Story Import & Export feature is bundled at
 Markdown export are deterministic and need no model. For other supported story
 sources, PHP produces an ordered chapter/section/Scene/paragraph/sentence-aware
 plan with context kept separate from each primary span. The configured
-manageable OpenAI-compatible, OpenAI, or Anthropic Connection first extracts
+manageable LiteLLM, OpenAI-compatible, OpenAI, or Anthropic Connection first extracts
 evidence, then synthesizes each span against bounded related observations and a
 compact evolving graph. The default related-evidence retrieval is private and
 lexical, with hooks for a bounded private index. The wp-admin JavaScript

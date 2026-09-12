@@ -70,11 +70,12 @@ operating conditions. See
 These are delivered model-access paths for the AI Editor and specialist agents;
 they are not media-generation adapters. Story decomposition resolves a
 configured default—or an eligible Connection ID supplied to the synchronous
-REST compatibility route—from the OpenAI-compatible, OpenAI, or Anthropic
+REST compatibility route—from the LiteLLM, OpenAI-compatible, OpenAI, or Anthropic
 Connection types; it does not use the legacy option-backed Dual fallback.
 
 | Backend | Current scope | Required setup |
 | --- | --- | --- |
+| LiteLLM | Local or hosted LiteLLM proxy using its OpenAI-compatible API | Proxy `/v1` base URL, model alias, and optional proxy key |
 | OpenAI-compatible | Local or hosted OpenAI-compatible chat endpoint | Compatible base URL, model, and optional service credential |
 | OpenAI | Hosted OpenAI chat API | API key and model |
 | Anthropic | Hosted Anthropic messages API | API key and model |

@@ -411,6 +411,7 @@ Configure the AI Editor in WordPress under **World Graph Studio > AI Settings**.
 
 | Connection | Backend selection | Base URL | Credential |
 | --- | --- | --- | --- |
+| LiteLLM | LiteLLM Proxy | The proxy's `/v1` endpoint; use `http://host.docker.internal:4000/v1` for a host-run proxy | Optional or proxy master/virtual key |
 | OpenAI | OpenAI API | Managed by World Graph Studio | OpenAI API key |
 | Claude | Anthropic API | Managed by World Graph Studio | Anthropic API key |
 | Ollama, vLLM, LM Studio | OpenAI-Compatible / Local LLM | The service's `/v1` endpoint | Optional or service-specific key |

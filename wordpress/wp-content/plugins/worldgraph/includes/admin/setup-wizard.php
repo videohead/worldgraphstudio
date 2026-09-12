@@ -25,6 +25,7 @@ class Setup_Wizard {
 		add_action( 'admin_enqueue_scripts', [ __CLASS__, 'enqueue_assets' ] );
 		add_action( 'admin_post_worldgraph_save_setup', [ __CLASS__, 'save' ] );
 		add_action( 'wp_ajax_worldgraph_test_llm_connection', [ __CLASS__, 'test_llm_connection' ] );
+		add_action( 'wp_ajax_worldgraph_discover_llm_models', [ __CLASS__, 'discover_llm_models' ] );
 		add_action( 'wp_ajax_worldgraph_test_comfy_connection', [ __CLASS__, 'test_comfy_connection' ] );
 		add_action( 'admin_init', [ __CLASS__, 'maybe_redirect_after_activation' ] );
 		add_action( 'admin_init', [ __CLASS__, 'maybe_redirect_to_setup' ] );
@@ -152,6 +153,7 @@ class Setup_Wizard {
 				'ajaxUrl' => admin_url( 'admin-ajax.php' ),
 				'actions' => [
 					'testLlm'        => 'worldgraph_test_llm_connection',
+					'discoverModels' => 'worldgraph_discover_llm_models',
 					'testGeneration' => 'worldgraph_test_comfy_connection',
 				],
 				'nonces'  => [
@@ -160,6 +162,8 @@ class Setup_Wizard {
 				],
 				'i18n'    => [
 					'testing'                   => __( 'Testing...', 'worldgraph' ),
+					'loadingModels'              => __( 'Loading models...', 'worldgraph' ),
+					'modelsLoaded'               => __( 'Available models loaded.', 'worldgraph' ),
 					'connectionTestFailed'      => __( 'Connection test failed.', 'worldgraph' ),
 					'connectionTestUnavailable' => __( 'Connection test could not be completed.', 'worldgraph' ),
 					'selectModel'                => __( 'Select a model from the Model Name field.', 'worldgraph' ),
@@ -234,7 +238,7 @@ class Setup_Wizard {
 
 		// Primary LLM Configuration
 		$backend = sanitize_key( $_POST['worldgraph_ai_backend'] ?? 'openai_compatible' );
-		if ( ! in_array( $backend, [ 'openai_compatible', 'openai', 'anthropic', 'dual' ], true ) ) {
+		if ( ! in_array( $backend, [ 'openai_compatible', 'litellm', 'openai', 'anthropic', 'dual' ], true ) ) {
 			$backend = 'openai_compatible';
 		}
 		update_option( 'worldgraph_ai_backend', $backend );
@@ -288,7 +292,7 @@ class Setup_Wizard {
 		check_ajax_referer( 'worldgraph_test_llm_connection', 'nonce' );
 
 		$backend = sanitize_key( $_POST['backend'] ?? 'openai_compatible' );
-		if ( ! in_array( $backend, [ 'openai_compatible', 'openai', 'anthropic', 'dual' ], true ) ) {
+		if ( ! in_array( $backend, [ 'openai_compatible', 'litellm', 'openai', 'anthropic', 'dual' ], true ) ) {
 			wp_send_json_error( [ 'message' => 'Unsupported LLM backend.' ], 400 );
 		}
 
@@ -308,6 +312,36 @@ class Setup_Wizard {
 
 		wp_send_json_success( [
 			'message' => ! empty( $result['url'] ) ? sprintf( 'Connected to %s.', $result['url'] ) : 'Provider credentials are configured.',
+			'models'  => array_values( $result['models'] ?? [] ),
+		] );
+	}
+
+	/** List models from the unsaved LLM configuration without sending a chat request. */
+	public static function discover_llm_models(): void {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( [ 'message' => __( 'You do not have permission to discover models.', 'worldgraph' ) ], 403 );
+		}
+
+		check_ajax_referer( 'worldgraph_test_llm_connection', 'nonce' );
+		$backend = sanitize_key( $_POST['backend'] ?? 'openai_compatible' );
+		if ( ! in_array( $backend, [ 'openai_compatible', 'litellm', 'openai', 'anthropic' ], true ) ) {
+			wp_send_json_error( [ 'message' => __( 'This provider does not expose supported model discovery.', 'worldgraph' ) ], 400 );
+		}
+
+		$result = ( new \WorldGraph\AI\AI_LLM_Client() )->test_connection( [
+			'backend' => $backend,
+			'url'     => esc_url_raw( wp_unslash( $_POST['url'] ?? '' ) ),
+			'model'   => '',
+			'api_key' => defined( 'WORLDGRAPH_AI_API_KEY' )
+				? \WORLDGRAPH_AI_API_KEY
+				: \WorldGraph\Utils\Credential_Store::resolve_masked_option_input( sanitize_text_field( wp_unslash( $_POST['api_key'] ?? '' ) ), 'worldgraph_ai_api_key' ),
+		] );
+		if ( empty( $result['healthy'] ) ) {
+			wp_send_json_error( [ 'message' => $result['error'] ?? __( 'Unable to load models from the provider.', 'worldgraph' ) ] );
+		}
+
+		wp_send_json_success( [
+			'message' => __( 'Available models loaded.', 'worldgraph' ),
 			'models'  => array_values( $result['models'] ?? [] ),
 		] );
 	}
@@ -533,12 +567,18 @@ class Setup_Wizard {
 				<h3>Primary LLM Configuration</h3>
 				<p><label for="worldgraph_ai_backend">Provider</label><br /><select name="worldgraph_ai_backend" id="worldgraph_ai_backend">
 					<option value="openai_compatible" <?php selected( $backend, 'openai_compatible' ); ?>>OpenAI-compatible local or hosted LLM</option>
+					<option value="litellm" <?php selected( $backend, 'litellm' ); ?>>LiteLLM proxy</option>
 					<option value="openai" <?php selected( $backend, 'openai' ); ?>>OpenAI API</option>
 					<option value="anthropic" <?php selected( $backend, 'anthropic' ); ?>>Anthropic API</option>
 					<option value="dual" <?php selected( $backend, 'dual' ); ?>>Dual (Local + Fallback Cloud)</option>
 				</select></p>
-				<p><label for="worldgraph_ai_url">Base URL or Endpoint</label><br /><input type="url" class="regular-text" name="worldgraph_ai_url" id="worldgraph_ai_url" value="<?php echo esc_attr( get_option( 'worldgraph_ai_url', 'http://host.docker.internal:11434/v1' ) ); ?>" /> <span class="description">For llama.cpp, Ollama, vLLM, LM Studio, or another `/v1` endpoint. Use <code>host.docker.internal</code> for an LLM running on the Docker host; <code>localhost</code> refers to the WordPress container. Leave blank if using OpenAI or Anthropic.</span></p>
-				<p><label for="worldgraph_ai_model">Model Name</label><br /><input type="text" class="regular-text" name="worldgraph_ai_model" id="worldgraph_ai_model" list="worldgraph-ai-models" value="<?php echo esc_attr( get_option( 'worldgraph_ai_model', '' ) ); ?>" /> <datalist id="worldgraph-ai-models"></datalist> <span class="description">Examples: gpt-4, claude-3-sonnet, or local model name. Testing a local endpoint loads its available models.</span></p>
+				<p><label for="worldgraph_ai_url">Base URL or Endpoint</label><br /><input type="url" class="regular-text" name="worldgraph_ai_url" id="worldgraph_ai_url" value="<?php echo esc_attr( get_option( 'worldgraph_ai_url', 'http://host.docker.internal:11434/v1' ) ); ?>" /> <span class="description">For LiteLLM, llama.cpp, Ollama, vLLM, LM Studio, or another `/v1` endpoint. A host-run LiteLLM proxy normally uses <code>http://host.docker.internal:4000/v1</code>; <code>localhost</code> refers to the WordPress container. Leave blank if using OpenAI or Anthropic.</span></p>
+				<p><label for="worldgraph_ai_model">Model Name</label><br /><select class="regular-text" name="worldgraph_ai_model" id="worldgraph_ai_model">
+					<option value=""><?php esc_html_e( 'Select a model', 'worldgraph' ); ?></option>
+					<?php if ( '' !== (string) get_option( 'worldgraph_ai_model', '' ) ) : ?>
+						<option value="<?php echo esc_attr( get_option( 'worldgraph_ai_model', '' ) ); ?>" selected><?php echo esc_html( get_option( 'worldgraph_ai_model', '' ) ); ?></option>
+					<?php endif; ?>
+				</select> <button type="button" class="button" id="worldgraph-load-llm-models"><?php esc_html_e( 'Load models', 'worldgraph' ); ?></button> <span class="description">Loads every model advertised by the selected provider without sending a generation request.</span></p>
 				<p><label for="worldgraph_ai_api_key">API Key / Token</label><br /><input type="password" class="regular-text" name="worldgraph_ai_api_key" id="worldgraph_ai_api_key" value="<?php echo esc_attr( \WorldGraph\Utils\Credential_Store::masked_value( get_option( 'worldgraph_ai_api_key' ) ) ); ?>" autocomplete="new-password" <?php disabled( defined( 'WORLDGRAPH_AI_API_KEY' ) ); ?> />
 				<?php if ( defined( 'WORLDGRAPH_AI_API_KEY' ) ) : ?> <span class="description">Configured through the deployment environment.</span><?php else : ?> <span class="description">Required for hosted providers and some local servers.</span><?php endif; ?></p>
 				<p><button type="button" class="button" id="worldgraph-test-llm-connection">Test LLM Connection</button> <span id="worldgraph-llm-test-result" aria-live="polite"></span></p>

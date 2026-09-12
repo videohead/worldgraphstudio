@@ -160,7 +160,7 @@ World Graph Studio content.
 
 The form stores:
 
-- provider: `openai_compatible`, `openai`, `anthropic`, or `dual`;
+- provider: `litellm`, `openai_compatible`, `openai`, `anthropic`, or `dual`;
 - base URL;
 - model identifier;
 - API key/token;
@@ -169,9 +169,12 @@ The form stores:
 
 For a local service running on the Docker host, use a container-reachable URL,
 for example `http://host.docker.internal:11434/v1`.
+For a host-run LiteLLM proxy, use `http://host.docker.internal:4000/v1` and
+enter the LiteLLM model alias plus the proxy key when authentication is enabled.
 
-**Test LLM Connection** evaluates the current unsaved values. For a compatible
-endpoint it can populate the model datalist from the provider response.
+**Load models** fetches the provider's model catalog without sending a generation
+request and populates the Model dropdown. **Test LLM Connection** evaluates the
+selected model and the other current unsaved values.
 
 If the PHP constant `WORLDGRAPH_AI_API_KEY` is defined, the primary key field
 is disabled and the constant is used for wizard testing. The wizard does not

@@ -307,18 +307,19 @@ class AI_Editor {
 						<td>
 							<select name="worldgraph_ai_backend" id="worldgraph_ai_backend">
 								<option value="openai_compatible" <?php selected( get_option( 'worldgraph_ai_backend' ), 'openai_compatible' ); ?>>OpenAI-Compatible / Local LLM</option>
+								<option value="litellm" <?php selected( get_option( 'worldgraph_ai_backend' ), 'litellm' ); ?>>LiteLLM Proxy</option>
 								<option value="openai" <?php selected( get_option( 'worldgraph_ai_backend' ), 'openai' ); ?>>OpenAI API</option>
 								<option value="anthropic" <?php selected( get_option( 'worldgraph_ai_backend' ), 'anthropic' ); ?>>Anthropic API</option>
 								<option value="dual" <?php selected( get_option( 'worldgraph_ai_backend' ), 'dual' ); ?>>Dual (Local + Fallback)</option>
 							</select>
-							<p class="description">Use OpenAI-compatible for llama.cpp, Ollama, vLLM, LM Studio, OpenRouter, or another compatible BYOK endpoint. Browser-only ChatGPT, Claude, and Claude Code subscriptions are not supported.</p>
+							<p class="description">Use LiteLLM for a LiteLLM proxy, or OpenAI-compatible for llama.cpp, Ollama, vLLM, LM Studio, OpenRouter, or another compatible BYOK endpoint. Browser-only ChatGPT, Claude, and Claude Code subscriptions are not supported.</p>
 						</td>
 					</tr>
 					<tr>
 						<th scope="row"><label for="worldgraph_ai_url">OpenAI-Compatible Base URL</label></th>
 						<td>
 							<input type="url" name="worldgraph_ai_url" id="worldgraph_ai_url" value="<?php echo esc_attr( get_option( 'worldgraph_ai_url' ) ); ?>" class="regular-text" />
-							<p class="description">Examples: http://host.docker.internal:11434/v1, http://host.docker.internal:1234/v1, or a compatible hosted endpoint.</p>
+							<p class="description">Examples: http://host.docker.internal:4000/v1 for LiteLLM, http://host.docker.internal:11434/v1 for Ollama, or a compatible hosted endpoint.</p>
 						</td>
 					</tr>
 					<tr>

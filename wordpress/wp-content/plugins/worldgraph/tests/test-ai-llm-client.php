@@ -235,6 +235,69 @@ class Test_AI_LLM_Client extends TestCase {
 		$this->assertSame( 'Unknown backend: unsupported_backend', $result['content'] );
 	}
 
+	/** LiteLLM Connections use the OpenAI-compatible chat-completions contract. */
+	public function test_litellm_connection_uses_configured_proxy_model_and_credential(): void {
+		$client = new Mock_Connection_AI_LLM_Client();
+		$client->delegate_chat = true;
+		$client->connection['provider_type'] = 'litellm';
+		$client->connection['endpoint_url'] = 'http://litellm.test:4000/v1';
+		$client->connection['model'] = 'story-generator';
+		$GLOBALS['worldgraph_ai_post_response']['body'] = json_encode( [
+			'choices' => [ [ 'message' => [ 'content' => 'Generated story' ] ] ],
+		] );
+
+		$result = $client->chat_with_connection( 17, 'Generate a story.' );
+
+		$this->assertIsArray( $result );
+		$this->assertSame( 'litellm', $result['backend'] );
+		$this->assertSame( 'story-generator', $result['model'] );
+		$call = end( $GLOBALS['worldgraph_ai_post_calls'] );
+		$this->assertSame( 'http://litellm.test:4000/v1/chat/completions', $call['url'] );
+		$this->assertSame( 'Bearer server-only-test-credential', $call['args']['headers']['Authorization'] );
+		$this->assertSame( 'story-generator', $this->last_request_body()['model'] );
+	}
+
+	/** Model discovery lists LiteLLM aliases without sending a chat request. */
+	public function test_litellm_model_discovery_does_not_require_a_selected_model(): void {
+		$client = new Mock_Connection_AI_LLM_Client();
+		$client->remote_response = [
+			'response' => [ 'code' => 200 ],
+			'body'     => json_encode( [
+				'data' => [
+					[ 'id' => 'base-llm' ],
+					[ 'id' => 'story-generator' ],
+				],
+			] ),
+		];
+
+		$result = $client->test_connection( [
+			'backend' => 'litellm',
+			'url'     => 'http://litellm.test:4000/v1',
+			'model'   => '',
+			'api_key' => 'proxy-key',
+		] );
+
+		$this->assertTrue( $result['healthy'] );
+		$this->assertSame( [ 'base-llm', 'story-generator' ], $result['models'] );
+		$this->assertCount( 0, $GLOBALS['worldgraph_ai_post_calls'] );
+	}
+
+	/** Anthropic discovery uses its model-list headers without sending a message. */
+	public function test_anthropic_model_discovery_uses_provider_catalog(): void {
+		$client = new Mock_Connection_AI_LLM_Client();
+		$client->remote_response = [
+			'response' => [ 'code' => 200 ],
+			'body'     => json_encode( [ 'data' => [ [ 'id' => 'claude-sonnet' ] ] ] ),
+		];
+
+		$result = $client->test_connection( [ 'backend' => 'anthropic', 'model' => '', 'api_key' => 'provider-key' ] );
+
+		$this->assertTrue( $result['healthy'] );
+		$this->assertSame( [ 'claude-sonnet' ], $result['models'] );
+		$this->assertSame( 'provider-key', $client->remote_calls[0]['args']['headers']['x-api-key'] );
+		$this->assertCount( 0, $GLOBALS['worldgraph_ai_post_calls'] );
+	}
+
 	/** A lower caller budget wins, while the Connection remains the upper cap. */
 	public function test_connection_max_tokens_honors_both_request_and_configuration_ceilings(): void {
 		$client = new Mock_Connection_AI_LLM_Client();
