@@ -1,7 +1,7 @@
 === World Graph Studio - Story Core ===
 Contributors: videohead
 Tags: storytelling, writing, pre-production, artificial intelligence, media
-Requires at least: 6.2
+Requires at least: 7.1
 Tested up to: 7.1
 Requires PHP: 8.1
 Stable tag: 1.0.0
@@ -37,9 +37,10 @@ The human-readable development source is available at [GitHub](https://github.co
 1. Install and activate [Secure Custom Fields](https://wordpress.org/plugins/secure-custom-fields/).
 2. Upload the `worldgraph` directory to `/wp-content/plugins/`, or install the plugin ZIP through Plugins > Add New > Upload Plugin.
 3. Activate World Graph Studio - Story Core in the Plugins screen.
-4. Open World Graph Studio > Setup and review the first-run settings.
-5. Leave all provider settings empty for Story Graph-only use, or add only the optional connections you intend to use.
-6. If you enable asynchronous generation, configure a reliable WP-Cron runner for your site.
+4. Install the bundled Frost parent theme, then install and activate the bundled World Graph Studio child theme.
+5. Open World Graph Studio > Setup and review the first-run settings.
+6. Leave all provider settings empty for Story Graph-only use, or add only the optional connections you intend to use.
+7. If you enable asynchronous generation, configure a reliable WP-Cron runner for your site.
 
 The optional Story RAG Decomposer is not needed for ordinary Story Import & Export. If you choose to enable that long-form retrieval enhancement, install and activate WPVDB separately as the top-level `/wp-content/plugins/wpvdb` plugin, then configure an active embedding provider and model in WPVDB. World Graph Studio does not bundle or install WPVDB, and its Plugins page will keep the enhancement unavailable until that requirement is met.
 

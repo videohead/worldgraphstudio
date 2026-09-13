@@ -6,12 +6,12 @@
 
 ## Requirements
 
-- WordPress 6.0 or later
+- WordPress 7.1 or later
 - PHP 8.1 or later
 - Secure Custom Fields (SCF), active before World Graph Studio
+- Frost parent theme, installed before activating the World Graph Studio theme
 - A reliable WP-Cron trigger for asynchronous generation
 
-WordPress 6.9 or later is required only for WordPress Abilities registration.
 Provider accounts, API keys, ComfyUI, and an LLM are optional for core Story
 Graph authoring.
 

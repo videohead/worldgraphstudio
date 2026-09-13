@@ -8,7 +8,7 @@
  * License: GPL v2 or later
  * Text Domain: worldgraph
  * Requires Plugins: worldgraph
- * Requires at least: 6.0
+ * Requires at least: 7.1
  * Requires PHP: 8.1
  *
  * @package WorldGraphVideoDraft

@@ -9,7 +9,7 @@
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain: worldgraph
  * Requires Plugins: secure-custom-fields
- * Requires at least: 6.2
+ * Requires at least: 7.1
  * Requires PHP: 8.1
  *
  * @package WorldGraph

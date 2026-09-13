@@ -9,7 +9,7 @@
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain: worldgraph
  * Requires Plugins: worldgraph
- * Requires at least: 6.0
+ * Requires at least: 7.1
  * Requires PHP: 8.1
  *
  * @package WorldGraphCeltx

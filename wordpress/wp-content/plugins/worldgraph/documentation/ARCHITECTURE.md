@@ -320,11 +320,11 @@ transport contract.
 
 Required:
 
-- WordPress 6.0 or later;
+- WordPress 7.1 or later;
 - PHP 8.1 or later; and
 - Secure Custom Fields.
 
-WordPress 6.9 or later is needed for the conditional WordPress Abilities
+WordPress 7.1 includes the WordPress Abilities
 registration. Provider accounts and services are optional.
 
 In the repository's Docker Compose environment:
