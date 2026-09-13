@@ -1,9 +1,11 @@
 # MCP Integration
 
-Model Context Protocol (MCP) is a standard that lets software advertise tools
-and structured operations. World Graph Studio uses MCP in specific Connections;
-it is not a switch that gives every AI application unrestricted access to a
-project.
+Model Context Protocol (MCP) is a standard that lets software advertise tools,
+resources, prompts, and structured operations. World Graph Studio supports MCP
+in two directions: it supplies permission-checked WordPress Abilities for
+external assistants, and it acts as a client of selected generation-provider
+MCP services. Neither direction gives an AI application unrestricted access to
+a project or arbitrary access to a remote provider.
 
 ## MCP in the current release
 
@@ -32,6 +34,27 @@ supported WordPress authentication mechanism). Assign only the capabilities
 the workflow needs. Do not expose these abilities anonymously or share one
 administrator credential across clients.
 
+### What an MCP client can do
+
+The exposed surface is organized around deliberate, reviewable workflows:
+
+| Area | MCP-facing abilities | What they offer |
+| --- | --- | --- |
+| Discover and read | `content-schema`, `list-entities`, `get-entity` | Inspect supported content types, current SCF field contracts, bounded entity lists, individual records, and relationships. |
+| Create and revise | `create-entity`, `update-entity` | Create or update supported Story Graph records, Templates, and Connections through the existing REST authorization boundary. |
+| Import a story | `decompose-story`, `decompose-story-upload`, `import-story` | Turn supplied text or an existing upload into canonical JSON for review, then explicitly import the approved document. |
+| Review a project | `review-project`, `add-review-note` | Read graph, production, timeline, editorial, and review state, and attach an editorial note. |
+| Generate a project | `plan-end-to-end-generation`, `run-end-to-end-generation`, `review-generation` | Preview blockers without spending credits, queue a confirmed idempotent demonstration batch, and inspect progress and imported assets. |
+| Exchange an edit | `preview-edl-import`, `import-edl`, `export-edl` | Preview and confirm CMX 3600 or XML EDL imports and export a live Project or Episode timeline. |
+| AI Editor and media | `chat`, `analyze`, `generate`, `continuity-check`, `template-requirements`, `generate-asset` | Use configured AI assistance, validate Template requirements, and queue story-aware image or Shot video generation. |
+| Context and prompts | `post-context`, `character-context`, `scene-context`, `templates-manifest`, `story-review-prompt`, `continuity-prompt` | Read focused Story Graph context and Template manifests, or obtain structured review and continuity prompts. |
+
+Ability identifiers use the `worldgraph/` namespace. Availability still depends
+on installed optional features and configuration: story decomposition requires
+Story Import & Export plus a manageable LLM Connection; EDL operations require
+the EDL Format Tools plugin; AI and generation operations require suitable
+Connections and Templates.
+
 The principal workflow is:
 
 1. `worldgraph/decompose-story-upload` previews an attachment uploaded by the
@@ -51,6 +74,20 @@ The principal workflow is:
 Generation tools can spend provider credits, so clients should always show the
 plan and obtain user confirmation before invoking the run ability. World Graph
 Studio does not bundle the MCP transport adapter itself.
+
+### Requirements and limits
+
+- Use WordPress 7.1 or later so the WordPress Abilities API is available.
+- Install and configure a compatible WordPress MCP Adapter separately. World
+  Graph Studio does not create an MCP endpoint by itself.
+- Authenticate as a WordPress user. Each ability applies its declared
+  capability check, and record operations also enforce object-level access.
+- Treat `decompose-story`, imports, record writes, review notes, generation,
+  and EDL imports as write operations. A client should preview or confirm them
+  with the user where the workflow provides that boundary.
+- The registered specialist `.agent.md` profiles are not automatically exposed
+  as separate MCP servers. They remain roles used by World Graph Studio's AI
+  layer; MCP clients call the published abilities.
 
 Developers extending this boundary should follow the authentication,
 permissions, operation allowlist, and transport requirements in the

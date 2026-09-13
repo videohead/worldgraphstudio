@@ -1,5 +1,6 @@
 export const mainMenu = {
   home: "/",
+  about: "/about",
   story: "/story",
   projects: "/story/projects",
   posts: "/posts",

@@ -79,6 +79,16 @@ through open, self-hosted technology.
 Become the open studio for building connected worlds and carrying them from an
 idea into production.
 
+## Target Audience
+
+- Writers
+- Filmmakers
+- Game Creators
+- Worldbuilders
+- Showrunners
+- Narrative Teams
+- Production Studios
+
 ---
 
 # Brand Promise
@@ -90,6 +100,17 @@ Instead of managing disconnected documents and assets, creators build stories wi
 World Graph Studio does not sell creative credits or require a single model
 provider. Optional hosted providers can still set their own prices, quotas,
 licenses, and usage policies.
+
+## Persistent Creative Memory
+
+```text
+Your Story Never Forgets.
+```
+
+World Graph Studio stores your story as structured knowledge. Characters,
+locations, props, scenes, storyboards, assets, and production notes remain
+available to AI assistants through the World Graph and AI-powered memory
+retrieval.
 
 ---
 

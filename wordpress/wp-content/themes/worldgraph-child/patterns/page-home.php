@@ -28,7 +28,7 @@
 			<!-- /wp:heading -->
 
 			<!-- wp:paragraph {"align":"center","className":"wg-hero__summary"} -->
-			<p class="has-text-align-center wg-hero__summary"><?php echo esc_html__( 'The extensible open-source studio for worldbuilding, storytelling, and AI-powered creative production. Import scripts, connect the tools you choose, and grow a team of 50+ specialist agents without any credits needed for local models.', 'worldgraph-child' ); ?></p>
+			<p class="has-text-align-center wg-hero__summary"><?php echo esc_html__( 'An open-source, self-hosted studio for worldbuilding, connected storytelling, and AI-powered creative production. Import and develop stories, build worlds, generate media, plan productions, and manage your assets in one connected workspace.', 'worldgraph-child' ); ?></p>
 			<!-- /wp:paragraph -->
 
 			<!-- wp:buttons {"className":"wg-hero__actions","layout":{"type":"flex","justifyContent":"center"}} -->
@@ -160,15 +160,15 @@
 		<!-- wp:group {"align":"wide","className":"wg-section__header","layout":{"type":"constrained"}} -->
 		<div class="wp-block-group alignwide wg-section__header">
 			<!-- wp:paragraph {"align":"center","className":"wg-eyebrow"} -->
-			<p class="has-text-align-center wg-eyebrow"><?php echo esc_html__( 'Story first', 'worldgraph-child' ); ?></p>
+			<p class="has-text-align-center wg-eyebrow"><?php echo esc_html__( 'Persistent Creative Memory', 'worldgraph-child' ); ?></p>
 			<!-- /wp:paragraph -->
 
 			<!-- wp:heading {"textAlign":"center","className":"wg-section__title","fontFamily":"headline"} -->
-			<h2 class="wp-block-heading has-text-align-center wg-section__title has-headline-font-family"><?php echo esc_html__( 'The story graph is the source of truth.', 'worldgraph-child' ); ?></h2>
+			<h2 class="wp-block-heading has-text-align-center wg-section__title has-headline-font-family"><?php echo esc_html__( 'Your Story Never Forgets.', 'worldgraph-child' ); ?></h2>
 			<!-- /wp:heading -->
 
 			<!-- wp:paragraph {"align":"center","className":"wg-section__summary"} -->
-			<p class="has-text-align-center wg-section__summary"><?php echo esc_html__( 'Instead of treating a story as a pile of documents, World Graph Studio represents narrative, production, asset, and editorial information as structured elements connected by explicit relationships.', 'worldgraph-child' ); ?></p>
+			<p class="has-text-align-center wg-section__summary"><?php echo esc_html__( 'World Graph Studio stores your story as structured knowledge. Characters, locations, props, scenes, storyboards, assets, and production notes remain available to AI assistants through the World Graph and AI-powered memory retrieval.', 'worldgraph-child' ); ?></p>
 			<!-- /wp:paragraph -->
 		</div>
 		<!-- /wp:group -->
@@ -225,7 +225,7 @@
 		<!-- wp:group {"align":"wide","backgroundColor":"blueprint-blue","textColor":"warm-ivory","className":"wg-note wg-story-graph__note","layout":{"type":"constrained"}} -->
 		<div class="wp-block-group alignwide wg-note wg-story-graph__note has-warm-ivory-color has-blueprint-blue-background-color has-text-color has-background">
 			<!-- wp:paragraph {"align":"center"} -->
-			<p class="has-text-align-center"><?php echo esc_html__( 'Project records, relationships, permissions, media, and APIs stay in the application you control. Optional services connect around that core; they do not replace it.', 'worldgraph-child' ); ?></p>
+			<p class="has-text-align-center"><?php echo esc_html__( 'The result is a creative workspace that understands not only what your assets are, but what they mean. Project records, relationships, permissions, and media stay in the application you control while optional services connect around that core.', 'worldgraph-child' ); ?></p>
 			<!-- /wp:paragraph -->
 		</div>
 		<!-- /wp:group -->
@@ -245,7 +245,7 @@
 			<!-- /wp:heading -->
 
 			<!-- wp:paragraph {"align":"center","className":"wg-section__summary"} -->
-			<p class="has-text-align-center wg-section__summary"><?php echo esc_html__( 'Core story and production planning work without an AI or generation connection. Extensibly connect Word Graph Studio to a wide array of resources for supplementing your story and its production, without sacrificing user control or distracting you from building compelling stories.', 'worldgraph-child' ); ?></p>
+			<p class="has-text-align-center wg-section__summary"><?php echo esc_html__( 'World Graph Studio gives your stories and production assets a unified home that can stay private or become a website you share. Core story and production planning continue to work without an AI or generation Connection.', 'worldgraph-child' ); ?></p>
 			<!-- /wp:paragraph -->
 		</div>
 		<!-- /wp:group -->
@@ -277,10 +277,10 @@
 			<!-- wp:group {"backgroundColor":"dark-espresso","textColor":"warm-ivory","className":"wg-card wg-capability","layout":{"type":"constrained"}} -->
 			<div class="wp-block-group wg-card wg-capability has-warm-ivory-color has-dark-espresso-background-color has-text-color has-background">
 				<!-- wp:heading {"level":3,"className":"wg-card__title","fontFamily":"headline"} -->
-				<h3 class="wp-block-heading wg-card__title has-headline-font-family"><?php echo esc_html__( '50+ extensible agents', 'worldgraph-child' ); ?></h3>
+				<h3 class="wp-block-heading wg-card__title has-headline-font-family"><?php echo esc_html__( 'Agents and MCP workflows', 'worldgraph-child' ); ?></h3>
 				<!-- /wp:heading -->
 				<!-- wp:paragraph -->
-				<p><?php echo esc_html__( 'Use Story Graph-aware chat, analysis, drafting, and more than 50 specialist agent profiles inside WordPress. Add focused roles through portable profile files; suggestions remain human-directed.', 'worldgraph-child' ); ?></p>
+				<p><?php echo esc_html__( 'Use 50+ Story Graph-aware specialist profiles inside WordPress, or connect a compatible external MCP client to permission-checked tools for story import, graph editing, project review, generation planning, asset review, and EDL exchange.', 'worldgraph-child' ); ?></p>
 				<!-- /wp:paragraph -->
 			</div>
 			<!-- /wp:group -->
@@ -335,7 +335,7 @@
 		<!-- wp:group {"align":"wide","className":"wg-section__header","layout":{"type":"constrained"}} -->
 		<div class="wp-block-group alignwide wg-section__header">
 			<!-- wp:paragraph {"align":"center","className":"wg-eyebrow"} -->
-			<p class="has-text-align-center wg-eyebrow"><?php echo esc_html__( 'Integration catalog', 'worldgraph-child' ); ?></p>
+			<p class="has-text-align-center wg-eyebrow"><?php echo esc_html__( 'Use the right tool for each part of the work', 'worldgraph-child' ); ?></p>
 			<!-- /wp:paragraph -->
 
 			<!-- wp:heading {"textAlign":"center","className":"wg-section__title","fontFamily":"headline"} -->
@@ -343,7 +343,7 @@
 			<!-- /wp:heading -->
 
 			<!-- wp:paragraph {"align":"center","className":"wg-section__summary"} -->
-			<p class="has-text-align-center wg-section__summary"><?php echo esc_html__( 'Formats, synchronization plugins, generation Connections, AI backends, and extension surfaces each have a defined role around the Story Graph.', 'worldgraph-child' ); ?></p>
+			<p class="has-text-align-center wg-section__summary"><?php echo esc_html__( 'Bring existing work into the shared structure, send specific jobs to outside tools, and return useful results to the project. The tools may change; the Project, Characters, Locations, Scenes, Shots, and Assets stay connected.', 'worldgraph-child' ); ?></p>
 			<!-- /wp:paragraph -->
 		</div>
 		<!-- /wp:group -->
@@ -406,7 +406,7 @@
 			<!-- /wp:heading -->
 
 			<!-- wp:paragraph {"align":"center","className":"wg-section__summary"} -->
-			<p class="has-text-align-center wg-section__summary"><?php echo esc_html__( 'Your struggle should be in the story, the struggle between the protagonists and antagonists, not in the tools, toolchain, or battling with format converters. Stay focused on the work that you want to do and use new capabilities to explore new possibilitiles. Connect  to external tools whenever you want and use story tools however you like.', 'worldgraph-child' ); ?></p>
+			<p class="has-text-align-center wg-section__summary"><?php echo esc_html__( 'Creative technology changes quickly. World Graph Studio is designed to evolve with it, so formats, provider Connections, and specialist agents can grow around the Story Graph without replacing it.', 'worldgraph-child' ); ?></p>
 			<!-- /wp:paragraph -->
 		</div>
 		<!-- /wp:group -->
@@ -418,10 +418,10 @@
 				<!-- wp:group {"className":"wg-card wg-control-card","layout":{"type":"constrained"}} -->
 				<div class="wp-block-group wg-card wg-control-card">
 					<!-- wp:heading {"level":3,"className":"wg-card__title","fontFamily":"headline"} -->
-					<h3 class="wp-block-heading wg-card__title has-headline-font-family"><?php echo esc_html__( 'Manage Your Assets.', 'worldgraph-child' ); ?></h3>
+					<h3 class="wp-block-heading wg-card__title has-headline-font-family"><?php echo esc_html__( 'Exchange creative data', 'worldgraph-child' ); ?></h3>
 					<!-- /wp:heading -->
 					<!-- wp:paragraph -->
-					<p><?php echo esc_html__( 'Easily connect to your services with a simplfied workflow - no confusing nodes or parameters that you don\'t understand.', 'worldgraph-child' ); ?></p>
+					<p><?php echo esc_html__( 'Import adapters translate external files and services into the shared Story Graph. Exporters create portable versions of live production data for the next tool in your workflow.', 'worldgraph-child' ); ?></p>
 					<!-- /wp:paragraph -->
 				</div>
 				<!-- /wp:group -->
@@ -433,10 +433,10 @@
 				<!-- wp:group {"className":"wg-card wg-control-card","layout":{"type":"constrained"}} -->
 				<div class="wp-block-group wg-card wg-control-card">
 					<!-- wp:heading {"level":3,"className":"wg-card__title","fontFamily":"headline"} -->
-					<h3 class="wp-block-heading wg-card__title has-headline-font-family"><?php echo esc_html__( 'Add a Connection', 'worldgraph-child' ); ?></h3>
+					<h3 class="wp-block-heading wg-card__title has-headline-font-family"><?php echo esc_html__( 'Add or replace Connections', 'worldgraph-child' ); ?></h3>
 					<!-- /wp:heading -->
 					<!-- wp:paragraph -->
-					<p><?php echo esc_html__( 'Register provider metadata, a conditional loader, and setup choices through the filterable Connection adapter layer, then supply the provider-specific behavior the integration needs.', 'worldgraph-child' ); ?></p>
+					<p><?php echo esc_html__( 'Use supported local or hosted services and change providers without rebuilding the project. Your Story Graph and Connection records remain stable.', 'worldgraph-child' ); ?></p>
 					<!-- /wp:paragraph -->
 				</div>
 				<!-- /wp:group -->
@@ -448,10 +448,10 @@
 				<!-- wp:group {"className":"wg-card wg-control-card","layout":{"type":"constrained"}} -->
 				<div class="wp-block-group wg-card wg-control-card">
 					<!-- wp:heading {"level":3,"className":"wg-card__title","fontFamily":"headline"} -->
-					<h3 class="wp-block-heading wg-card__title has-headline-font-family"><?php echo esc_html__( 'Connect to Extensible Experts.', 'worldgraph-child' ); ?></h3>
+					<h3 class="wp-block-heading wg-card__title has-headline-font-family"><?php echo esc_html__( 'Expand your specialist team', 'worldgraph-child' ); ?></h3>
 					<!-- /wp:heading -->
 					<!-- wp:paragraph -->
-					<p><?php echo esc_html__( 'Directors, producers, prop masters, hair styliists, and dramaturges are all featured as built-in experts to help you take your story to the next level.', 'worldgraph-child' ); ?></p>
+					<p><?php echo esc_html__( 'Start with more than 50 focused creative and production roles, then add or customize portable specialist profiles that share the same project context and permissions.', 'worldgraph-child' ); ?></p>
 					<!-- /wp:paragraph -->
 				</div>
 				<!-- /wp:group -->
@@ -551,7 +551,7 @@
 			<!-- /wp:heading -->
 
 			<!-- wp:paragraph {"align":"center","className":"wg-section__summary"} -->
-			<p class="has-text-align-center wg-section__summary"><?php echo esc_html__( 'World Graph Studio does not sell usage credits, require a World Graph Studio cloud, or make one model provider the owner of your project.', 'worldgraph-child' ); ?></p>
+			<p class="has-text-align-center wg-section__summary"><?php echo esc_html__( 'Your creativity is not metered. Your content is not trapped. Your workflow is not limited. You decide where WordPress runs, which services it can access, and what stays private or becomes public.', 'worldgraph-child' ); ?></p>
 			<!-- /wp:paragraph -->
 		</div>
 		<!-- /wp:group -->
@@ -608,7 +608,7 @@
 		<!-- wp:group {"align":"wide","backgroundColor":"sepia","textColor":"dark-espresso","className":"wg-note wg-provider-caveat","layout":{"type":"constrained"}} -->
 		<div class="wp-block-group alignwide wg-note wg-provider-caveat has-dark-espresso-color has-sepia-background-color has-text-color has-background">
 			<!-- wp:paragraph -->
-			<p><strong><?php echo esc_html__( 'Fully Extensible for free : ', 'worldgraph-child' ); ?></strong> <?php echo esc_html__( 'The tools are free and all agentic work can be completed on local GPU resources. No need to pay for anything, ever. Add agent experts and new models anytime.', 'worldgraph-child' ); ?></p>
+			<p><strong><?php echo esc_html__( 'No World Graph Studio credits.', 'worldgraph-child' ); ?></strong> <?php echo esc_html__( 'Local and open-model workflows do not require a platform credit balance. Optional third-party providers may still have their own prices, quotas, licenses, moderation policies, and terms.', 'worldgraph-child' ); ?></p>
 			<!-- /wp:paragraph -->
 		</div>
 		<!-- /wp:group -->
@@ -634,6 +634,17 @@
 			<!-- wp:group {"className":"wg-card wg-audience-card","layout":{"type":"constrained"}} -->
 			<div class="wp-block-group wg-card wg-audience-card">
 				<!-- wp:heading {"level":3,"className":"wg-card__title","fontFamily":"headline"} -->
+				<h3 class="wp-block-heading wg-card__title has-headline-font-family"><?php echo esc_html__( 'Writers', 'worldgraph-child' ); ?></h3>
+				<!-- /wp:heading -->
+				<!-- wp:paragraph -->
+				<p><?php echo esc_html__( 'Keep structured story context close while drafting, reviewing, and revising.', 'worldgraph-child' ); ?></p>
+				<!-- /wp:paragraph -->
+			</div>
+			<!-- /wp:group -->
+
+			<!-- wp:group {"className":"wg-card wg-audience-card","layout":{"type":"constrained"}} -->
+			<div class="wp-block-group wg-card wg-audience-card">
+				<!-- wp:heading {"level":3,"className":"wg-card__title","fontFamily":"headline"} -->
 				<h3 class="wp-block-heading wg-card__title has-headline-font-family"><?php echo esc_html__( 'Filmmakers', 'worldgraph-child' ); ?></h3>
 				<!-- /wp:heading -->
 				<!-- wp:paragraph -->
@@ -645,7 +656,7 @@
 			<!-- wp:group {"className":"wg-card wg-audience-card","layout":{"type":"constrained"}} -->
 			<div class="wp-block-group wg-card wg-audience-card">
 				<!-- wp:heading {"level":3,"className":"wg-card__title","fontFamily":"headline"} -->
-				<h3 class="wp-block-heading wg-card__title has-headline-font-family"><?php echo esc_html__( 'Game creators', 'worldgraph-child' ); ?></h3>
+				<h3 class="wp-block-heading wg-card__title has-headline-font-family"><?php echo esc_html__( 'Game Creators', 'worldgraph-child' ); ?></h3>
 				<!-- /wp:heading -->
 				<!-- wp:paragraph -->
 				<p><?php echo esc_html__( 'Design worlds, characters, locations, props, and narrative relationships.', 'worldgraph-child' ); ?></p>
@@ -656,10 +667,10 @@
 			<!-- wp:group {"className":"wg-card wg-audience-card","layout":{"type":"constrained"}} -->
 			<div class="wp-block-group wg-card wg-audience-card">
 				<!-- wp:heading {"level":3,"className":"wg-card__title","fontFamily":"headline"} -->
-				<h3 class="wp-block-heading wg-card__title has-headline-font-family"><?php echo esc_html__( 'Scriptwriters', 'worldgraph-child' ); ?></h3>
+				<h3 class="wp-block-heading wg-card__title has-headline-font-family"><?php echo esc_html__( 'Worldbuilders', 'worldgraph-child' ); ?></h3>
 				<!-- /wp:heading -->
 				<!-- wp:paragraph -->
-				<p><?php echo esc_html__( 'Keep structured story context close while writing, reviewing, and revising.', 'worldgraph-child' ); ?></p>
+				<p><?php echo esc_html__( 'Connect lore, histories, people, places, objects, and cultures in one evolving world.', 'worldgraph-child' ); ?></p>
 				<!-- /wp:paragraph -->
 			</div>
 			<!-- /wp:group -->
@@ -667,10 +678,10 @@
 			<!-- wp:group {"className":"wg-card wg-audience-card","layout":{"type":"constrained"}} -->
 			<div class="wp-block-group wg-card wg-audience-card">
 				<!-- wp:heading {"level":3,"className":"wg-card__title","fontFamily":"headline"} -->
-				<h3 class="wp-block-heading wg-card__title has-headline-font-family"><?php echo esc_html__( 'Video producers', 'worldgraph-child' ); ?></h3>
+				<h3 class="wp-block-heading wg-card__title has-headline-font-family"><?php echo esc_html__( 'Showrunners', 'worldgraph-child' ); ?></h3>
 				<!-- /wp:heading -->
 				<!-- wp:paragraph -->
-				<p><?php echo esc_html__( 'Organize scenes, sequences, sounds, media, and production metadata.', 'worldgraph-child' ); ?></p>
+				<p><?php echo esc_html__( 'Track characters, episodes, arcs, continuity, and production decisions across a series.', 'worldgraph-child' ); ?></p>
 				<!-- /wp:paragraph -->
 			</div>
 			<!-- /wp:group -->
@@ -678,10 +689,21 @@
 			<!-- wp:group {"className":"wg-card wg-audience-card","layout":{"type":"constrained"}} -->
 			<div class="wp-block-group wg-card wg-audience-card">
 				<!-- wp:heading {"level":3,"className":"wg-card__title","fontFamily":"headline"} -->
-				<h3 class="wp-block-heading wg-card__title has-headline-font-family"><?php echo esc_html__( 'Creators', 'worldgraph-child' ); ?></h3>
+				<h3 class="wp-block-heading wg-card__title has-headline-font-family"><?php echo esc_html__( 'Narrative Teams', 'worldgraph-child' ); ?></h3>
 				<!-- /wp:heading -->
 				<!-- wp:paragraph -->
-				<p><?php echo esc_html__( 'Design worlds, characters, props and creative assets.', 'worldgraph-child' ); ?></p>
+				<p><?php echo esc_html__( 'Share durable creative context so collaborators and AI assistants work from the same story knowledge.', 'worldgraph-child' ); ?></p>
+				<!-- /wp:paragraph -->
+			</div>
+			<!-- /wp:group -->
+
+			<!-- wp:group {"className":"wg-card wg-audience-card","layout":{"type":"constrained"}} -->
+			<div class="wp-block-group wg-card wg-audience-card">
+				<!-- wp:heading {"level":3,"className":"wg-card__title","fontFamily":"headline"} -->
+				<h3 class="wp-block-heading wg-card__title has-headline-font-family"><?php echo esc_html__( 'Production Studios', 'worldgraph-child' ); ?></h3>
+				<!-- /wp:heading -->
+				<!-- wp:paragraph -->
+				<p><?php echo esc_html__( 'Keep projects, production notes, media, and handoffs connected from development through delivery.', 'worldgraph-child' ); ?></p>
 				<!-- /wp:paragraph -->
 			</div>
 			<!-- /wp:group -->
@@ -700,7 +722,7 @@
 			<!-- /wp:heading -->
 
 			<!-- wp:paragraph {"align":"center","className":"wg-cta__summary"} -->
-			<p class="has-text-align-center wg-cta__summary"><?php echo esc_html__( 'Start with a portable Story Graph you control. Add or replace formats, provider Connections, and specialist agents as the work evolves.', 'worldgraph-child' ); ?></p>
+			<p class="has-text-align-center wg-cta__summary"><?php echo esc_html__( 'One studio for the world behind your work. Start with a portable Story Graph you control, then add or replace formats, provider Connections, and specialist agents as the work evolves.', 'worldgraph-child' ); ?></p>
 			<!-- /wp:paragraph -->
 
 			<!-- wp:buttons {"className":"wg-cta__actions","layout":{"type":"flex","justifyContent":"center"}} -->

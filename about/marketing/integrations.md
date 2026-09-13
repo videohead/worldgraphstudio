@@ -46,6 +46,22 @@ searchable text layer; scanned pages need OCR first.
 
 ## Write, review, and develop
 
+### External AI assistants through MCP
+
+Use Claude, Codex, Cursor, VS Code, or another MCP client with a separately
+installed compatible WordPress MCP Adapter. World Graph Studio publishes typed,
+permission-checked abilities for Story Graph discovery and editing, story
+preview/import, project and editorial review, generation planning and runs,
+asset review, contextual resources and prompts, and EDL exchange.
+
+The MCP client authenticates as a WordPress user, so WordPress capabilities and
+record-level permissions remain in force. The transport adapter is not bundled,
+and operations that write data or spend provider credits should remain under
+human confirmation.
+
+**Place in the platform:** bring an assistant into a controlled end-to-end
+creative workflow without giving it unrestricted database or provider access.
+
 ### OpenAI
 
 Use an OpenAI API model for the editor, specialist advisers, and reviewed story

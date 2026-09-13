@@ -6,7 +6,15 @@
 
 World Graph Studio brings the entire creative process into one workspace. Import and develop stories, build worlds, generate media, plan productions, and manage your assets — without scattering your work across disconnected prompts, proprietary project files, and competing (and expensive) platforms. Export your work any time to use  in other creative tools including video, image, and audio editors.
 
-Built on WordPress and designed for open AI workflows, World Graph Studio helps filmmakers, game creators, writers, video producers, and creative teams turn ideas into finished projects.
+Built on WordPress and designed for open AI workflows, World Graph Studio helps Writers, Filmmakers, Game Creators, Worldbuilders, Showrunners, Narrative Teams, and Production Studios turn ideas into finished projects.
+
+## Persistent Creative Memory
+
+**Your Story Never Forgets.**
+
+World Graph Studio stores your story as structured knowledge.
+
+Characters, locations, props, scenes, storyboards, assets, and production notes remain available to AI assistants through the World Graph and AI-powered memory retrieval.
 
 ## One creative world. Everything connected.
 
@@ -23,6 +31,9 @@ World Graph Studio gives your stories and production assets a unified home that 
 * Import and analyze scripts and stories with a Story Graph-aware import tool..
 * Use AI tools where and when you want - as story analysis tools, production experts, or use them to write and enhance your story.
 * Work with the more than 50 specialist AI agents for writing, continuity, production, story development, and creative analysis.
+* Connect Claude, Codex, Cursor, VS Code, and other compatible MCP clients to
+  permission-checked workflows for importing stories, reading and editing the
+  Story Graph, reviewing projects, planning generation, and exchanging EDLs.
 * Search across your entire fictional world and explore the relationships between story elements, use dramaturgical tools and find plot and continuity weaknesses to detect issues before they become production problems.
 * Create shot lists, storyboard sequences, production plans, and editorial handoffs.
 * Generate images, video, audio, dialogue, and music through configurable AI workflows, including no-cost local generation on your existing GPU hardware.
@@ -72,6 +83,24 @@ For example:
 * Use brokers like LiteLLM and manage your costs across all APIs.
 
 Connections can send work to specialized tools and bring the results back into your Story Graph. The provider may change; your project structure does not.
+
+## Bring your own AI assistant through MCP
+
+World Graph Studio publishes schema-described WordPress Abilities that a
+compatible WordPress MCP Adapter can expose to an external assistant. With the
+permissions you assign, that assistant can inspect or revise Story Graph
+records, turn story text into a reviewable import, assess production and
+editorial state, plan and run configured generation, review returned assets,
+and preview, import, or export EDL data.
+
+The boundary stays explicit: World Graph Studio does not bundle the transport
+adapter, every client authenticates as a WordPress user, and existing
+capability and record-level checks still apply. Paid generation remains a
+confirmable action rather than an automatic side effect. World Graph Studio
+also uses MCP in the other direction for selected provider Connections.
+
+See [MCP Integration](../../docs/mcp-integration.md) for the complete surface
+and setup requirements.
 
 ## Your creativity should not be metered
 

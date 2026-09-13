@@ -283,6 +283,11 @@ can activate the World Graph Studio child theme.
 6. When installation finishes, select **Activate** for **World Graph Studio**.
 7. Open the public site and confirm that the World Graph Studio design appears.
 
+On its first request after activation or a theme update, the theme creates a
+published `/about/` page when that slug is unused. It never changes an existing
+About page. The page uses the theme-owned About template and remains available
+through the header and footer navigation.
+
 ### Install the themes from folders
 
 Install Frost from **Appearance > Themes > Add New Theme** first. Then copy the

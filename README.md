@@ -2,7 +2,7 @@
 
 ### Your worlds. Your ideas. Your assets. No credits needed.
 
-World Graph Studio is an open-source worldbuilding and creative production studio for writers, filmmakers, game creators, educators, and storytellers.
+World Graph Studio is an open-source worldbuilding and creative production studio for Writers, Filmmakers, Game Creators, Worldbuilders, Showrunners, Narrative Teams, and Production Studios.
 
 Build connected worlds composed of characters, locations, props, scenes, shots, storyboards, sequences, scripts, and generated assets.
 
@@ -28,6 +28,12 @@ World Graph Studio takes a different approach.
 
 ## Core Principles
 
+### Persistent Creative Memory
+Your Story Never Forgets. World Graph Studio stores characters, locations,
+props, scenes, storyboards, assets, and production notes as structured
+knowledge that remains available through the World Graph and AI-powered memory
+retrieval.
+
 ### Own Your Worlds
 Create connected worlds instead of disconnected files.
 
@@ -38,7 +44,14 @@ AI helps organize, analyze, and plan. You remain the creator.
 Local, open-source, hosted, or commercial models. Your choice.
 
 ### Your AI. Your Workflow.
-Built-in MCP support for Claude, Cursor, VS Code, and more.
+Use World Graph Studio from Claude, Codex, Cursor, VS Code, and other MCP
+clients through a compatible WordPress MCP Adapter. Assistants can work with
+permission-checked tools for story import, Story Graph records, project review,
+generation planning and execution, generated assets, and EDL exchange. World
+Graph Studio also connects outward to selected generation providers over MCP.
+
+[See exactly what the MCP integration offers](docs/mcp-integration.md), including
+setup requirements and safeguards for write actions and paid generation.
 
 ### Generate Anywhere
 Prototype cheaply (even free). Render anywhere. Keep everything connected.
