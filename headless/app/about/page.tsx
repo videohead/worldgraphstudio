@@ -71,7 +71,7 @@ export default function AboutPage() {
         aria-labelledby="wordpress-title"
       >
         <div className="mx-auto max-w-4xl space-y-5">
-          <p className="font-headline text-xs font-bold uppercase tracking-[0.22em] text-wg-sepia">
+          <p className="font-headline text-xs font-bold uppercase tracking-[0.22em] text-wg-ivory/80">
             Why WordPress
           </p>
           <h2 id="wordpress-title" className="text-4xl">
@@ -133,7 +133,11 @@ export default function AboutPage() {
           The idea of keeping it open—get in and get out for free—was a core
           part of the effort. I promise never to change that.
         </p>
-        <Button href="/story">Explore the Story Graph</Button>
+        <div>
+          <Button href="/story" variant="light">
+            Explore the Story Graph
+          </Button>
+        </div>
       </section>
     </div>
   );

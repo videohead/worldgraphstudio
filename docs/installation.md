@@ -284,9 +284,10 @@ can activate the World Graph Studio child theme.
 7. Open the public site and confirm that the World Graph Studio design appears.
 
 On its first request after activation or a theme update, the theme creates a
-published `/about/` page when that slug is unused. It never changes an existing
-About page. The page uses the theme-owned About template and remains available
-through the header and footer navigation.
+published `/about/` page when that slug is unused. If the page already exists,
+the theme leaves its stored title, content, and publication status unchanged.
+The route uses the theme-owned About template and remains available through the
+header and footer navigation.
 
 ### Install the themes from folders
 
