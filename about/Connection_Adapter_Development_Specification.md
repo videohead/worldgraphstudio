@@ -53,12 +53,12 @@ This specification concerns the first row. A provider may optionally have an
 advisor that explains how to operate it, but advisor frontmatter is not a
 transport, authentication, or execution registration mechanism.
 
-The current `class-ai-abilities.php` implementation is not a working inbound
-exposure contract: it attempts registration outside
-`wp_abilities_api_init`, does not register categories on
-`wp_abilities_api_categories_init`, and omits the required ability `category`.
-Treat those declarations as aspirational until repaired and tested, and note
-that World Graph Studio does not bundle or install the WordPress MCP Adapter.
+The inbound Abilities implementation registers its category on
+`wp_abilities_api_categories_init` and its categorized abilities on
+`wp_abilities_api_init`. It exposes typed Story Graph import, CRUD, editorial,
+generation, asset-review, and EDL workflows through the same authorization and
+service boundaries as REST. World Graph Studio does not bundle or install the
+WordPress MCP Adapter; that separately authenticated adapter supplies transport.
 Use the current WordPress contracts for
 [`wp_register_ability()`](https://developer.wordpress.org/reference/functions/wp_register_ability/)
 and

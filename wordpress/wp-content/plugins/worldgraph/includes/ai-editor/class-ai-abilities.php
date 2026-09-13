@@ -80,6 +80,7 @@ abstract class AbstractAbilityGroup {
             'permission_callback' => null,
 			'meta'           => [],
 		] );
+		$args['category'] = $this->category_slug;
         // Ensure meta array exists.
         $args['meta'] = wp_parse_args( $args['meta'], [
             'public' => true,
@@ -918,6 +919,8 @@ class Asset_Abilities extends AbstractAbilityGroup {
     }
 }
 
+require_once __DIR__ . '/class-agent-workflow-abilities.php';
+
 /**
  * Main World Graph Studio Abilities class.
  *
@@ -956,6 +959,7 @@ class Abilities {
      */
     private function __construct() {
         $this->ability_groups = [
+			new Agent_Workflow_Abilities(),
             new Context_Resources(),
             new Prompt_Templates(),
             new Asset_Abilities(),
@@ -985,9 +989,6 @@ class Abilities {
      * categories must be registered on this action, not 'init'.
      */
     public function init(): void {
-        // Register the World Graph Studio AI Editor category.
-        $this->register_category();
-
         // Register all ability groups.
         foreach ( $this->ability_groups as $group ) {
             $group->register();
@@ -999,7 +1000,7 @@ class Abilities {
      *
      * @return WP_Error|int Result of wp_register_ability_category.
      */
-    private function register_category() {
+    public function register_category() {
         return \wp_register_ability_category( 'worldgraph-ai-editor', [
             'label'       => 'World Graph Studio AI Editor',
             'description' => 'Abilities for AI-powered story editing, content generation, and continuity checking.',

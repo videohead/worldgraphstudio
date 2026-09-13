@@ -20,12 +20,37 @@ server.
 
 ## External assistants connecting to World Graph Studio
 
-The repository contains WordPress Abilities declarations intended to support
-future AI capability exposure, but the complete inbound MCP registration and
-client workflow is not currently a supported release feature. Do not assume
-that Claude, Cursor, VS Code, Windsurf, or another MCP client can connect
-directly to a World Graph Studio site merely because outbound MCP Connections
-are available.
+World Graph Studio registers public, schema-described WordPress Abilities for
+the complete agent workflow. A compatible WordPress MCP Adapter can expose
+them to Claude, Codex, and other MCP clients. The adapter owns MCP transport
+and authentication; World Graph Studio owns the tools and enforces WordPress
+capabilities and object-level permissions.
+
+Create a dedicated WordPress user for each agent integration and authenticate
+the MCP adapter with that user's Application Password (or another adapter-
+supported WordPress authentication mechanism). Assign only the capabilities
+the workflow needs. Do not expose these abilities anonymously or share one
+administrator credential across clients.
+
+The principal workflow is:
+
+1. `worldgraph/decompose-story-upload` previews an attachment uploaded by the
+   existing form, or `worldgraph/decompose-story` accepts story text directly.
+2. The agent and user review the canonical JSON, then explicitly call
+   `worldgraph/import-story` to populate the database.
+3. `content-schema`, `list-entities`, `get-entity`, `create-entity`, and
+   `update-entity` expose all supported Story Graph posts, generation Templates,
+   Connections, and writable SCF fields without bypassing REST authorization.
+4. `review-project` and `add-review-note` expose production and editorial state.
+5. `plan-end-to-end-generation` previews provider/template blockers before
+   `run-end-to-end-generation` creates a durable, idempotent batch.
+6. `review-generation` returns batch progress and generated asset records.
+7. `preview-edl-import`, `import-edl`, and `export-edl` provide the existing
+   CMX 3600/XML preview-confirm and timeline export workflow agentically.
+
+Generation tools can spend provider credits, so clients should always show the
+plan and obtain user confirmation before invoking the run ability. World Graph
+Studio does not bundle the MCP transport adapter itself.
 
 Developers extending this boundary should follow the authentication,
 permissions, operation allowlist, and transport requirements in the

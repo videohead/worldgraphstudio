@@ -185,6 +185,23 @@ function autoloader( string $class ): void {
 
 spl_autoload_register( __NAMESPACE__ . '\\autoloader' );
 
+// Register inbound agent capabilities before another plugin or REST discovery
+// can instantiate the lazy WordPress Abilities registries during `init`.
+if ( function_exists( 'wp_register_ability' ) ) {
+	add_action(
+		'wp_abilities_api_categories_init',
+		static function () {
+			\WorldGraph\AI\Abilities\Abilities::instance()->register_category();
+		}
+	);
+	add_action(
+		'wp_abilities_api_init',
+		static function () {
+			\WorldGraph\AI\Abilities\Abilities::instance()->init();
+		}
+	);
+}
+
 /**
  * Check if SCF (Secure Custom Fields) is active.
  *
@@ -377,17 +394,6 @@ function init(): void {
 	if ( class_exists( '\WorldGraph\AI\AI_Editor' ) ) {
 		\WorldGraph\AI\AI_Editor::init();
 
-		// Initialize World Graph Studio Abilities for MCP exposure (requires WP 6.9+).
-		// wp_register_ability()/wp_register_ability_category() must run on the
-		// wp_abilities_api_init action, not init, or WP prints a notice per call.
-		if ( function_exists( 'wp_register_ability' ) ) {
-			add_action(
-				'wp_abilities_api_init',
-				static function () {
-					\WorldGraph\AI\Abilities\Abilities::instance()->init();
-				}
-			);
-		}
 	}
 
 	// Load Celtx Sync integration.

@@ -451,10 +451,23 @@ function handle_confirm_import(): void {
 		wp_send_json_error( 'No preview found. Please upload again.' );
 	}
 
-	$target_type = $preview['target_type'] ?? '';
-	$target_id   = (int) ( $preview['target_id'] ?? 0 );
+	$result = persist_edl_preview( $preview );
+	if ( is_wp_error( $result ) ) {
+		wp_send_json_error( $result->get_error_message() );
+	}
 
-	$post_id = wp_insert_post(
+	delete_transient( 'worldgraph_edl_import_preview' );
+	wp_send_json_success( $result );
+}
+
+/** Persist one reviewed EDL preview as an Editorial Artifact. */
+function persist_edl_preview( array $preview ) {
+	if ( empty( $preview['clips'] ) ) {
+		return new \WP_Error( 'edl_preview_empty', 'The reviewed EDL contains no clips.' );
+	}
+	$target_type = in_array( (string) ( $preview['target_type'] ?? '' ), [ 'project', 'episode' ], true ) ? (string) $preview['target_type'] : '';
+	$target_id   = absint( $preview['target_id'] ?? 0 );
+	$post_id     = wp_insert_post(
 		[
 			'post_type'   => 'worldgraph_editorial',
 			'post_status' => 'publish',
@@ -465,7 +478,7 @@ function handle_confirm_import(): void {
 	);
 
 	if ( is_wp_error( $post_id ) ) {
-		wp_send_json_error( $post_id->get_error_message() );
+		return $post_id;
 	}
 
 	\WorldGraph\Utils\worldgraph_update_field_value( $post_id, 'artifact_type', 'edl' );
@@ -479,14 +492,18 @@ function handle_confirm_import(): void {
 		\WorldGraph\Utils\add_relationship( $post_id, 'worldgraph_editorial', $target_id, $related_cpt, 'derived_from' );
 	}
 
-	delete_transient( 'worldgraph_edl_import_preview' );
-	wp_send_json_success(
-		[
-			/* translators: 1: clip count, 2: post ID. */
-			'message' => sprintf( __( 'EDL successfully imported: %1$d clip(s) saved as Editorial Artifact #%2$d.', 'worldgraph' ), count( $preview['clips'] ), $post_id ),
-			'post_id' => $post_id,
-		]
-	);
+	return [
+		/* translators: 1: clip count, 2: post ID. */
+		'message' => sprintf( __( 'EDL successfully imported: %1$d clip(s) saved as Editorial Artifact #%2$d.', 'worldgraph' ), count( $preview['clips'] ), $post_id ),
+		'post_id' => $post_id,
+		'clip_count' => count( $preview['clips'] ),
+	];
+}
+
+/** Generate an EDL string from a live Project or Episode timeline. */
+function export_edl( string $target_type, int $target_id, string $format, float $fps, array $options = [] ) {
+	$timeline = get_timeline_data( $target_type, $target_id );
+	return is_wp_error( $timeline ) ? $timeline : generate_edl( $timeline, $format, $fps, $options );
 }
 
 /**

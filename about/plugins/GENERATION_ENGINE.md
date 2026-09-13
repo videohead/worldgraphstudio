@@ -798,8 +798,11 @@ registers generation-related abilities including:
 
 - `worldgraph/templates-manifest`;
 - `worldgraph/template-requirements`;
-- `worldgraph/suggest-asset-prompt`; and
-- `worldgraph/generate-asset`.
+- `worldgraph/suggest-asset-prompt`;
+- `worldgraph/generate-asset`;
+- `worldgraph/plan-end-to-end-generation`;
+- `worldgraph/run-end-to-end-generation`; and
+- `worldgraph/review-generation`.
 
 An installed WordPress MCP adapter may expose public abilities to external MCP
 clients. The in-editor filmmaking advisors do not autonomously invoke these
