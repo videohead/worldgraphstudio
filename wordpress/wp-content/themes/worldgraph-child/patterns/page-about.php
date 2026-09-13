@@ -160,7 +160,7 @@
 				<!-- /wp:button -->
 
 				<!-- wp:button {"className":"is-style-outline wg-button-secondary"} -->
-				<div class="wp-block-button is-style-outline wg-button-secondary"><a class="wp-block-button__link wp-element-button" href="<?php echo esc_url( admin_url( 'admin.php?page=worldgraph' ) ); ?>"><?php echo esc_html__( 'Open Studio', 'worldgraph-child' ); ?></a></div>
+				<div class="wp-block-button is-style-outline wg-button-secondary"><a class="wp-block-button__link wp-element-button" href="<?php echo esc_url( 'https://github.com/videohead/worldgraphstudio' ); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__( 'Open Studio', 'worldgraph-child' ); ?></a></div>
 				<!-- /wp:button -->
 			</div>
 			<!-- /wp:buttons -->

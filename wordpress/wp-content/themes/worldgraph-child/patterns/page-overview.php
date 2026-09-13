@@ -369,7 +369,7 @@
 			<!-- wp:buttons {"className":"wg-cta__actions","layout":{"type":"flex","justifyContent":"center"}} -->
 			<div class="wp-block-buttons wg-cta__actions">
 				<!-- wp:button {"className":"wg-button-primary"} -->
-				<div class="wp-block-button wg-button-primary"><a class="wp-block-button__link wp-element-button" href="<?php echo esc_url( admin_url( 'admin.php?page=worldgraph' ) ); ?>"><?php echo esc_html__( 'Open Studio', 'worldgraph-child' ); ?></a></div>
+				<div class="wp-block-button wg-button-primary"><a class="wp-block-button__link wp-element-button" href="<?php echo esc_url( 'https://github.com/videohead/worldgraphstudio' ); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__( 'Open Studio', 'worldgraph-child' ); ?></a></div>
 				<!-- /wp:button -->
 
 				<!-- wp:button {"className":"is-style-outline wg-button-secondary"} -->

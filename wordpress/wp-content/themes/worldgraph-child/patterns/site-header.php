@@ -38,7 +38,7 @@
 			<!-- /wp:navigation -->
 
 			<!-- wp:button {"fontFamily":"headline","fontSize":"small"} -->
-			<div class="wp-block-button has-custom-font-size has-small-font-size has-headline-font-family"><a class="wp-block-button__link wp-element-button" href="<?php echo esc_url( admin_url( 'admin.php?page=worldgraph' ) ); ?>"><?php echo esc_html_x( 'Open Studio', 'Header call-to-action label.', 'worldgraph-child' ); ?></a></div>
+			<div class="wp-block-button has-custom-font-size has-small-font-size has-headline-font-family"><a class="wp-block-button__link wp-element-button" href="<?php echo esc_url( 'https://github.com/videohead/worldgraphstudio' ); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html_x( 'Open Studio', 'Header call-to-action label.', 'worldgraph-child' ); ?></a></div>
 			<!-- /wp:button -->
 		</div>
 		<!-- /wp:group -->

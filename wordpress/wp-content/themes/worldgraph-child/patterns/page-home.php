@@ -124,7 +124,7 @@
 					<!-- /wp:heading -->
 
 					<!-- wp:paragraph -->
-					<p><?php echo esc_html__( 'Notes, scripts, prompts, assets, and editorial decisions drift into separate tools. The context that gives each choice meaning gets lost between story development and production.', 'worldgraph-child' ); ?></p>
+					<p><?php echo esc_html__( 'Unify your story ideas in one web-based platform with text, images, video all serving to move the story and your production goals forward. Unify disparate tools and workflows with one story-centered source of truth.', 'worldgraph-child' ); ?></p>
 					<!-- /wp:paragraph -->
 				</div>
 				<!-- /wp:group -->
@@ -213,7 +213,7 @@
 					<h3 class="wp-block-heading wg-node__title has-headline-font-family"><?php echo esc_html__( 'Production', 'worldgraph-child' ); ?></h3>
 					<!-- /wp:heading -->
 					<!-- wp:paragraph -->
-					<p><?php echo esc_html__( 'Assets, editorial records, generation templates, and provider connections remain linked to the records that give them meaning.', 'worldgraph-child' ); ?></p>
+					<p><?php echo esc_html__( 'Your story elements (characters, locations, props, dialog and sound) are linked through the prompts used to create them, across one or many generative tools and budgets.', 'worldgraph-child' ); ?></p>
 					<!-- /wp:paragraph -->
 				</div>
 				<!-- /wp:group -->
@@ -241,11 +241,11 @@
 			<!-- /wp:paragraph -->
 
 			<!-- wp:heading {"textAlign":"center","className":"wg-section__title","fontFamily":"headline"} -->
-			<h2 class="wp-block-heading has-text-align-center wg-section__title has-headline-font-family"><?php echo esc_html__( 'A connected creative workspace that ships now.', 'worldgraph-child' ); ?></h2>
+			<h2 class="wp-block-heading has-text-align-center wg-section__title has-headline-font-family"><?php echo esc_html__( 'A connected creative workspace for all of your tools.', 'worldgraph-child' ); ?></h2>
 			<!-- /wp:heading -->
 
 			<!-- wp:paragraph {"align":"center","className":"wg-section__summary"} -->
-			<p class="has-text-align-center wg-section__summary"><?php echo esc_html__( 'World Graph Studio gives your stories and production assets a unified home that can stay private or become a website you share. Core story and production planning continue to work without an AI or generation Connection.', 'worldgraph-child' ); ?></p>
+			<p class="has-text-align-center wg-section__summary"><?php echo esc_html__( 'World Graph Studio gives your stories and production assets a unified home that can stay private or become a website you share. You decide where to integrate AI in your creative workflow - advisor, generator, or creative consultant.', 'worldgraph-child' ); ?></p>
 			<!-- /wp:paragraph -->
 		</div>
 		<!-- /wp:group -->
@@ -288,7 +288,7 @@
 			<!-- wp:group {"backgroundColor":"dark-espresso","textColor":"warm-ivory","className":"wg-card wg-capability","layout":{"type":"constrained"}} -->
 			<div class="wp-block-group wg-card wg-capability has-warm-ivory-color has-dark-espresso-background-color has-text-color has-background">
 				<!-- wp:heading {"level":3,"className":"wg-card__title","fontFamily":"headline"} -->
-				<h3 class="wp-block-heading wg-card__title has-headline-font-family"><?php echo esc_html__( 'Generation and provenance', 'worldgraph-child' ); ?></h3>
+				<h3 class="wp-block-heading wg-card__title has-headline-font-family"><?php echo esc_html__( 'Budget and Generate', 'worldgraph-child' ); ?></h3>
 				<!-- /wp:heading -->
 				<!-- wp:paragraph -->
 				<p><?php echo esc_html__( 'Use connections to other services including local generation to manage your production and asset generation workflow. Build one story, connect it to multiple generative tools including free local generators.', 'worldgraph-child' ); ?></p>
@@ -386,7 +386,7 @@
 			<!-- /wp:table -->
 
 			<!-- wp:paragraph {"className":"wg-integration-note"} -->
-			<p class="wg-integration-note"><strong><?php echo esc_html__( 'How these surfaces fit:', 'worldgraph-child' ); ?></strong> <?php echo esc_html__( 'OpenAI-compatible, OpenAI, Anthropic, and Dual serve the AI Editor rather than media generation. The 50+ specialist agents extend separately through profile files that you can add or edit any time.', 'worldgraph-child' ); ?></p>
+			<p class="wg-integration-note"><strong><?php echo esc_html__( 'Use your existing tools:', 'worldgraph-child' ); ?></strong> <?php echo esc_html__( 'External content generators serve and enhance your capabilities. Stop wandering through complex node-based interfaces and work with your text to generate the best possible outcomes.', 'worldgraph-child' ); ?></p>
 			<!-- /wp:paragraph -->
 		</div>
 		<!-- /wp:group -->
@@ -487,7 +487,7 @@
 				<h3 class="wp-block-heading wg-step__title has-headline-font-family"><?php echo esc_html__( 'Build or import', 'worldgraph-child' ); ?></h3>
 				<!-- /wp:heading -->
 				<!-- wp:paragraph -->
-				<p><?php echo esc_html__( 'Create the project in WordPress or bring in structured project and screenplay data through World Graph Studio JSON or Final Draft FDX.', 'worldgraph-child' ); ?></p>
+				<p><?php echo esc_html__( 'Create the project directly in our tools, or import plain text or a screenplay from Final Draft, Celtx, or Fountain. AI maps your story to a user-controlled structured graph.', 'worldgraph-child' ); ?></p>
 				<!-- /wp:paragraph -->
 			</div>
 			<!-- /wp:group -->
@@ -728,7 +728,7 @@
 			<!-- wp:buttons {"className":"wg-cta__actions","layout":{"type":"flex","justifyContent":"center"}} -->
 			<div class="wp-block-buttons wg-cta__actions">
 				<!-- wp:button {"className":"wg-button-primary"} -->
-				<div class="wp-block-button wg-button-primary"><a class="wp-block-button__link wp-element-button" href="<?php echo esc_url( admin_url( 'admin.php?page=worldgraph' ) ); ?>"><?php echo esc_html__( 'Open Studio', 'worldgraph-child' ); ?></a></div>
+				<div class="wp-block-button wg-button-primary"><a class="wp-block-button__link wp-element-button" href="<?php echo esc_url( 'https://github.com/videohead/worldgraphstudio' ); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__( 'Open Studio', 'worldgraph-child' ); ?></a></div>
 				<!-- /wp:button -->
 
 				<!-- wp:button {"className":"is-style-outline wg-button-secondary"} -->
