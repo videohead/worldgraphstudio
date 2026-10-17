@@ -94,15 +94,21 @@ class Test_Local_ComfyUI_Endpoint extends TestCase {
 		$this->assertStringContainsString( 'self::workflow( $template_id, $modality, $parameters, $endpoint )', $run );
 		$this->assertStringContainsString( 'self::preflight( $template_id, $connection_id, $endpoint )', $run );
 		$this->assertStringContainsString( 'self::resolve_inputs( $modality, $inputs, $connection_id, $job_id, $endpoint )', $run );
-		$this->assertStringContainsString( "self::url( 'prompt', \$endpoint )", $run );
+		// Execution is Comfy API v2 only: submit via POST /api/v2/jobs.
+		$this->assertStringContainsString( "self::url( 'api/v2/jobs', \$endpoint )", $run );
+		$this->assertStringContainsString( 'self::headers( $connection_id', $run );
 
 		$this->assertStringContainsString( '$endpoint = self::endpoint( $connection_id );', $status );
-		$this->assertStringContainsString( "self::url( 'history/' . rawurlencode( \$job_id ), \$endpoint )", $status );
-		$this->assertStringContainsString( 'self::view_url( $image, $endpoint )', $status );
+		$this->assertStringContainsString( "self::url( 'api/v2/jobs/' . rawurlencode( \$job_id ), \$endpoint )", $status );
+		// Output content URLs are rebuilt from the endpoint, not followed from
+		// the proxy's embedded urls (which can drop a path prefix).
+		$this->assertStringContainsString( "'api/v2/assets/' . rawurlencode( (string) \$output['id'] ) . '/content'", $status );
 
 		$this->assertStringContainsString( "Comfy_Manifest::object_info( '' !== \$endpoint ? \$endpoint : self::endpoint() )", $graph );
 		$this->assertStringContainsString( 'Comfy_Manifest::validate( $template_id, $endpoint )', $check );
-		$this->assertStringContainsString( "self::url( 'upload/image', \$endpoint )", $upload );
+		// Inputs upload as content-addressed v2 assets, not v1 /upload/image.
+		$this->assertStringContainsString( "self::url( 'api/v2/assets', \$endpoint )", $upload );
+		$this->assertStringNotContainsString( "self::url( 'upload/image'", $upload );
 	}
 
 	/** Readiness, cache flushing, and post-download validation use one endpoint. */

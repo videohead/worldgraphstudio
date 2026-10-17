@@ -483,6 +483,10 @@ without appearing in the first-run wizard.
 | `worldgraph_after_rest_entity_save` | React to and, when necessary, correct custom REST persistence by post ID | Apply automatically outside custom REST or replace SCF schema alignment |
 | `worldgraph_conn_resolved` | Filter a resolved Connection for server-side consumers | Redact anything automatically; a callback must deliberately remove fields without breaking internal consumers |
 | `worldgraph_conn_tested` | Observe a test after status/timestamp/health persistence and update meta if needed | Supply dispatch or mutate the already-computed return payload through its by-value action arguments |
+| `worldgraph_template_run_control_fields` | Contribute extra scalar run controls derived from a Template's API-format workflow | Override built-in, explicit, or disabled controls; bypass the sensitive-key denylist, type, or length normalization |
+| `worldgraph_template_run_controls_apply_workflow` | Bind already-validated run values to the server-owned workflow | Receive unvalidated or undescribed values; grow the workflow past the node limit |
+| `worldgraph_template_bound_run_values` | Supply Story Graph-resolved values as the lowest runtime layer | Override Project/item/one-run values or set keys the Template does not describe |
+| `worldgraph_comfy_prompt_placeholder_workflow` | Place the `{{prompt}}` placeholder in a local ComfyUI workflow before generic prompt-node discovery | Run when the workflow already contains `{{prompt}}` |
 
 ## 8. Connection Record Contract
 

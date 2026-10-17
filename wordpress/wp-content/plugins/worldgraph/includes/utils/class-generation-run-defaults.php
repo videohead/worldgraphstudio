@@ -143,9 +143,47 @@ class Generation_Run_Defaults {
 	public static function runtime_overrides( int $source_id, int $template_id, array $description = [] ): array {
 		$resolved = self::describe( $source_id, $template_id, 'item', $description );
 		return array_merge(
+			self::bound_values( $source_id, $template_id, $description ),
 			(array) ( $resolved['layers']['project']['values'] ?? [] ),
 			(array) ( $resolved['layers']['item']['values'] ?? [] )
 		);
+	}
+
+	/**
+	 * Story Graph-bound run values contributed by bundled feature plugins.
+	 *
+	 * This is the lowest runtime layer: persisted Project/item values and
+	 * one-off submissions override it. Keys are limited to the Template's
+	 * described controls and values to scalars.
+	 *
+	 * @return array<string,scalar>
+	 */
+	private static function bound_values( int $source_id, int $template_id, array $description ): array {
+		if ( $source_id <= 0 || $template_id <= 0 ) {
+			return [];
+		}
+
+		/**
+		 * Filter run-control values resolved from the source Story Graph item.
+		 *
+		 * @param array $values      Run values keyed by control key.
+		 * @param int   $source_id   Story Graph source post ID.
+		 * @param int   $template_id Template post ID.
+		 */
+		$bound = apply_filters( 'worldgraph_template_bound_run_values', [], $source_id, $template_id );
+		if ( ! is_array( $bound ) || empty( $bound ) ) {
+			return [];
+		}
+
+		$description = $description ?: Template_Run_Controls::describe( $template_id );
+		$allowed     = [];
+		foreach ( (array) ( $description['fields'] ?? [] ) as $field ) {
+			if ( is_array( $field ) && isset( $field['key'] ) ) {
+				$allowed[ (string) $field['key'] ] = true;
+			}
+		}
+
+		return array_filter( array_intersect_key( $bound, $allowed ), 'is_scalar' );
 	}
 
 	/**

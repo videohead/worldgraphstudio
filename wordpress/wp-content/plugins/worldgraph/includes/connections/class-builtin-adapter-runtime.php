@@ -48,6 +48,23 @@ final class Builtin_Adapter_Runtime {
 	}
 
 	/**
+	 * Select the Comfy client for a Connection's environment. Local
+	 * self-hosted ComfyUI and Comfy Cloud both execute jobs through the
+	 * Comfy API v2, so the single v2 client serves both; it resolves
+	 * endpoint and credential from the Connection itself.
+	 *
+	 * @param array<string, mixed> $connection Resolved Connection record.
+	 * @param string               $template   Provider Template reference.
+	 * @param string               $adapter    Previously persisted job adapter.
+	 * @return class-string
+	 */
+	public static function comfy_client( array $connection = [], string $template = '', string $adapter = '' ): string {
+		unset( $template, $adapter );
+
+		return \WorldGraph\Utils\Local_ComfyUI::class;
+	}
+
+	/**
 	 * Select the MidJourney REST or MCP client from the persisted transport.
 	 *
 	 * @param array<string, mixed> $connection Resolved Connection record.

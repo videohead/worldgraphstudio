@@ -37,7 +37,7 @@ class Adapter_Registry {
 		$adapters = [
 			'comfy_cloud' => [
 				'label'         => 'Comfy Cloud',
-				'description'   => 'Generate media through the commercial Comfy Cloud MCP service using its URL and API key.',
+				'description'   => 'Generate media through Comfy Cloud using its URL and API key: Comfy API v2 for job execution, MCP for template discovery.',
 				'icon'          => 'dashicons-cloud',
 				'endpoint'      => 'https://cloud.comfy.org/mcp',
 				'setup_options' => [
@@ -60,7 +60,10 @@ class Adapter_Registry {
 					'test' => [ Builtin_Connection_Tests::class, 'test_comfy_cloud' ],
 				],
 				'generation'    => [
-					'client'             => 'WorldGraph\\Utils\\Comfy_Cloud_MCP',
+					// One v2 client serves both Comfy Cloud and a local
+					// proxy-backed ComfyUI; endpoint and credential come from
+					// the Connection. MCP remains the discovery surface.
+					'client_resolver'    => [ Builtin_Adapter_Runtime::class, 'comfy_client' ],
 					'poll'               => true,
 					'poll_with_template' => false,
 					'poll_error_limit'   => 10,
@@ -92,7 +95,9 @@ class Adapter_Registry {
 					'test' => [ Builtin_Connection_Tests::class, 'test_comfyui' ],
 				],
 				'generation'    => [
-					'client'             => 'WorldGraph\\Utils\\Local_ComfyUI',
+					// Same Comfy API v2 execution client as Comfy Cloud; the
+					// Connection's endpoint selects the local proxy or Cloud.
+					'client_resolver'    => [ Builtin_Adapter_Runtime::class, 'comfy_client' ],
 					'poll'               => true,
 					'poll_with_template' => false,
 					'poll_error_limit'   => 10,

@@ -142,6 +142,16 @@ two-pass graph assembly must remain shared PHP behavior rather than being
 reimplemented in Next.js. Interchange therefore remains explicitly
 authentication-blocked parity debt.
 
+The bundled ComfyUI Template Variables plugin widens the same Asset generation
+gap. In WordPress it routes the composed prompt into a ComfyUI-TemplateVars
+`prompt` variable, advertises the other `TemplateVariable` nodes as
+`template_var_<name>` run controls, and fills them from `input_bindings`
+`template_variables` Story Graph sources. These are ordinary `run_controls`
+and `run_values` evaluated by shared PHP, so a future authenticated headless
+creator path needs only the planned `run_controls` DTO. Until then, headless
+cannot show or submit them. That is unresolved, authentication-blocked parity
+debt, not an approved WP-only exception.
+
 ## Parity acceptance standard
 
 A capability reaches **Parity** only when all applicable requirements are met:

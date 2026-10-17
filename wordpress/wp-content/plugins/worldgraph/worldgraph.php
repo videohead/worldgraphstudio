@@ -410,6 +410,11 @@ function init(): void {
 		require_once WORLDGRAPH_PLUGIN_DIR . 'plugins/comfy-generate/comfy-generate.php';
 	}
 
+	// Load ComfyUI-TemplateVars workflow support (prompt variable + run controls).
+	if ( file_exists( WORLDGRAPH_PLUGIN_DIR . 'plugins/comfy-template-vars/comfy-template-vars.php' ) ) {
+		require_once WORLDGRAPH_PLUGIN_DIR . 'plugins/comfy-template-vars/comfy-template-vars.php';
+	}
+
 	// Load EDL Import/Export integration.
 	if ( file_exists( WORLDGRAPH_PLUGIN_DIR . 'plugins/edl/edl-import-export.php' ) ) {
 		require_once WORLDGRAPH_PLUGIN_DIR . 'plugins/edl/edl-import-export.php';

@@ -46,35 +46,6 @@ class Comfy_Cloud_MCP {
 		return '' !== trim( (string) $api_key );
 	}
 
-	public static function run_template( string $template, string $prompt, array $parameters, int $connection_id = 0 ) {
-		$arguments = array_filter( $parameters, static function ( $value ) {
-			return null !== $value;
-		} );
-		$arguments['template_name'] = $template;
-		$arguments['prompt'] = $prompt;
-
-		Generation_Log::add( 'info', 'comfy_cloud_mcp', 'Calling run_template tool.', [ 'template' => $template, 'prompt' => $prompt ], '', $connection_id );
-		$result = self::call_tool( 'run_template', $arguments, $connection_id );
-		if ( is_wp_error( $result ) ) {
-			Generation_Log::add( 'error', 'comfy_cloud_mcp', $result->get_error_message(), [], '', $connection_id );
-		} else {
-			Generation_Log::add( 'info', 'comfy_cloud_mcp', 'run_template tool call succeeded.', $result, (string) ( $result['job_id'] ?? $result['id'] ?? '' ), $connection_id );
-		}
-
-		return $result;
-	}
-
-	public static function get_job_status( string $job_id, int $connection_id = 0 ) {
-		$result = self::call_tool( 'get_job_status', [ 'job_id' => $job_id ], $connection_id );
-		if ( is_wp_error( $result ) ) {
-			Generation_Log::add( 'error', 'comfy_cloud_mcp', $result->get_error_message(), [], $job_id, $connection_id );
-		} else {
-			Generation_Log::add( 'debug', 'comfy_cloud_mcp', 'get_job_status tool call returned status: ' . (string) ( $result['status'] ?? 'unknown' ), $result, $job_id, $connection_id );
-		}
-
-		return $result;
-	}
-
 	/**
 	 * The tool names this MCP server advertises, cached for an hour so a
 	 * capability probe does not cost a round trip per call.

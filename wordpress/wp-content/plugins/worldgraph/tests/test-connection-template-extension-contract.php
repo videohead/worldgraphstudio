@@ -109,10 +109,22 @@ class Test_Connection_Template_Extension_Contract extends TestCase {
 		$this->assertSame( 'fal_catalog', $fal['templates']['status_meta_prefix'] );
 		$this->assertSame( 'local_comfyui', Connection_Adapters::generation_adapter( 'comfyui' ) );
 		$this->assertSame( 'comfy_mcp', Connection_Adapters::generation_adapter( 'comfy_cloud' ) );
-		$this->assertSame( 'WorldGraph\\Utils\\Local_ComfyUI', $comfy['generation']['client'] );
+		// One Comfy API v2 client serves both ComfyUI (via the proxy) and
+		// Comfy Cloud; it is resolved dynamically per Connection.
+		$this->assertArrayHasKey( 'client_resolver', $comfy['generation'] );
+		$this->assertSame(
+			[ \WorldGraph\Connections\Builtin_Adapter_Runtime::class, 'comfy_client' ],
+			$comfy['generation']['client_resolver']
+		);
+		$this->assertSame( \WorldGraph\Utils\Local_ComfyUI::class, \WorldGraph\Connections\Builtin_Adapter_Runtime::comfy_client( [ 'environment' => 'local' ] ) );
+		$this->assertSame( \WorldGraph\Utils\Local_ComfyUI::class, \WorldGraph\Connections\Builtin_Adapter_Runtime::comfy_client( [ 'environment' => 'production' ] ) );
 		$comfy_cloud = Connection_Adapters::get( 'comfy_cloud' );
 		$this->assertIsArray( $comfy_cloud );
-		$this->assertSame( 'WorldGraph\\Utils\\Comfy_Cloud_MCP', $comfy_cloud['generation']['client'] );
+		$this->assertArrayHasKey( 'client_resolver', $comfy_cloud['generation'] );
+		$this->assertSame(
+			[ \WorldGraph\Connections\Builtin_Adapter_Runtime::class, 'comfy_client' ],
+			$comfy_cloud['generation']['client_resolver']
+		);
 	}
 
 	/** Disabled Connections remain an explicit operational stop during testing. */

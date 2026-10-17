@@ -390,7 +390,7 @@ class Template {
 				'format'      => 'json',
 				'label'       => 'Input Bindings JSON',
 				'required'    => false,
-				'description' => 'Optional JSON mapping prompt-related fields to Story Graph sources for the text-to-image workflow.',
+				'description' => 'Optional JSON mapping media inputs to Story Graph sources, e.g. {"image": {"source": "featured_image"}}. ComfyUI-TemplateVars workflows may add {"template_variables": {"lighting": {"source": "time_of_day"}}} to fill named variables from post_title, post_excerpt, post_content, or an SCF field.',
 			],
 			'model_requirements'  => [
 				'type'        => 'textarea',

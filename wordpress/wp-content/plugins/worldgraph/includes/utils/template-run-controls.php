@@ -261,6 +261,10 @@ class Template_Run_Controls {
 			}
 		}
 
+		foreach ( self::extension_fields( $workflow, $context, array_keys( $fields ), $disabled ) as $field ) {
+			self::store_field( $fields, $field, false );
+		}
+
 		$fields = array_values( $fields );
 		usort( $fields, [ __CLASS__, 'compare_fields' ] );
 		$fields = array_slice( $fields, 0, self::MAX_FIELDS );
@@ -518,7 +522,107 @@ class Template_Run_Controls {
 			self::apply_titled_primitives( $workflow, $semantic, $value );
 		}
 
+		if ( function_exists( 'apply_filters' ) ) {
+			/**
+			 * Let a bundled feature plugin bind its own validated run controls
+			 * (declared through `worldgraph_template_run_control_fields`) to the
+			 * server-owned API workflow.
+			 *
+			 * @param array $workflow API-format workflow after built-in controls.
+			 * @param array $values   Validated scalar run values.
+			 */
+			$filtered = apply_filters( 'worldgraph_template_run_controls_apply_workflow', $workflow, $values );
+			if ( is_array( $filtered ) && count( $filtered ) <= self::MAX_WORKFLOW_NODES ) {
+				$workflow = $filtered;
+			}
+		}
+
 		return $workflow;
+	}
+
+	/**
+	 * Collect run controls contributed by bundled feature plugins.
+	 *
+	 * Contributed fields are re-normalized through the same public DTO rules as
+	 * built-in fields, so an extension can only add bounded scalar controls.
+	 * Their keys must not collide with existing or disabled controls.
+	 *
+	 * @param array             $workflow Server-owned API-format workflow, or [].
+	 * @param array             $context  Template context passed to describe_configuration().
+	 * @param array<int,string> $existing Keys already described.
+	 * @param array<int,string> $disabled Keys explicitly disabled by configuration.
+	 * @return array<int,array<string,mixed>>
+	 */
+	private static function extension_fields( array $workflow, array $context, array $existing, array $disabled ): array {
+		if ( ! function_exists( 'apply_filters' ) ) {
+			return [];
+		}
+
+		/**
+		 * Filter the extra run controls a Template advertises.
+		 *
+		 * Each entry is a field descriptor: `key` (identifier), optional
+		 * `label`, `description`, `type` (`string`, `textarea`, `integer`,
+		 * `number`, `boolean`), `group`, and scalar `default`.
+		 *
+		 * @param array $fields   Extension field descriptors.
+		 * @param array $workflow Server-owned API-format workflow, or [].
+		 * @param array $context  Template context.
+		 */
+		$contributed = apply_filters( 'worldgraph_template_run_control_fields', [], $workflow, $context );
+
+		return is_array( $contributed ) ? self::normalize_extension_fields( $contributed, $existing, $disabled ) : [];
+	}
+
+	/**
+	 * Normalize extension field descriptors into public run-control fields.
+	 *
+	 * @param array             $contributed Extension field descriptors.
+	 * @param array<int,string> $existing    Keys already described.
+	 * @param array<int,string> $disabled    Keys explicitly disabled by configuration.
+	 * @return array<int,array<string,mixed>>
+	 */
+	public static function normalize_extension_fields( array $contributed, array $existing = [], array $disabled = [] ): array {
+		$blocked = array_fill_keys( array_merge( array_map( 'strval', $existing ), array_map( 'strval', $disabled ) ), true );
+		$fields  = [];
+		foreach ( array_slice( $contributed, 0, self::MAX_FIELDS ) as $descriptor ) {
+			$key = is_array( $descriptor ) ? (string) ( $descriptor['key'] ?? '' ) : '';
+			if ( ! self::valid_identifier( $key ) || isset( $blocked[ $key ] ) || null !== self::semantic_key( $key ) ) {
+				continue;
+			}
+
+			$requested_type = (string) ( $descriptor['type'] ?? 'string' );
+			$schema         = [
+				'type'  => 'textarea' === $requested_type ? 'string' : $requested_type,
+				'title' => (string) ( $descriptor['label'] ?? '' ),
+			];
+			$has_default = array_key_exists( 'default', $descriptor ) && is_scalar( $descriptor['default'] );
+			$default     = $has_default ? $descriptor['default'] : null;
+			if ( $has_default && is_string( $default ) && self::text_length( $default ) > self::MAX_TEXT_LENGTH ) {
+				$default = self::text_substr( $default, self::MAX_TEXT_LENGTH );
+			}
+
+			// The sensitive/execution-owned key denylist still applies.
+			$field = self::normalize_field( $key, $schema, $default, $has_default, true );
+			if ( ! is_array( $field ) ) {
+				continue;
+			}
+			if ( 'textarea' === $requested_type && 'string' === $field['type'] ) {
+				$field['type'] = 'textarea';
+			}
+			$description = self::bounded_plain_text( (string) ( $descriptor['description'] ?? '' ), self::MAX_FIELD_DESCRIPTION_LENGTH );
+			if ( '' !== $description ) {
+				$field['description'] = $description;
+			}
+			$group = (string) ( $descriptor['group'] ?? '' );
+			if ( in_array( $group, [ 'conditioning', 'sampling', 'output', 'advanced' ], true ) ) {
+				$field['group'] = $group;
+			}
+			$fields[]        = $field;
+			$blocked[ $key ] = true;
+		}
+
+		return $fields;
 	}
 
 	/** Read a Template field without making pure helper tests load WordPress. */

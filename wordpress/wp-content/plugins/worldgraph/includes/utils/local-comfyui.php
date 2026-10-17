@@ -136,15 +136,14 @@ class Local_ComfyUI {
 			return $error;
 		}
 
-		$prompt_url = self::url( 'prompt', $endpoint );
-		Generation_Log::add( 'info', 'local_comfyui', 'Submitting workflow to ' . $prompt_url, [ 'modality' => $modality, 'inputs' => $resolved ], '', $connection_id );
+		$submit_url = self::url( 'api/v2/jobs', $endpoint );
+		Generation_Log::add( 'info', 'local_comfyui', 'Submitting workflow to ' . $submit_url, [ 'modality' => $modality, 'inputs' => $resolved ], '', $connection_id );
 
-		$response = wp_remote_post( $prompt_url, [
+		$response = wp_remote_post( $submit_url, [
 			'timeout' => 60,
-			'headers' => [ 'Content-Type' => 'application/json' ],
+			'headers' => self::headers( $connection_id, [ 'Content-Type' => 'application/json' ] ),
 			'body'    => wp_json_encode( [
-				'prompt'    => self::apply_inputs( $workflow, $resolved ),
-				'client_id' => wp_generate_uuid4(),
+				'workflow' => self::apply_inputs( $workflow, $resolved ),
 			] ),
 		] );
 
@@ -152,67 +151,78 @@ class Local_ComfyUI {
 		if ( is_wp_error( $result ) ) {
 			Generation_Log::add( 'error', 'local_comfyui', $result->get_error_message(), [], '', $connection_id );
 		} else {
-			Generation_Log::add( 'info', 'local_comfyui', 'Workflow submitted.', $result, (string) ( $result['prompt_id'] ?? '' ), $connection_id );
+			Generation_Log::add( 'info', 'local_comfyui', 'Workflow submitted as v2 job.', [ 'job_id' => (string) ( $result['id'] ?? '' ) ], (string) ( $result['id'] ?? '' ), $connection_id );
 		}
 
 		return $result;
 	}
 
 	/**
-	 * Retrieve a local ComfyUI job status and output URLs.
+	 * Retrieve a local ComfyUI v2 job status and output URLs.
 	 *
-	 * @param string $job_id ComfyUI prompt ID.
+	 * @param string $job_id Comfy API v2 job UUID.
 	 * @param int    $connection_id Optional parent worldgraph_conn post ID, for endpoint resolution and log correlation.
 	 * @return array|WP_Error
 	 */
 	public static function get_job_status( string $job_id, int $connection_id = 0 ) {
 		$endpoint = self::endpoint( $connection_id );
-		$response = wp_remote_get( self::url( 'history/' . rawurlencode( $job_id ), $endpoint ), [ 'timeout' => 60 ] );
-		$result   = self::decode_response( $response, 'retrieve the job history', $connection_id );
+		$response = wp_remote_get( self::url( 'api/v2/jobs/' . rawurlencode( $job_id ), $endpoint ), [
+			'timeout' => 60,
+			'headers' => self::headers( $connection_id ),
+		] );
+		$result   = self::decode_response( $response, 'retrieve the job status', $connection_id );
 		if ( is_wp_error( $result ) ) {
 			Generation_Log::add( 'error', 'local_comfyui', $result->get_error_message(), [], $job_id, $connection_id );
 			return $result;
 		}
 
-		$history = $result[ $job_id ] ?? [];
-		if ( empty( $history ) || ! is_array( $history ) ) {
-			Generation_Log::add( 'debug', 'local_comfyui', 'No history yet; job still running.', [], $job_id, $connection_id );
-			return [ 'status' => 'submitted' ];
-		}
-		if ( ! empty( $history['status']['status_str'] ) && 'error' === $history['status']['status_str'] ) {
-			Generation_Log::add( 'error', 'local_comfyui', 'ComfyUI reported that the workflow failed.', $history, $job_id, $connection_id );
-			return [ 'status' => 'failed', 'error' => __( 'ComfyUI reported that the workflow failed.', 'worldgraph' ) ];
+		$status = sanitize_key( (string) ( $result['status'] ?? '' ) );
+		switch ( $status ) {
+			case 'succeeded':
+				break;
+			case 'failed':
+			case 'expired':
+				$error   = is_array( $result['error'] ?? null ) ? $result['error'] : [];
+				$message = (string) ( $error['message'] ?? '' );
+				Generation_Log::add( 'error', 'local_comfyui', 'ComfyUI reported that the workflow failed.', $error, $job_id, $connection_id );
+				return [
+					'status' => 'failed',
+					'error'  => '' !== $message ? $message : __( 'ComfyUI reported that the workflow failed.', 'worldgraph' ),
+				];
+			case 'canceled':
+			case 'canceling':
+				return [ 'status' => 'cancelled' ];
+			default:
+				Generation_Log::add( 'debug', 'local_comfyui', 'Job still running.', [ 'status' => $status ], $job_id, $connection_id );
+				return [ 'status' => 'submitted' ];
 		}
 
-		// ComfyUI's SaveVideo node writes its output under the same "images"
-		// output key as SaveImage, so a workflow with both a still frame and
-		// its source video (e.g. an LTX-Video Template) can list either one
-		// first depending on node execution order. Keep them separate so
+		// v2 outputs are typed assets; keep images and videos separate so
 		// `image_url` reliably points at a real image, not a video file.
+		// The proxy mints `url` fields from its request origin, which can
+		// drop a reverse-proxy path prefix, so content URLs are rebuilt from
+		// the configured endpoint and the asset id instead of followed.
 		$image_urls = [];
 		$video_urls = [];
-		foreach ( (array) ( $history['outputs'] ?? [] ) as $output ) {
-			foreach ( (array) ( $output['images'] ?? [] ) as $image ) {
-				if ( empty( $image['filename'] ) ) {
-					continue;
-				}
-
-				$ext = strtolower( pathinfo( (string) $image['filename'], PATHINFO_EXTENSION ) );
-				if ( in_array( $ext, [ 'mp4', 'webm', 'mov', 'avi' ], true ) ) {
-					$video_urls[] = self::view_url( $image, $endpoint );
-				} else {
-					$image_urls[] = self::view_url( $image, $endpoint );
-				}
+		foreach ( (array) ( $result['outputs'] ?? [] ) as $output ) {
+			if ( empty( $output['id'] ) ) {
+				continue;
+			}
+			$content_url = self::url( 'api/v2/assets/' . rawurlencode( (string) $output['id'] ) . '/content', $endpoint );
+			if ( 'video' === (string) ( $output['type'] ?? '' ) ) {
+				$video_urls[] = $content_url;
+			} else {
+				$image_urls[] = $content_url;
 			}
 		}
 
 		$images = array_merge( $image_urls, $video_urls );
 		if ( empty( $images ) ) {
-			Generation_Log::add( 'debug', 'local_comfyui', 'History present but no output images yet.', [], $job_id, $connection_id );
+			Generation_Log::add( 'debug', 'local_comfyui', 'Job succeeded but no outputs were committed yet.', [], $job_id, $connection_id );
 			return [ 'status' => 'submitted' ];
 		}
 
-		Generation_Log::add( 'info', 'local_comfyui', 'Job completed with ' . count( $images ) . ' image(s).', [], $job_id, $connection_id );
+		Generation_Log::add( 'info', 'local_comfyui', 'Job completed with ' . count( $images ) . ' output(s).', [], $job_id, $connection_id );
 		return [ 'status' => 'completed', 'image_url' => $image_urls[0] ?? $images[0], 'images' => $images ];
 	}
 
@@ -228,6 +238,11 @@ class Local_ComfyUI {
 		if ( $connection_id ) {
 			$connection = Connection_Repository::get( $connection_id );
 			$url        = $connection ? untrailingslashit( esc_url_raw( (string) ( $connection['endpoint_url'] ?? '' ) ) ) : '';
+			// A Cloud Connection may carry the MCP endpoint URL; the v2
+			// execution surface lives at the same host without the /mcp path.
+			if ( '/mcp' === substr( $url, -4 ) ) {
+				$url = substr( $url, 0, -4 );
+			}
 			if ( '' !== $url ) {
 				return $url;
 			}
@@ -379,6 +394,20 @@ class Local_ComfyUI {
 	 */
 	private static function prepare_pasted_workflow( int $template_id, array $workflow, array $runtime ): array {
 		if ( false === strpos( (string) wp_json_encode( $workflow ), '{{prompt}}' ) ) {
+			/**
+			 * Let a bundled feature plugin route the composed Story Graph prompt
+			 * into a workflow before generic prompt-node discovery runs. Return
+			 * the workflow with a `{{prompt}}` placeholder to claim the prompt.
+			 *
+			 * @param array $workflow    API-format workflow.
+			 * @param int   $template_id Template post ID.
+			 */
+			$claimed = apply_filters( 'worldgraph_comfy_prompt_placeholder_workflow', $workflow, $template_id );
+			if ( is_array( $claimed ) && ! empty( $claimed ) ) {
+				$workflow = $claimed;
+			}
+		}
+		if ( false === strpos( (string) wp_json_encode( $workflow ), '{{prompt}}' ) ) {
 			$workflow = Comfy_Graph::apply_prompt_placeholders( $workflow );
 		}
 		$workflow = Template_Run_Controls::apply_to_workflow( $template_id, $workflow, $runtime );
@@ -498,8 +527,9 @@ class Local_ComfyUI {
 	}
 
 	/**
-	 * Push a media input into ComfyUI's input directory and return the name
-	 * its Load* nodes should reference.
+	 * Upload a media input as a Comfy API v2 asset and return the JSON
+	 * `core/ASSET` reference string its Load* nodes should carry. The proxy
+	 * resolves the reference to the filename ComfyUI expects at submit time.
 	 *
 	 * @param string $reference     Attachment ID or validated HTTPS URL.
 	 * @param int    $connection_id Connection post ID, for log correlation.
@@ -569,22 +599,28 @@ class Local_ComfyUI {
 		}
 
 		$filename = wp_basename( $path );
+		$content_type = wp_check_filetype( $filename )['type'] ?: 'application/octet-stream';
 		$boundary = wp_generate_uuid4();
 		$body     = '';
-		foreach ( [ 'type' => 'input', 'overwrite' => 'true', 'subfolder' => 'worldgraph' ] as $field => $field_value ) {
+		foreach ( [
+			'content_type' => $content_type,
+			'file_path'    => $filename,
+			'tags'         => 'input',
+		] as $field => $field_value ) {
 			$body .= "--{$boundary}\r\nContent-Disposition: form-data; name=\"{$field}\"\r\n\r\n{$field_value}\r\n";
 		}
-		$body .= "--{$boundary}\r\nContent-Disposition: form-data; name=\"image\"; filename=\"{$filename}\"\r\n";
-		$body .= 'Content-Type: ' . ( wp_check_filetype( $filename )['type'] ?: 'application/octet-stream' ) . "\r\n\r\n";
+		$body .= "--{$boundary}\r\nContent-Disposition: form-data; name=\"tags\"\r\n\r\ninput\r\n";
+		$body .= "--{$boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{$filename}\"\r\n";
+		$body .= "Content-Type: {$content_type}\r\n\r\n";
 		$body .= $bytes . "\r\n--{$boundary}--\r\n";
 
 		if ( $cleanup ) {
 			wp_delete_file( $path );
 		}
 
-		$response = wp_remote_post( self::url( 'upload/image', $endpoint ), [
+		$response = wp_remote_post( self::url( 'api/v2/assets', $endpoint ), [
 			'timeout' => 120,
-			'headers' => [ 'Content-Type' => 'multipart/form-data; boundary=' . $boundary ],
+			'headers' => self::headers( $connection_id, [ 'Content-Type' => 'multipart/form-data; boundary=' . $boundary ] ),
 			'body'    => $body,
 		] );
 
@@ -592,13 +628,29 @@ class Local_ComfyUI {
 		if ( is_wp_error( $result ) ) {
 			return $result;
 		}
-		if ( empty( $result['name'] ) ) {
+		if ( empty( $result['id'] ) ) {
 			return new WP_Error( 'local_comfyui_input_upload_failed', __( 'ComfyUI did not accept a generation input file.', 'worldgraph' ) );
 		}
 
-		$subfolder = trim( (string) ( $result['subfolder'] ?? '' ), '/' );
+		return wp_json_encode( [
+			'__type' => 'core/ASSET',
+			'info'   => [
+				'id'        => (string) $result['id'],
+				'file_path' => (string) ( $result['file_path'] ?? $filename ),
+			],
+		] );
+	}
 
-		return '' !== $subfolder ? $subfolder . '/' . $result['name'] : (string) $result['name'];
+	/**
+	 * Replace `{{slot}}` placeholders in a ComfyUI API workflow with the
+	 * resolved input values for the job.
+	 *
+	 * @param mixed $value  Workflow value.
+	 * @param array $inputs Resolved slot => value map.
+	 * @return mixed
+	 */
+	public static function apply_template_inputs( $value, array $inputs ) {
+		return self::apply_inputs( $value, $inputs );
 	}
 
 	/**
@@ -645,18 +697,74 @@ class Local_ComfyUI {
 	}
 
 	/**
-	 * Build a downloadable ComfyUI output image URL.
+	 * Request headers for the Comfy API v2 surface, including the bearer
+	 * credential when one is configured for this endpoint.
 	 *
-	 * @param array  $image    ComfyUI output descriptor.
-	 * @param string $endpoint Optional already-resolved ComfyUI base URL.
+	 * @param int   $connection_id Connection post ID, for credential resolution.
+	 * @param array $extra         Additional headers, e.g. Content-Type.
+	 * @return array
+	 */
+	private static function headers( int $connection_id = 0, array $extra = [] ): array {
+		$headers    = $extra;
+		$credential = self::credential( $connection_id );
+		if ( '' !== $credential ) {
+			$headers['Authorization'] = 'Bearer ' . $credential;
+		}
+
+		return $headers;
+	}
+
+	/**
+	 * Authorization headers for downloading a completed output's bytes from
+	 * the Comfy API v2 content endpoint.
+	 *
+	 * @param int $job_id Generation job post ID, for Connection resolution.
+	 * @return array
+	 */
+	public static function download_headers( int $job_id = 0 ): array {
+		$connection_id = $job_id ? absint( (int) get_post_meta( $job_id, '_worldgraph_gen_connection_id', true ) ) : 0;
+
+		return self::headers( $connection_id );
+	}
+
+	/**
+	 * The bearer credential for the Comfy API v2 surface: the Connection's
+	 * credential reference first (literal or env://), then the
+	 * WORLDGRAPH_COMFY_API_KEY environment variable the WordPress container
+	 * carries (matching comfy-api-proxy's --token).
+	 *
+	 * @param int $connection_id Connection post ID.
 	 * @return string
 	 */
-	private static function view_url( array $image, string $endpoint = '' ): string {
-		return add_query_arg( [
-			'filename'  => (string) $image['filename'],
-			'subfolder' => (string) ( $image['subfolder'] ?? '' ),
-			'type'      => (string) ( $image['type'] ?? 'output' ),
-		], self::url( 'view', $endpoint ) );
+	private static function credential( int $connection_id = 0 ): string {
+		if ( $connection_id ) {
+			$connection = Connection_Repository::get( $connection_id );
+			$reference  = is_array( $connection ) ? trim( (string) ( $connection['credential_reference'] ?? '' ) ) : '';
+			if ( '' !== $reference ) {
+				if ( 0 === strpos( $reference, 'env://' ) ) {
+					$name = substr( $reference, 6 );
+					if ( preg_match( '/^[A-Z_][A-Z0-9_]*$/', $name ) ) {
+						$value = getenv( $name );
+						if ( false !== $value && '' !== trim( $value ) ) {
+							return trim( $value );
+						}
+					}
+				} else {
+					return $reference;
+				}
+			}
+		}
+
+		$environment = getenv( 'WORLDGRAPH_COMFY_API_KEY' );
+		if ( false !== $environment && '' !== trim( $environment ) ) {
+			return trim( $environment );
+		}
+
+		// Cloud Connections carry no local proxy token; their key rides
+		// the COMFY_CLOUD_API_KEY environment variable instead.
+		$cloud = getenv( 'COMFY_CLOUD_API_KEY' );
+
+		return false === $cloud ? '' : trim( $cloud );
 	}
 
 	/**

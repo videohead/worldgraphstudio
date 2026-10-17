@@ -545,6 +545,16 @@ SCF/post-meta binding rather than from scalar run values. Checkpoint/model,
 VAE, and CLIP file selection remains Template-authoring metadata validated by
 catalog and readiness flows, not an Assets-run input.
 
+When the bundled ComfyUI Template Variables plugin is enabled, API-format
+workflows with ComfyUI-TemplateVars `TemplateVariable` nodes also advertise one
+`textarea` run control per literal variable, keyed `template_var_<name>`. The
+exception is the `prompt` variable, which receives the composed Story Graph
+prompt. `input_bindings` may then contain a `template_variables` map, e.g.
+`{"template_variables": {"lighting": {"source": "time_of_day"}}}`. Each source
+is `post_title`, `post_excerpt`, `post_content`, or an SCF field. Resolved
+values are the lowest runtime layer, beneath Project, item, and one-run
+values. See [ComfyUI Template Variables](plugins/COMFY_TEMPLATE_VARS.md).
+
 For a WAN video workflow that exposes frame count and FPS but no duration
 control, an authored Shot duration is converted to the nearest valid `4n+1`
 frame count. The Template's fixed playback FPS remains authoritative.

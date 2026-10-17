@@ -63,10 +63,11 @@ class Test_Comfy_MCP_Smoke extends TestCase {
 	}
 
 	/**
-	 * A local Comfy connection generates through its own HTTP API. Its MCP
-	 * endpoint serves discovery and downloads, never generation.
+	 * Comfy generation runs through the one Comfy API v2 client. A local
+	 * Connection points it at comfy-api-proxy; a Cloud Connection at
+	 * cloud.comfy.org. MCP serves discovery and downloads, never generation.
 	 */
-	public function test_generation_batch_routes_local_comfy_to_local_api(): void {
+	public function test_generation_batch_routes_comfy_to_the_v2_client(): void {
 		$batch    = file_get_contents( dirname( __DIR__ ) . '/includes/utils/generation-batch.php' );
 		$registry = file_get_contents( dirname( __DIR__ ) . '/includes/connections/class-adapter-registry.php' );
 		$tests    = file_get_contents( dirname( __DIR__ ) . '/includes/connections/class-builtin-connection-tests.php' );
@@ -74,15 +75,18 @@ class Test_Comfy_MCP_Smoke extends TestCase {
 		$this->assertNotFalse( $batch );
 		$this->assertNotFalse( $registry );
 		$this->assertNotFalse( $tests );
+		// One v2 client serves both surfaces; endpoint and credential come
+		// from the Connection record.
 		$this->assertSame(
 			\WorldGraph\Utils\Local_ComfyUI::class,
 			\WorldGraph\Connections\Builtin_Adapter_Runtime::comfy_client( [ 'environment' => 'local' ] )
 		);
 		$this->assertSame(
-			\WorldGraph\Utils\Comfy_Cloud_MCP::class,
+			\WorldGraph\Utils\Local_ComfyUI::class,
 			\WorldGraph\Connections\Builtin_Adapter_Runtime::comfy_client( [ 'environment' => 'production' ] )
 		);
 		$this->assertStringContainsString( "'client_resolver'    => [ Builtin_Adapter_Runtime::class, 'comfy_client' ]", $registry );
+		$this->assertSame( 2, substr_count( $registry, "'client_resolver'    => [ Builtin_Adapter_Runtime::class, 'comfy_client' ]" ) );
 		$this->assertStringContainsString( 'Connection_Adapters::generation_client(', $batch );
 		$this->assertStringContainsString( "update_post_meta( \$job_id, '_worldgraph_gen_adapter', 'local_comfyui' );", $batch );
 		$this->assertStringNotContainsString( 'Retrying via local ComfyUI API', $batch );

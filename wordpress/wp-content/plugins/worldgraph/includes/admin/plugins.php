@@ -121,6 +121,26 @@ class Plugins {
 			);
 		}
 
+		// ComfyUI-TemplateVars workflow support.
+		if ( file_exists( WORLDGRAPH_PLUGIN_DIR . 'plugins/comfy-template-vars/comfy-template-vars.php' ) ) {
+			self::register_plugin(
+				'comfy-template-vars',
+				'World Graph Studio - ComfyUI Template Variables',
+				[
+					'name'         => 'ComfyUI Template Variables',
+					'description'  => 'Runs ComfyUI-TemplateVars workflows: sends the Story Graph prompt to the {prompt} variable and exposes other variables as editable, Story Graph-bindable run controls.',
+					'requires'     => 'The ComfyUI-TemplateVars custom node pack must be installed on the ComfyUI Connection.',
+					'requires_url' => 'https://github.com/boobkake22/ComfyUI-TemplateVars',
+					'version'      => defined( 'WORLDGRAPH_COMFY_TEMPLATE_VARS_VERSION' ) ? WORLDGRAPH_COMFY_TEMPLATE_VARS_VERSION : '1.0.0',
+					'author'       => 'World Graph Studio Contributors',
+					'icon'         => 'dashicons-editor-code',
+					'file'         => 'plugins/comfy-template-vars/comfy-template-vars.php',
+					'has_settings' => false,
+					'testable'     => false,
+				]
+			);
+		}
+
 		// EDL format tools.
 		if ( file_exists( WORLDGRAPH_PLUGIN_DIR . 'plugins/edl/edl-import-export.php' ) ) {
 			self::register_plugin(
@@ -275,6 +295,9 @@ class Plugins {
 			case 'edl':
 				return (bool) get_option( 'worldgraph_edl_enabled', true );
 
+			case 'comfy-template-vars':
+				return (bool) get_option( 'worldgraph_comfy_template_vars_enabled', true );
+
 			case 'videodraft':
 				return class_exists( '\\WorldGraphVideoDraft\\Settings' )
 					? \WorldGraphVideoDraft\Settings::is_enabled()
@@ -334,6 +357,9 @@ class Plugins {
 					return false;
 
 			case 'edl':
+				return true;
+
+			case 'comfy-template-vars':
 				return true;
 
 			case 'videodraft':
@@ -411,6 +437,10 @@ class Plugins {
 
 			case 'edl':
 				update_option( 'worldgraph_edl_enabled', $enabled );
+				break;
+
+			case 'comfy-template-vars':
+				update_option( 'worldgraph_comfy_template_vars_enabled', $enabled );
 				break;
 
 			case 'videodraft':

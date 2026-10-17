@@ -1538,6 +1538,8 @@ class Asset_Generator {
 		// OpenRouter's content endpoint requires the same bearer credential used to submit the job.
 		if ( $job_id && 'openrouter' === (string) get_post_meta( $job_id, '_worldgraph_gen_provider_type', true ) ) {
 			$args['headers'] = OpenRouter_API::download_headers( $job_id );
+		} elseif ( 'local_comfyui' === $adapter ) {
+			$args['headers'] = Local_ComfyUI::download_headers( $job_id );
 		}
 		$download = 'local_comfyui' === $adapter ? wp_remote_get( $url, $args ) : wp_safe_remote_get( $url, $args );
 		if ( is_wp_error( $download ) ) {
@@ -1577,6 +1579,8 @@ class Asset_Generator {
 		];
 		if ( $job_id && 'openrouter' === (string) get_post_meta( $job_id, '_worldgraph_gen_provider_type', true ) ) {
 			$args['headers'] = OpenRouter_API::download_headers( $job_id );
+		} elseif ( 'local_comfyui' === $adapter ) {
+			$args['headers'] = Local_ComfyUI::download_headers( $job_id );
 		}
 		$download = 'local_comfyui' === $adapter ? wp_remote_get( $url, $args ) : wp_safe_remote_get( $url, $args );
 		if ( is_wp_error( $download ) ) {

@@ -379,7 +379,7 @@
             "name": "input_bindings",
             "aria-label": "",
             "type": "textarea",
-            "instructions": "Optional JSON mapping prompt-related fields to Story Graph sources for the text-to-image workflow.",
+            "instructions": "Optional JSON mapping media inputs to Story Graph sources, e.g. {\"image\": {\"source\": \"featured_image\"}}. ComfyUI-TemplateVars workflows may add {\"template_variables\": {\"lighting\": {\"source\": \"time_of_day\"}}} to fill named variables from post_title, post_excerpt, post_content, or an SCF field.",
             "required": 0,
             "conditional_logic": 0,
             "wrapper": {
