@@ -28,6 +28,7 @@
 		<div class="wp-block-group wg-header-actions">
 			<!-- wp:navigation {"textColor":"warm-ivory","overlayBackgroundColor":"dark-espresso","overlayTextColor":"warm-ivory","style":{"spacing":{"blockGap":"18px"},"typography":{"fontSize":"0.88rem"}},"layout":{"type":"flex","justifyContent":"right"},"ariaLabel":"<?php echo esc_attr_x( 'World Graph Studio sections', 'Header navigation label.', 'worldgraph-child' ); ?>"} -->
 				<!-- wp:navigation-link {"label":"<?php echo esc_html_x( 'Overview', 'Header navigation link.', 'worldgraph-child' ); ?>","url":"<?php echo esc_url( home_url( '/overview/' ) ); ?>","kind":"custom"} /-->
+				<!-- wp:navigation-link {"label":"<?php echo esc_html_x( 'About', 'Header navigation link.', 'worldgraph-child' ); ?>","url":"<?php echo esc_url( home_url( '/about/' ) ); ?>","kind":"custom"} /-->
 				<!-- wp:navigation-link {"label":"<?php echo esc_html_x( 'Story Graph', 'Header navigation link.', 'worldgraph-child' ); ?>","url":"<?php echo esc_url( home_url( '/#story-graph' ) ); ?>","kind":"custom"} /-->
 				<!-- wp:navigation-link {"label":"<?php echo esc_html_x( 'Projects', 'Header navigation link.', 'worldgraph-child' ); ?>","url":"<?php echo esc_url( home_url( '/worldgraph_project/' ) ); ?>","kind":"custom"} /-->
 				<!-- wp:navigation-link {"label":"<?php echo esc_html_x( 'Capabilities', 'Header navigation link.', 'worldgraph-child' ); ?>","url":"<?php echo esc_url( home_url( '/#capabilities' ) ); ?>","kind":"custom"} /-->
@@ -37,7 +38,7 @@
 			<!-- /wp:navigation -->
 
 			<!-- wp:button {"fontFamily":"headline","fontSize":"small"} -->
-			<div class="wp-block-button has-custom-font-size has-small-font-size has-headline-font-family"><a class="wp-block-button__link wp-element-button" href="<?php echo esc_url( admin_url( 'admin.php?page=worldgraph' ) ); ?>"><?php echo esc_html_x( 'Open Studio', 'Header call-to-action label.', 'worldgraph-child' ); ?></a></div>
+			<div class="wp-block-button has-custom-font-size has-small-font-size has-headline-font-family"><a class="wp-block-button__link wp-element-button" href="<?php echo esc_url( 'https://github.com/videohead/worldgraphstudio' ); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html_x( 'Open Studio', 'Header call-to-action label.', 'worldgraph-child' ); ?></a></div>
 			<!-- /wp:button -->
 		</div>
 		<!-- /wp:group -->

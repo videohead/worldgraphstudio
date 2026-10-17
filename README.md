@@ -2,7 +2,7 @@
 
 ### Your worlds. Your ideas. Your assets. No credits needed.
 
-World Graph Studio is an open-source worldbuilding and creative production studio for writers, filmmakers, game creators, educators, and storytellers.
+World Graph Studio is an open-source worldbuilding and creative production studio for Writers, Filmmakers, Game Creators, Worldbuilders, Showrunners, Narrative Teams, and Production Studios.
 
 Build connected worlds composed of characters, locations, props, scenes, shots, storyboards, sequences, scripts, and generated assets.
 
@@ -17,10 +17,9 @@ Most AI creative tools are built around subscriptions, usage credits, and vendor
 World Graph Studio takes a different approach.
 
 - Free and Open Source
-- MIT Licensed
-- Self-Hosted
+- Self-Hosted, run on your desktop or any web host
 - No Subscriptions
-- No Platform Lock-In
+- No "vendor lock in"
 - Use Local, Open, or Commercial AI Tools
 - Your Assets Stay Yours
 - Export Any Time
@@ -29,6 +28,12 @@ World Graph Studio takes a different approach.
 
 ## Core Principles
 
+### Persistent Creative Memory
+Your Story Never Forgets. World Graph Studio stores characters, locations,
+props, scenes, storyboards, assets, and production notes as structured
+knowledge that remains available through the World Graph and AI-powered memory
+retrieval.
+
 ### Own Your Worlds
 Create connected worlds instead of disconnected files.
 
@@ -36,13 +41,20 @@ Create connected worlds instead of disconnected files.
 AI helps organize, analyze, and plan. You remain the creator.
 
 ### Work With Any AI
-Local, open-source, or commercial models. Your choice.
+Local, open-source, hosted, or commercial models. Your choice.
 
 ### Your AI. Your Workflow.
-Built-in MCP support for Claude, Cursor, VS Code, and more.
+Use World Graph Studio from Claude, Codex, Cursor, VS Code, and other MCP
+clients through a compatible WordPress MCP Adapter. Assistants can work with
+permission-checked tools for story import, Story Graph records, project review,
+generation planning and execution, generated assets, and EDL exchange. World
+Graph Studio also connects outward to selected generation providers over MCP.
+
+[See exactly what the MCP integration offers](docs/mcp-integration.md), including
+setup requirements and safeguards for write actions and paid generation.
 
 ### Generate Anywhere
-Prototype cheaply. Render anywhere. Keep everything connected.
+Prototype cheaply (even free). Render anywhere. Keep everything connected.
 
 ### Export Anytime
 Own your stories, assets, and production data forever.
@@ -51,14 +63,17 @@ Own your stories, assets, and production data forever.
 
 ## Quick Start
 
-1. Install WordPress Studio, LocalWP, or Docker.
-2. Install World Graph Studio.
-3. Import a story or create a world.
-4. Connect your preferred AI tools.
-5. Build characters, locations, scenes, and assets.
-6. Export your project.
+1. Install WordPress Studio, LocalWP, on a web host, or WordPress on Docker.
+2. Install Secure Custom Fields and the World Graph Studio plugin.
+3. Install the Frost parent theme, then activate the World Graph Studio theme.
+4. Connect your preferred AI tools, or skip this and add them later.
+5. Import a story or create a world.
+6. Build and develop characters, locations, scenes, and assets.
+7. Export or share your project - it's a web site.
 
-See the docs folder for detailed guides.
+New to WordPress? Start with the [creator guides](docs/getting-started.md) for
+installation, a sample project, and the main workflows. Technical documentation
+and development references are indexed in [about](about/README.md).
 
 ---
 

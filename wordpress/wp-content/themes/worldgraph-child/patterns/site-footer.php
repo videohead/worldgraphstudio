@@ -33,6 +33,7 @@
 
 		<!-- wp:navigation {"textColor":"warm-ivory","overlayMenu":"never","style":{"spacing":{"blockGap":"18px"},"typography":{"fontSize":"0.88rem"}},"layout":{"type":"flex","flexWrap":"wrap","justifyContent":"right"},"ariaLabel":"<?php echo esc_attr_x( 'World Graph Studio footer links', 'Footer navigation label.', 'worldgraph-child' ); ?>"} -->
 			<!-- wp:navigation-link {"label":"<?php echo esc_html_x( 'Home', 'Footer navigation link.', 'worldgraph-child' ); ?>","url":"<?php echo esc_url( home_url( '/' ) ); ?>","kind":"custom"} /-->
+			<!-- wp:navigation-link {"label":"<?php echo esc_html_x( 'About', 'Footer navigation link.', 'worldgraph-child' ); ?>","url":"<?php echo esc_url( home_url( '/about/' ) ); ?>","kind":"custom"} /-->
 			<!-- wp:navigation-link {"label":"<?php echo esc_html_x( 'Story Graph', 'Footer navigation link.', 'worldgraph-child' ); ?>","url":"<?php echo esc_url( home_url( '/#story-graph' ) ); ?>","kind":"custom"} /-->
 			<!-- wp:navigation-link {"label":"<?php echo esc_html_x( 'Open Studio', 'Footer navigation link.', 'worldgraph-child' ); ?>","url":"<?php echo esc_url( admin_url( 'admin.php?page=worldgraph' ) ); ?>","kind":"custom"} /-->
 		<!-- /wp:navigation -->

@@ -1,7 +1,7 @@
 === World Graph Studio - Story Core ===
 Contributors: videohead
 Tags: storytelling, writing, pre-production, artificial intelligence, media
-Requires at least: 6.2
+Requires at least: 7.1
 Tested up to: 7.1
 Requires PHP: 8.1
 Stable tag: 1.0.0
@@ -20,6 +20,7 @@ Core features include:
 * Relationships between story entities, plus sequencing and continuity tools.
 * Search, summaries, analytics, and project interchange tools.
 * Optional AI editor, filmmaking advisors, and queued media generation.
+* Permission-checked WordPress Abilities for compatible external MCP clients.
 * Optional connections for generation, transcription, project synchronization, and headless cache revalidation.
 
 Core Story Graph authoring does not require an AI provider, API key, or paid service. External integrations are disabled until an administrator configures or enables them. Administrators can test and manage Connections; afterward, authorized editors may initiate the AI, generation, synchronization, or download actions permitted by their WordPress capabilities. An enabled webhook may run automatically when relevant content changes.
@@ -37,9 +38,10 @@ The human-readable development source is available at [GitHub](https://github.co
 1. Install and activate [Secure Custom Fields](https://wordpress.org/plugins/secure-custom-fields/).
 2. Upload the `worldgraph` directory to `/wp-content/plugins/`, or install the plugin ZIP through Plugins > Add New > Upload Plugin.
 3. Activate World Graph Studio - Story Core in the Plugins screen.
-4. Open World Graph Studio > Setup and review the first-run settings.
-5. Leave all provider settings empty for Story Graph-only use, or add only the optional connections you intend to use.
-6. If you enable asynchronous generation, configure a reliable WP-Cron runner for your site.
+4. Install the bundled Frost parent theme, then install and activate the bundled World Graph Studio child theme.
+5. Open World Graph Studio > Setup and review the first-run settings.
+6. Leave all provider settings empty for Story Graph-only use, or add only the optional connections you intend to use.
+7. If you enable asynchronous generation, configure a reliable WP-Cron runner for your site.
 
 The optional Story RAG Decomposer is not needed for ordinary Story Import & Export. If you choose to enable that long-form retrieval enhancement, install and activate WPVDB separately as the top-level `/wp-content/plugins/wpvdb` plugin, then configure an active embedding provider and model in WPVDB. World Graph Studio does not bundle or install WPVDB, and its Plugins page will keep the enhancement unavailable until that requirement is met.
 
@@ -58,6 +60,12 @@ World Graph Studio uses Secure Custom Fields for its field definitions and struc
 = Is WPVDB required for story import? =
 
 No. The base Story Import & Export plugin, its chapter-aware decomposer, and lexical evidence retrieval work without WPVDB. WPVDB is required only for the disabled-by-default Story RAG Decomposer enhancement. To use that enhancement, install and activate WPVDB separately under `/wp-content/plugins/wpvdb` and configure its embedding provider and model before enabling Story RAG Decomposer on the World Graph Studio Plugins page.
+
+= What can an MCP client do with World Graph Studio? =
+
+On WordPress 7.1 or later, World Graph Studio registers schema-described Abilities for story preview and import, Story Graph discovery and editing, project and editorial review, generation planning and execution, generated-asset review, AI Editor context and prompts, and EDL preview, import, and export. A compatible WordPress MCP Adapter can expose those Abilities to Claude, Codex, Cursor, VS Code, and other MCP clients.
+
+The MCP transport adapter is installed and configured separately; World Graph Studio does not create an MCP endpoint by itself. Authenticate each integration as a dedicated WordPress user. WordPress capabilities and record-level permissions still apply, optional workflows still require their plugins or Connections, and users should confirm writes and paid generation before a client runs them.
 
 = Does the plugin contact external services by default? =
 

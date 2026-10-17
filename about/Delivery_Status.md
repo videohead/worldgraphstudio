@@ -18,7 +18,7 @@ not been configured.
 | --- | --- |
 | Story Graph | 15 content types, nine taxonomies, Structured Content Fields, canonical relationships, graph traversal, and REST exposure |
 | Creative workspace | Project and world management, scenes, shots, sounds, storyboards, assets, editorial records, templates, and provider connections |
-| AI assistance | Gutenberg AI Editor, Story Graph context, configured LLM access, WordPress Abilities, and 50+ specialist agents loaded from extensible profiles |
+| AI assistance | Gutenberg AI Editor, Story Graph context, configured LLM access, 50+ specialist agents loaded from extensible profiles, and public schema-described WordPress Abilities that a separately installed compatible MCP Adapter can expose to external assistants |
 | Story intelligence | Search, optional semantic assistance, continuity checks, relationship analytics, summaries, and admin panels |
 | Generation | Connection and template records, validation, queued generation jobs, WP-Cron processing, job state, cancellation, result import, and provenance |
 | Provider adapters | A filterable, callback-driven Connection/Template/generation registry plus local ComfyUI HTTP workflows, Comfy Cloud MCP, fal MCP, ElevenLabs, SunoAPI.org REST, AceData Cloud Suno MCP, midjourney-api.com REST, Ace Data Cloud MidJourney MCP, Higgsfield reviewed REST generation with OAuth MCP catalog discovery, Seedance 2.5 generation through CyberBara REST, VideoDraft MCP, OpenRouter video generation REST, and manually managed external-generator workflows where configured |
@@ -27,6 +27,14 @@ not been configured.
 | Editorial format code | CMX 3600 and SMPTE 436m XML parsing, timecode, and format-generation functions; the bundled admin workflow remains incomplete |
 | Extension surfaces | Canonical import contract, bundled format and synchronization plugins, filterable Connection lifecycle/Template/generation adapters, reusable manifest-profile public-client OAuth with PKCE/token refresh, profile-driven agents, REST APIs, and WordPress Abilities |
 | Administration | Setup wizard, connection management, plugin toggles, dashboards, and permission-aware REST/admin actions |
+
+The delivered inbound assistant surface covers story preview/import, Story
+Graph schema and entity CRUD, project and editorial review, generation
+planning/execution/review, EDL preview/import/export, AI Editor actions,
+focused context resources, Template discovery, and structured prompts. World
+Graph Studio supplies these as WordPress Abilities and enforces WordPress and
+object-level permissions; it does not bundle the MCP transport adapter or
+create an unauthenticated public endpoint. See [MCP Integration](../docs/mcp-integration.md).
 
 “Delivered” describes code in the repository. Optional connections still need
 valid credentials, a reachable service, and models or workflows compatible

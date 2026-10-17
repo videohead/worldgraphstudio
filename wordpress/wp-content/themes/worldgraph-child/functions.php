@@ -79,6 +79,48 @@ function worldgraph_child_refresh_frost_pattern_cache() {
 add_action( 'init', 'worldgraph_child_refresh_frost_pattern_cache', 0 );
 
 /**
+ * Create the theme-owned About page when the expected slug is available.
+ *
+ * Existing pages are never changed. Storing the theme version allows a newly
+ * installed or updated theme to provision the route without checking on every
+ * request after the first successful pass.
+ *
+ * @return void
+ */
+function worldgraph_child_ensure_about_page() {
+	$theme         = wp_get_theme();
+	$theme_version = $theme->get( 'Version' );
+
+	if ( get_option( 'worldgraph_child_about_page_version' ) === $theme_version ) {
+		return;
+	}
+
+	$about_page = get_page_by_path( 'about', OBJECT, 'page' );
+
+	if ( ! $about_page ) {
+		$about_page_id = wp_insert_post(
+			array(
+				'post_title'     => __( 'About', 'worldgraph-child' ),
+				'post_name'      => 'about',
+				'post_status'    => 'publish',
+				'post_type'      => 'page',
+				'post_content'   => '',
+				'comment_status' => 'closed',
+				'ping_status'    => 'closed',
+			),
+			true
+		);
+
+		if ( is_wp_error( $about_page_id ) ) {
+			return;
+		}
+	}
+
+	update_option( 'worldgraph_child_about_page_version', $theme_version, false );
+}
+add_action( 'init', 'worldgraph_child_ensure_about_page', 20 );
+
+/**
  * Enqueue the child stylesheet.
  *
  * @return void

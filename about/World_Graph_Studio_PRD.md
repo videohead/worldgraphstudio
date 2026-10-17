@@ -37,15 +37,20 @@ World Graph Studio must let a creator:
 
 ## Intended users
 
+- Writers who want durable story context while drafting, reviewing, and
+  revising.
 - Filmmakers developing scripts, coverage, storyboards, shots, and editorial
   handoffs.
-- Game creators designing worlds, characters, locations, props, and narrative
+- Game Creators designing worlds, characters, locations, props, and narrative
   relationships.
-- Scriptwriters who want structured story context and AI-assisted review.
-- Video producers organizing creative assets, sequences, sounds, and
-  production metadata.
-- Technical creators who want a self-hosted, extensible alternative to a
-  single-provider creative platform.
+- Worldbuilders connecting lore, histories, people, places, objects, and
+  cultures.
+- Showrunners tracking characters, episodes, arcs, continuity, and production
+  decisions across a series.
+- Narrative Teams sharing structured story knowledge across collaborators and
+  AI assistants.
+- Production Studios managing projects, production notes, media, and handoffs
+  from development through delivery.
 
 ## Product principles
 

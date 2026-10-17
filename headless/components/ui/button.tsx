@@ -6,6 +6,8 @@ const variants = {
     "border-wg-espresso bg-wg-espresso text-wg-ivory shadow-wg-button hover:bg-wg-sepia hover:text-wg-ink hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none",
   outline:
     "border-current bg-transparent text-wg-espresso hover:bg-wg-espresso hover:text-wg-ivory",
+  light:
+    "border-wg-ivory bg-wg-ivory text-wg-espresso shadow-wg-button hover:border-wg-sepia hover:bg-wg-sepia hover:text-wg-ink hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none",
 };
 
 export function Button({

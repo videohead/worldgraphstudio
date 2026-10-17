@@ -6,7 +6,7 @@ export, and editorial tools work as ordinary WordPress features.
 
 ## 1. Install World Graph Studio
 
-World Graph Studio requires WordPress 6.0 or newer, PHP 8.1 or newer, and the
+World Graph Studio requires WordPress 7.1 or newer, PHP 8.1 or newer, and the
 Secure Custom Fields plugin. It works with ordinary WordPress themes and does
 not require a specific theme.
 

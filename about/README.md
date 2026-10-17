@@ -47,6 +47,9 @@ delivery status, then follow the path that matches what you are trying to do.
 ## Use and extend the APIs, intelligence, and agents
 
 - [REST API](REST_API_Specification.md)
+- [MCP integration](../docs/mcp-integration.md) — inbound assistant workflows,
+  the published Ability surface, requirements, permissions, and outbound
+  provider MCP Connections.
 - [AI Editor](AI_Editor.md)
 - [Agent architecture](Agent_Architecture.md) — how the 50+ bundled profiles
   are loaded, selected, routed, and extended.

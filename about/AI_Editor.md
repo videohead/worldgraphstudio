@@ -194,6 +194,23 @@ configured.
 - `worldgraph/generate-asset` — queue an authorized story-aware image or Shot
   video request and optionally link its result to the source.
 
+### Agent workflow tools
+
+- `worldgraph/decompose-story` and `worldgraph/decompose-story-upload` — create
+  a canonical import preview from direct text or an existing upload.
+- `worldgraph/import-story` — explicitly confirm and populate the Story Graph.
+- `worldgraph/content-schema`, `worldgraph/list-entities`,
+  `worldgraph/get-entity`, `worldgraph/create-entity`, and
+  `worldgraph/update-entity` — inspect or revise post and SCF data through the
+  existing REST controller permission boundary.
+- `worldgraph/review-project` and `worldgraph/add-review-note` — inspect and
+  annotate production/editorial state.
+- `worldgraph/plan-end-to-end-generation`,
+  `worldgraph/run-end-to-end-generation`, and `worldgraph/review-generation` —
+  preview, confirm, monitor, and review a durable full-story generation batch.
+- `worldgraph/preview-edl-import`, `worldgraph/import-edl`, and
+  `worldgraph/export-edl` — operate the enabled EDL extension without its UI.
+
 ### Prompt resources
 
 - `worldgraph/story-review-prompt`
@@ -203,7 +220,9 @@ Each ability declares input and output schemas, a permission callback, and MCP
 metadata describing whether it is a tool, resource, or prompt. Read/write,
 destructive, and idempotency annotations describe the actual behavior. An
 installed WordPress MCP adapter may expose these abilities to compatible
-clients; it does not change their WordPress permission boundary.
+clients; it does not change their WordPress permission boundary. MCP clients
+must authenticate as a WordPress user, preferably through a dedicated account
+and Application Password with least-privilege capabilities.
 
 ## Advisor model
 

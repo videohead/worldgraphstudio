@@ -199,6 +199,13 @@
 			"postTypes": [
 				"page"
 			]
+		},
+		{
+			"name": "page-about",
+			"title": "About",
+			"postTypes": [
+				"page"
+			]
 		}
 	]
 }
